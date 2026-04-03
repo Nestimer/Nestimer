@@ -15,7 +15,7 @@ services:
   web:
     build: ./web-dashboard
     ports:
-      - "3000:80"
+      - "3080:80"
     depends_on:
       - api
     restart: unless-stopped
