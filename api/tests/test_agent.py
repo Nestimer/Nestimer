@@ -110,8 +110,8 @@ async def test_agent_config_shows_today_usage(client):
     device = await create_device(client, token)
     agent_token = device["api_token"]
 
-    from datetime import datetime
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Report usage for today
     await client.post(

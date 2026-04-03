@@ -11,7 +11,7 @@ End-to-end flow test: simulates the full parent + agent lifecycle.
 8. Parent changes limit → agent sees update
 """
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .conftest import register_user
 
@@ -79,7 +79,7 @@ async def test_full_lifecycle(client):
     assert resp.json()["last_seen"] is not None
 
     # === STEP 5: Agent reports usage over time (simulating 30-second ticks) ===
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # After 30 minutes
     resp = await client.post(

@@ -1,5 +1,5 @@
 """Endpoints called by the macOS agent on the child's computer."""
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -46,7 +46,7 @@ async def get_config(
     db: AsyncSession = Depends(get_db),
 ):
     """Agent polls this to get current rules and usage."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
 
     # Update last_seen
@@ -105,7 +105,7 @@ async def report_usage(
 
     if log:
         log.total_minutes = report.total_minutes
-        log.last_updated = datetime.utcnow()
+        log.last_updated = datetime.now(timezone.utc)
     else:
         log = UsageLog(
             device_id=device.id,
@@ -114,7 +114,7 @@ async def report_usage(
         )
         db.add(log)
 
-    device.last_seen = datetime.utcnow()
+    device.last_seen = datetime.now(timezone.utc)
     await db.commit()
     return {"ok": True}
 

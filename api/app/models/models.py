@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, Time, ForeignKey, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
@@ -19,7 +19,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
 
@@ -35,7 +35,7 @@ class Device(Base):
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
     shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)
     last_seen = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="devices")
     policy = relationship("Policy", back_populates="device", uselist=False, cascade="all, delete-orphan")
@@ -68,7 +68,7 @@ class Policy(Base):
     # Weekend can have different limit
     screen_time_weekend_limit_minutes = Column(Integer, nullable=True)  # if null, use weekday limit
 
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="policy")
 
@@ -85,6 +85,6 @@ class UsageLog(Base):
     device_id = Column(String, ForeignKey("devices.id"), nullable=False)
     date = Column(String, nullable=False)  # YYYY-MM-DD
     total_minutes = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="usage_logs")
