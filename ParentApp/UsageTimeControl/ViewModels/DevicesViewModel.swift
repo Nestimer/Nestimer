@@ -31,6 +31,7 @@ class DevicesViewModel: ObservableObject {
     }
 
     func deleteDevice(_ id: String) async {
+        // Remove from UI only AFTER API confirms deletion
         do {
             try await api.deleteDevice(id)
             devices.removeAll { $0.id == id }

@@ -45,8 +45,8 @@ export default function DeviceDetailPage() {
 
   const todayUsage = usage.length > 0 ? usage[0] : null
   const usedMinutes = todayUsage ? todayUsage.total_minutes : 0
-  const limitMinutes = policy.screen_time_limit_minutes
-  const usagePercent = Math.min(100, (usedMinutes / limitMinutes) * 100)
+  const limitMinutes = policy.screen_time_limit_minutes || 120
+  const usagePercent = limitMinutes > 0 ? Math.min(100, (usedMinutes / limitMinutes) * 100) : 0
   const barClass = usagePercent > 90 ? 'exceeded' : usagePercent > 70 ? 'warning' : 'ok'
 
   return (

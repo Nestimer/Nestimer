@@ -18,7 +18,10 @@ class SelfProtection {
         // But we also intercept it just in case
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             // Block Cmd+Q
-            if event.modifierFlags.contains(.command) && event.characters == "q" {
+            // Block Cmd+Q and Cmd+Shift+Q (logout shortcut)
+            if event.modifierFlags.contains(.command),
+               let chars = event.charactersIgnoringModifiers?.lowercased(),
+               chars == "q" {
                 NSLog("[UsageTimeAgent] Cmd+Q blocked")
                 return nil // swallow the event
             }

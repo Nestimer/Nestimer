@@ -44,7 +44,9 @@ class APIClient {
     }
 
     func fetchConfig() async throws -> ServerPolicy {
-        let url = URL(string: "\(serverURL)/api/v1/agent/config")!
+        guard let url = URL(string: "\(serverURL)/api/v1/agent/config") else {
+            throw APIError.invalidURL
+        }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
 
@@ -56,7 +58,9 @@ class APIClient {
     }
 
     func reportUsage(date: String, totalMinutes: Double) async throws {
-        let url = URL(string: "\(serverURL)/api/v1/agent/usage")!
+        guard let url = URL(string: "\(serverURL)/api/v1/agent/usage") else {
+            throw APIError.invalidURL
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
@@ -73,5 +77,6 @@ class APIClient {
 
     enum APIError: Error {
         case badResponse
+        case invalidURL
     }
 }

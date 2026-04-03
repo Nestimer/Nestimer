@@ -37,11 +37,20 @@ enum KeychainHelper {
             kSecAttrAccount as String: key,
         ]
 
-        SecItemDelete(query as CFDictionary)
+        // Try update first, then add if not found
+        let updateAttrs: [String: Any] = [kSecValueData as String: data]
+        let updateStatus = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
 
-        var addQuery = query
-        addQuery[kSecValueData as String] = data
-        SecItemAdd(addQuery as CFDictionary, nil)
+        if updateStatus == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = data
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                NSLog("[UsageTimeControl] Keychain save failed: \(addStatus)")
+            }
+        } else if updateStatus != errSecSuccess {
+            NSLog("[UsageTimeControl] Keychain update failed: \(updateStatus)")
+        }
     }
 
     private static func get(key: String) -> String? {

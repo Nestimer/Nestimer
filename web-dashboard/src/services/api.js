@@ -13,7 +13,10 @@ async function request(path, options = {}) {
 
   if (res.status === 401) {
     localStorage.removeItem('token')
-    window.location.href = '/login'
+    // Redirect without throwing — let the caller handle the redirect
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
     throw new Error('Unauthorized')
   }
 
@@ -22,7 +25,14 @@ async function request(path, options = {}) {
     throw new Error(data.detail || `HTTP ${res.status}`)
   }
 
-  return res.json()
+  // Handle empty responses (204, DELETE)
+  const text = await res.text()
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {}
+  }
 }
 
 export const api = {

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, time
 
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Time, ForeignKey, Float
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Time, ForeignKey, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -75,6 +75,10 @@ class Policy(Base):
 class UsageLog(Base):
     """Daily usage tracking reported by the agent."""
     __tablename__ = "usage_logs"
+    __table_args__ = (
+        UniqueConstraint("device_id", "date", name="uq_usage_device_date"),
+        Index("ix_usage_device_date", "device_id", "date"),
+    )
 
     id = Column(String, primary_key=True, default=gen_uuid)
     device_id = Column(String, ForeignKey("devices.id"), nullable=False)

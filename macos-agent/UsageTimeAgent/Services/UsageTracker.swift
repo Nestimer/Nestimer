@@ -16,11 +16,24 @@ class UsageTracker {
     private let maxIdleSeconds: Double = 300
 
     private let localStoragePath: String = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .localDomainMask).first
-            ?? URL(fileURLWithPath: "/var/lib/usagetime")
-        let dir = appSupport.appendingPathComponent("UsageTimeAgent")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("usage.json").path
+        // Try locations in order: /Library app support (root), user app support, /tmp
+        let candidates: [URL] = [
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .localDomainMask).first,
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+            URL(fileURLWithPath: "/tmp"),
+        ].compactMap { $0 }
+
+        for base in candidates {
+            let dir = base.appendingPathComponent("UsageTimeAgent")
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                return dir.appendingPathComponent("usage.json").path
+            } catch {
+                continue
+            }
+        }
+        // Last resort
+        return "/tmp/UsageTimeAgent-usage.json"
     }()
 
     init() {
@@ -156,17 +169,31 @@ class UsageTracker {
             trackingDate = currentDateString()
             return
         }
-        trackingDate = state.date
-        usedMinutesToday = state.date == currentDateString() ? state.usedMinutes : 0
-        if state.date != currentDateString() {
+        if state.date == currentDateString() {
+            trackingDate = state.date
+            usedMinutesToday = state.usedMinutes
+        } else {
             trackingDate = currentDateString()
+            usedMinutesToday = 0
         }
     }
 
     private func saveLocalState() {
         let state = LocalState(date: trackingDate, usedMinutes: usedMinutesToday)
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        FileManager.default.createFile(atPath: localStoragePath, contents: data)
+        guard let data = try? JSONEncoder().encode(state) else {
+            NSLog("[UsageTimeAgent] Failed to encode usage state")
+            return
+        }
+        // Atomic write: write to temp file, then rename
+        let tempPath = localStoragePath + ".tmp"
+        let url = URL(fileURLWithPath: tempPath)
+        do {
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.moveItem(atPath: tempPath, toPath: localStoragePath)
+        } catch {
+            // Fallback: direct write
+            FileManager.default.createFile(atPath: localStoragePath, contents: data)
+        }
     }
 
     struct LocalState: Codable {

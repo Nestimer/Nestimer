@@ -5,8 +5,10 @@ import AppKit
 class PolicyEnforcer {
     private let lockScreen = LockScreenWindow()
     private let notifications: NotificationManager
-    private var currentPolicy: ServerPolicy?
-    private var warningShownAt: Set<Int> = []  // track which warnings we've shown
+    private var lastPolicyLimitMinutes: Int?
+    /// Tracks which warning thresholds have been crossed (remaining went below this value).
+    private var warningThresholdsCrossed: Set<Int> = []
+    private var previousRemaining: Double?
 
     init(notificationManager: NotificationManager) {
         self.notifications = notificationManager
@@ -14,7 +16,12 @@ class PolicyEnforcer {
 
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
     func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
-        currentPolicy = policy
+        // Reset warnings if policy limit changed (parent granted more time)
+        if let lastLimit = lastPolicyLimitMinutes, lastLimit != policy.screenTimeLimitMinutes {
+            warningThresholdsCrossed.removeAll()
+            previousRemaining = nil
+        }
+        lastPolicyLimitMinutes = policy.screenTimeLimitMinutes
 
         // 1. Check downtime
         if policy.downtimeEnabled && isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd) {
@@ -30,23 +37,25 @@ class PolicyEnforcer {
             if remaining <= 0 {
                 notifications.showTimeExpired()
                 lockScreen.show(reason: .timeExpired)
+                previousRemaining = remaining
                 return
             }
 
-            // Warnings at 15, 10, 5, 1 minute marks
+            // Warnings when remaining crosses below a threshold
             for threshold in [15, 10, 5, 1] {
-                if remaining <= Double(threshold) && remaining > Double(threshold - 1) {
-                    if !warningShownAt.contains(threshold) {
-                        warningShownAt.insert(threshold)
-                        notifications.showTimeWarning(remainingMinutes: threshold)
-                    }
+                let thresholdDouble = Double(threshold)
+                if remaining <= thresholdDouble && !warningThresholdsCrossed.contains(threshold) {
+                    warningThresholdsCrossed.insert(threshold)
+                    notifications.showTimeWarning(remainingMinutes: threshold)
                 }
             }
 
-            // Reset warnings if time was added
+            // Reset if time was added (remaining went back up past all thresholds)
             if remaining > 15 {
-                warningShownAt.removeAll()
+                warningThresholdsCrossed.removeAll()
             }
+
+            previousRemaining = remaining
         }
 
         // No restrictions active — unlock
@@ -56,16 +65,20 @@ class PolicyEnforcer {
     // MARK: - Downtime check
 
     private func isInDowntime(start: String, end: String) -> Bool {
+        let startTotal = parseTimeToMinutes(start)
+        let endTotal = parseTimeToMinutes(end)
+
+        // start == end means no downtime window (not "24h lock")
+        guard startTotal != endTotal else { return false }
+
         let now = Date()
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: now)
         let currentMinute = calendar.component(.minute, from: now)
         let currentTotal = currentHour * 60 + currentMinute
 
-        let startTotal = parseTimeToMinutes(start)
-        let endTotal = parseTimeToMinutes(end)
-
-        if startTotal <= endTotal {
+        if startTotal < endTotal {
+            // Same day range (e.g., 13:00 - 15:00)
             return currentTotal >= startTotal && currentTotal < endTotal
         } else {
             // Overnight (e.g., 22:00 - 08:00)

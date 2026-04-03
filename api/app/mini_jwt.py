@@ -40,8 +40,10 @@ def decode(token: str, secret: str, algorithms: list[str] | None = None) -> dict
             raise JWTError("Invalid token format")
 
         header = json.loads(_b64url_decode(parts[0]))
-        if header.get("alg") != "HS256":
-            raise JWTError(f"Unsupported algorithm: {header.get('alg')}")
+        alg = header.get("alg")
+        allowed = algorithms or ["HS256"]
+        if alg not in allowed:
+            raise JWTError(f"Unsupported algorithm: {alg}")
 
         # Verify signature
         signing_input = f"{parts[0]}.{parts[1]}"
@@ -55,9 +57,16 @@ def decode(token: str, secret: str, algorithms: list[str] | None = None) -> dict
         # Check expiration
         if "exp" in payload:
             exp = payload["exp"]
-            if isinstance(exp, str):
-                from datetime import datetime
-                exp = datetime.fromisoformat(exp).timestamp()
+            if isinstance(exp, (int, float)):
+                pass  # already a timestamp
+            elif isinstance(exp, str):
+                try:
+                    from datetime import datetime
+                    exp = datetime.fromisoformat(exp).timestamp()
+                except ValueError:
+                    raise JWTError("Invalid exp format")
+            else:
+                raise JWTError("Invalid exp type")
             if time.time() > exp:
                 raise JWTError("Token expired")
 

@@ -20,7 +20,12 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 def parse_time(s: str) -> time:
     parts = s.split(":")
-    return time(int(parts[0]), int(parts[1]))
+    if len(parts) != 2:
+        raise ValueError(f"Invalid time format: {s}")
+    h, m = int(parts[0]), int(parts[1])
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"Time out of range: {s}")
+    return time(h, m)
 
 
 def format_time(t: time | None) -> str | None:
