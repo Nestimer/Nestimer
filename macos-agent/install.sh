@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # UsageTimeAgent installer for macOS
+# Installs the app + watchdog daemon
 # Must be run as root (sudo)
 
 if [ "$EUID" -ne 0 ]; then
@@ -10,31 +11,49 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="UsageTimeAgent"
+APP_SRC="$SCRIPT_DIR/build/${APP_NAME}.app"
+APP_DST="/Applications/${APP_NAME}.app"
 
 echo "=== UsageTimeAgent Installer ==="
 echo ""
 
-# 1. Build the agent
-echo "[1/5] Building UsageTimeAgent..."
-cd "$SCRIPT_DIR/UsageTimeAgent"
-swift build -c release
-BINARY=$(swift build -c release --show-bin-path)/UsageTimeAgent
+# 1. Build the app
+echo "[1/6] Building ${APP_NAME}.app..."
+cd "$SCRIPT_DIR"
+xcodebuild -project "${APP_NAME}.xcodeproj" \
+    -scheme "$APP_NAME" \
+    -configuration Release \
+    -derivedDataPath "$SCRIPT_DIR/build/derived" \
+    -archivePath "$SCRIPT_DIR/build/${APP_NAME}.xcarchive" \
+    archive ONLY_ACTIVE_ARCH=NO 2>&1 | tail -5
 
-# 2. Install binary
-echo "[2/5] Installing binary to /usr/local/bin/..."
-cp "$BINARY" /usr/local/bin/UsageTimeAgent
-chmod 755 /usr/local/bin/UsageTimeAgent
+# Extract the .app from the archive
+APP_SRC="$SCRIPT_DIR/build/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app"
+
+if [ ! -d "$APP_SRC" ]; then
+    echo "ERROR: Build failed. App not found at $APP_SRC"
+    echo "You can also build manually in Xcode and copy to /Applications"
+    exit 1
+fi
+
+# 2. Install the app
+echo "[2/6] Installing app to /Applications..."
+rm -rf "$APP_DST"
+cp -R "$APP_SRC" "$APP_DST"
+chown -R root:wheel "$APP_DST"
+chmod -R 755 "$APP_DST"
 
 # 3. Create directories
-echo "[3/5] Creating directories..."
+echo "[3/6] Creating directories..."
 mkdir -p /etc/usagetime
-mkdir -p /var/lib/usagetime
 mkdir -p /var/log/usagetime
+mkdir -p /usr/local/lib/usagetime
 
-# 4. Config file (if not exists)
+# 4. Config file
 CONFIG_FILE="/etc/usagetime/config.plist"
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "[4/5] Creating config file..."
+    echo "[4/6] Creating config file..."
 
     read -p "Enter server URL (e.g., https://your-server.com): " SERVER_URL
     read -p "Enter device API token (from web dashboard): " API_TOKEN
@@ -56,28 +75,47 @@ EOF
     chmod 600 "$CONFIG_FILE"
     echo "    Config saved to $CONFIG_FILE"
 else
-    echo "[4/5] Config already exists at $CONFIG_FILE, skipping."
+    echo "[4/6] Config already exists at $CONFIG_FILE, skipping."
 fi
 
-# 5. Install and load LaunchDaemon
-echo "[5/5] Installing LaunchDaemon..."
-PLIST_SRC="$SCRIPT_DIR/LaunchDaemon/com.usagetime.agent.plist"
-PLIST_DST="/Library/LaunchDaemons/com.usagetime.agent.plist"
+# 5. Install watchdog
+echo "[5/6] Installing watchdog daemon..."
 
-# Stop if already running
-launchctl unload "$PLIST_DST" 2>/dev/null || true
+# Copy watchdog script
+cp "$SCRIPT_DIR/Watchdog/watchdog.sh" /usr/local/lib/usagetime/watchdog.sh
+chmod 755 /usr/local/lib/usagetime/watchdog.sh
 
-cp "$PLIST_SRC" "$PLIST_DST"
-chown root:wheel "$PLIST_DST"
-chmod 644 "$PLIST_DST"
-launchctl load "$PLIST_DST"
+# Install LaunchDaemon
+WATCHDOG_PLIST_DST="/Library/LaunchDaemons/com.usagetime.watchdog.plist"
+launchctl unload "$WATCHDOG_PLIST_DST" 2>/dev/null || true
+
+cp "$SCRIPT_DIR/Watchdog/com.usagetime.watchdog.plist" "$WATCHDOG_PLIST_DST"
+chown root:wheel "$WATCHDOG_PLIST_DST"
+chmod 644 "$WATCHDOG_PLIST_DST"
+launchctl load "$WATCHDOG_PLIST_DST"
+
+# 6. Start the app
+echo "[6/6] Starting UsageTimeAgent..."
+CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null || echo "")
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+    CONSOLE_UID=$(id -u "$CONSOLE_USER")
+    launchctl asuser "$CONSOLE_UID" open "$APP_DST"
+    echo "    Started as user $CONSOLE_USER"
+else
+    echo "    No console user. App will start on next login."
+fi
 
 echo ""
 echo "=== Installation complete! ==="
-echo "The agent is now running. Check logs at /var/log/usagetime/agent.log"
+echo ""
+echo "The agent is running as a menu bar app (clock icon in menu bar)."
+echo "The watchdog daemon ensures it restarts if killed."
+echo ""
+echo "Logs: /var/log/usagetime/"
+echo "Config: /etc/usagetime/config.plist"
 echo ""
 echo "To uninstall:"
-echo "  sudo launchctl unload /Library/LaunchDaemons/com.usagetime.agent.plist"
-echo "  sudo rm /usr/local/bin/UsageTimeAgent"
-echo "  sudo rm /Library/LaunchDaemons/com.usagetime.agent.plist"
-echo "  sudo rm -rf /etc/usagetime /var/lib/usagetime /var/log/usagetime"
+echo "  sudo launchctl unload /Library/LaunchDaemons/com.usagetime.watchdog.plist"
+echo "  sudo rm -rf /Applications/UsageTimeAgent.app"
+echo "  sudo rm /Library/LaunchDaemons/com.usagetime.watchdog.plist"
+echo "  sudo rm -rf /etc/usagetime /usr/local/lib/usagetime /var/log/usagetime"

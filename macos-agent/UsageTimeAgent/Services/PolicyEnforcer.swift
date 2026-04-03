@@ -1,18 +1,24 @@
 import Foundation
+import AppKit
 
 /// Core logic: decides whether to lock/unlock based on current policy and usage.
 class PolicyEnforcer {
-    private let screenLocker = ScreenLocker()
+    private let lockScreen = LockScreenWindow()
+    private let notifications: NotificationManager
     private var currentPolicy: ServerPolicy?
-    private var warningShown = false
+    private var warningShownAt: Set<Int> = []  // track which warnings we've shown
 
-    /// Evaluate rules and enforce lock/unlock.
+    init(notificationManager: NotificationManager) {
+        self.notifications = notificationManager
+    }
+
+    /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
     func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
         currentPolicy = policy
 
         // 1. Check downtime
         if policy.downtimeEnabled && isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd) {
-            screenLocker.lock(reason: .downtime(until: policy.downtimeEnd))
+            lockScreen.show(reason: .downtime(until: policy.downtimeEnd))
             return
         }
 
@@ -22,27 +28,29 @@ class PolicyEnforcer {
             let remaining = limitMinutes - usedMinutesToday
 
             if remaining <= 0 {
-                screenLocker.lock(reason: .screenTimeExceeded)
+                notifications.showTimeExpired()
+                lockScreen.show(reason: .timeExpired)
                 return
             }
 
-            // Warning at 15 minutes remaining
-            if remaining <= 15 && !warningShown {
-                warningShown = true
-                showNotification(
-                    title: "Экранное время",
-                    body: "Осталось \(Int(remaining)) минут"
-                )
+            // Warnings at 15, 10, 5, 1 minute marks
+            for threshold in [15, 10, 5, 1] {
+                if remaining <= Double(threshold) && remaining > Double(threshold - 1) {
+                    if !warningShownAt.contains(threshold) {
+                        warningShownAt.insert(threshold)
+                        notifications.showTimeWarning(remainingMinutes: threshold)
+                    }
+                }
             }
 
-            // Reset warning flag if more time was added
+            // Reset warnings if time was added
             if remaining > 15 {
-                warningShown = false
+                warningShownAt.removeAll()
             }
         }
 
-        // No restrictions active — unlock if locked
-        screenLocker.unlock()
+        // No restrictions active — unlock
+        lockScreen.hide()
     }
 
     // MARK: - Downtime check
@@ -58,10 +66,9 @@ class PolicyEnforcer {
         let endTotal = parseTimeToMinutes(end)
 
         if startTotal <= endTotal {
-            // Same day range (e.g., 13:00 - 15:00)
             return currentTotal >= startTotal && currentTotal < endTotal
         } else {
-            // Overnight range (e.g., 22:00 - 08:00)
+            // Overnight (e.g., 22:00 - 08:00)
             return currentTotal >= startTotal || currentTotal < endTotal
         }
     }
@@ -70,17 +77,5 @@ class PolicyEnforcer {
         let parts = time.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return 0 }
         return parts[0] * 60 + parts[1]
-    }
-
-    // MARK: - Notifications
-
-    private func showNotification(title: String, body: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = [
-            "-e",
-            "display notification \"\(body)\" with title \"\(title)\""
-        ]
-        try? process.run()
     }
 }

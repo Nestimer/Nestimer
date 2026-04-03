@@ -10,13 +10,18 @@ class UsageTracker {
     private var usedMinutesToday: Double = 0.0
     private var trackingDate: String = ""
     private var lastTickTime: Date?
-    private let tickInterval: TimeInterval = 30  // Check every 30 seconds
+    private let tickInterval: TimeInterval = 30
 
     /// Max idle time before we stop counting (5 minutes).
-    /// If the user hasn't touched keyboard/mouse for this long, we don't count it.
     private let maxIdleSeconds: Double = 300
 
-    private let localStoragePath = "/var/lib/usagetime/usage.json"
+    private let localStoragePath: String = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .localDomainMask).first
+            ?? URL(fileURLWithPath: "/var/lib/usagetime")
+        let dir = appSupport.appendingPathComponent("UsageTimeAgent")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("usage.json").path
+    }()
 
     init() {
         loadLocalState()
@@ -26,7 +31,6 @@ class UsageTracker {
     func tick() -> Double {
         let today = currentDateString()
 
-        // Reset if new day
         if today != trackingDate {
             usedMinutesToday = 0
             trackingDate = today
@@ -37,7 +41,6 @@ class UsageTracker {
 
         if let lastTick = lastTickTime, isUserActive() {
             let elapsed = now.timeIntervalSince(lastTick)
-            // Only count if elapsed is reasonable (not after sleep/suspend)
             if elapsed < tickInterval * 3 {
                 usedMinutesToday += elapsed / 60.0
             }
@@ -48,7 +51,6 @@ class UsageTracker {
         return usedMinutesToday
     }
 
-    /// Set usage from server (e.g., on startup sync).
     func setUsedMinutes(_ minutes: Double, forDate date: String) {
         if date == currentDateString() {
             usedMinutesToday = max(usedMinutesToday, minutes)
@@ -56,7 +58,7 @@ class UsageTracker {
     }
 
     func getUsedMinutesToday() -> Double {
-        return usedMinutesToday
+        usedMinutesToday
     }
 
     func currentDateString() -> String {
@@ -65,10 +67,8 @@ class UsageTracker {
         return formatter.string(from: Date())
     }
 
-    // MARK: - Activity detection (combines all checks)
+    // MARK: - Activity detection
 
-    /// Returns true only if the user is actively using the computer:
-    /// screen on + not locked + not idle.
     private func isUserActive() -> Bool {
         guard isScreenAwake() else { return false }
         guard !isScreenLocked() else { return false }
@@ -76,7 +76,7 @@ class UsageTracker {
         return true
     }
 
-    // MARK: - Screen power state (IOKit)
+    // MARK: - Screen power (IOKit)
 
     private func isScreenAwake() -> Bool {
         var iterator: io_iterator_t = 0
@@ -104,55 +104,20 @@ class UsageTracker {
         return true
     }
 
-    // MARK: - Screen lock detection
+    // MARK: - Lock screen detection
 
-    /// Checks if the screen is locked by querying the loginwindow session.
-    /// Uses CGSessionCopyCurrentDictionary() which returns session info
-    /// including "CGSSessionScreenIsLocked" key.
     private func isScreenLocked() -> Bool {
-        // Method 1: CGSessionCopyCurrentDictionary (most reliable)
-        // This is a CoreGraphics function available when running as a daemon
+        // CGSessionCopyCurrentDictionary returns session info including lock state
         if let sessionDict = CGSessionCopyCurrentDictionary() as? [String: Any] {
             if let isLocked = sessionDict["CGSSessionScreenIsLocked"] as? Bool {
                 return isLocked
             }
         }
-
-        // Method 2: Check via ioreg for screen saver / lock state
-        // The screenIsLocked property in loginwindow
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [
-            "-c",
-            """
-            import subprocess, sys
-            result = subprocess.run(
-                ['/usr/bin/ioreg', '-n', 'Root', '-d1', '-a'],
-                capture_output=True, text=True
-            )
-            sys.exit(0 if 'IOConsoleLocked' not in result.stdout else 1)
-            """
-        ]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            // Exit code 1 = locked, 0 = not locked
-            return process.terminationStatus != 0
-        } catch {
-            return false // Assume not locked on error
-        }
+        return false
     }
 
-    // MARK: - User idle detection (HID idle time)
+    // MARK: - Idle detection (HIDSystem)
 
-    /// Returns true if the user has been idle (no keyboard/mouse input)
-    /// for longer than maxIdleSeconds.
-    /// Uses IOKit HIDSystem to get idle time.
     private func isUserIdle() -> Bool {
         var iterator: io_iterator_t = 0
         let result = IOServiceGetMatchingServices(
@@ -174,22 +139,16 @@ class UsageTracker {
             return false
         }
 
-        // HIDIdleTime is in nanoseconds
-        if let idleTimeNano = dict["HIDIdleTime"] as? UInt64 {
-            let idleSeconds = Double(idleTimeNano) / 1_000_000_000.0
-            return idleSeconds > maxIdleSeconds
+        if let idleNano = dict["HIDIdleTime"] as? UInt64 {
+            return Double(idleNano) / 1_000_000_000.0 > maxIdleSeconds
         }
-
-        // Try as NSNumber (sometimes it comes as this type)
-        if let idleTimeNumber = dict["HIDIdleTime"] as? NSNumber {
-            let idleSeconds = idleTimeNumber.doubleValue / 1_000_000_000.0
-            return idleSeconds > maxIdleSeconds
+        if let idleNumber = dict["HIDIdleTime"] as? NSNumber {
+            return idleNumber.doubleValue / 1_000_000_000.0 > maxIdleSeconds
         }
-
         return false
     }
 
-    // MARK: - Local persistence
+    // MARK: - Persistence
 
     private func loadLocalState() {
         guard let data = FileManager.default.contents(atPath: localStoragePath),
@@ -198,9 +157,8 @@ class UsageTracker {
             return
         }
         trackingDate = state.date
-        if state.date == currentDateString() {
-            usedMinutesToday = state.usedMinutes
-        } else {
+        usedMinutesToday = state.date == currentDateString() ? state.usedMinutes : 0
+        if state.date != currentDateString() {
             trackingDate = currentDateString()
         }
     }
@@ -208,9 +166,6 @@ class UsageTracker {
     private func saveLocalState() {
         let state = LocalState(date: trackingDate, usedMinutes: usedMinutesToday)
         guard let data = try? JSONEncoder().encode(state) else { return }
-
-        let dir = (localStoragePath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: localStoragePath, contents: data)
     }
 

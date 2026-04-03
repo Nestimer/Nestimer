@@ -1,0 +1,126 @@
+import AppKit
+import UserNotifications
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    private var statusBar: StatusBarController!
+    private var agentConfig: AgentConfig!
+    private var apiClient: APIClient!
+    private var usageTracker: UsageTracker!
+    private var policyEnforcer: PolicyEnforcer!
+    private var notificationManager: NotificationManager!
+    private var selfProtection: SelfProtection!
+
+    private var syncTimer: Timer?
+    private var tickTimer: Timer?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("[UsageTimeAgent] Application starting...")
+
+        // Load config
+        agentConfig = AgentConfig.load()
+
+        guard !agentConfig.apiToken.isEmpty else {
+            NSLog("[UsageTimeAgent] ERROR: No API token configured.")
+            showSetupRequiredAlert()
+            return
+        }
+
+        // Initialize services
+        apiClient = APIClient(serverURL: agentConfig.serverURL, apiToken: agentConfig.apiToken)
+        usageTracker = UsageTracker()
+        notificationManager = NotificationManager()
+        policyEnforcer = PolicyEnforcer(notificationManager: notificationManager)
+        selfProtection = SelfProtection()
+
+        // Initialize menu bar
+        statusBar = StatusBarController(usageTracker: usageTracker)
+
+        // Request notification permissions
+        notificationManager.requestPermission()
+
+        // Start self-protection
+        selfProtection.start()
+
+        // Start tracking timer (every 30 seconds)
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.performTick()
+        }
+        // Fire immediately
+        performTick()
+
+        // Start server sync timer
+        let syncInterval = agentConfig.pollInterval
+        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
+            Task { await self?.performSync() }
+        }
+        // Initial sync
+        Task { await performSync() }
+
+        // Keep timers alive when menu is open
+        RunLoop.current.add(tickTimer!, forMode: .common)
+        RunLoop.current.add(syncTimer!, forMode: .common)
+
+        NSLog("[UsageTimeAgent] Started. Server: \(agentConfig.serverURL), poll: \(Int(syncInterval))s")
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        tickTimer?.invalidate()
+        syncTimer?.invalidate()
+    }
+
+    // MARK: - Core loop
+
+    private func performTick() {
+        let usedMinutes = usageTracker.tick()
+        statusBar?.updateDisplay(usedMinutes: usedMinutes)
+    }
+
+    private func performSync() async {
+        let usedMinutes = usageTracker.getUsedMinutesToday()
+
+        do {
+            // Fetch policy from server
+            let policy = try await apiClient.fetchConfig()
+
+            // Sync usage with server state
+            usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+
+            // Report our usage back
+            try await apiClient.reportUsage(
+                date: usageTracker.currentDateString(),
+                totalMinutes: usedMinutes
+            )
+
+            // Enforce policy (lock/unlock, warnings)
+            await MainActor.run {
+                policyEnforcer.evaluate(policy: policy, usedMinutesToday: usedMinutes)
+                statusBar?.updatePolicy(policy: policy)
+            }
+
+            NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", usedMinutes))m, limit: \(policy.screenTimeLimitMinutes)m")
+        } catch {
+            NSLog("[UsageTimeAgent] Sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Setup alert
+
+    private func showSetupRequiredAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Настройка UsageTime"
+        alert.informativeText = """
+        Для работы агента нужен API-токен.
+
+        1. Создайте конфиг: /etc/usagetime/config.plist
+        2. Укажите ServerURL и APIToken
+
+        Или установите через: sudo ./install.sh
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+
+        // Still show status bar so the app is visible
+        statusBar = StatusBarController(usageTracker: nil)
+    }
+}

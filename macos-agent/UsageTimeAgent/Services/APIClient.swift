@@ -3,7 +3,7 @@ import Foundation
 /// Response from GET /api/v1/agent/config
 struct ServerPolicy: Codable {
     let downtimeEnabled: Bool
-    let downtimeStart: String  // "HH:MM"
+    let downtimeStart: String
     let downtimeEnd: String
     let screenTimeEnabled: Bool
     let screenTimeLimitMinutes: Int
@@ -43,7 +43,6 @@ class APIClient {
         self.session = URLSession(configuration: config)
     }
 
-    /// Fetch current policy and today's usage from the server.
     func fetchConfig() async throws -> ServerPolicy {
         let url = URL(string: "\(serverURL)/api/v1/agent/config")!
         var request = URLRequest(url: url)
@@ -56,7 +55,6 @@ class APIClient {
         return try JSONDecoder().decode(ServerPolicy.self, from: data)
     }
 
-    /// Report usage to the server.
     func reportUsage(date: String, totalMinutes: Double) async throws {
         let url = URL(string: "\(serverURL)/api/v1/agent/usage")!
         var request = URLRequest(url: url)
