@@ -36,7 +36,7 @@ class StatusBarController {
                     button.title = " \(m)m"
                 }
             } else {
-                button.title = " 0м"
+                button.title = " 0m"
             }
         } else {
             button.title = ""
