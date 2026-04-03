@@ -8,6 +8,8 @@ class StatusBarController {
     private weak var usageTracker: UsageTracker?
     private var currentPolicy: ServerPolicy?
     private var menu: NSMenu
+    /// When true, shows DEV badge and Quit menu item.
+    var devMode = false
 
     init(usageTracker: UsageTracker?) {
         self.usageTracker = usageTracker
@@ -141,13 +143,28 @@ class StatusBarController {
         menu.addItem(NSMenuItem.separator())
 
         // Version
-        let versionItem = NSMenuItem(
-            title: "v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")",
-            action: nil,
-            keyEquivalent: ""
-        )
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let versionText = devMode ? "v\(version) — DEV MODE" : "v\(version)"
+        let versionItem = NSMenuItem(title: versionText, action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
         menu.addItem(versionItem)
+
+        // Dev mode: add Quit option
+        if devMode {
+            menu.addItem(NSMenuItem.separator())
+            let quitItem = NSMenuItem(
+                title: "Quit (Dev Mode)",
+                action: #selector(quitApp),
+                keyEquivalent: "q"
+            )
+            quitItem.target = self
+            menu.addItem(quitItem)
+        }
+    }
+
+    @objc private func quitApp() {
+        NSLog("[UsageTimeAgent] DEV: Quit via menu")
+        NSApp.terminate(nil)
     }
 
     private func formatMinutes(_ m: Int) -> String {

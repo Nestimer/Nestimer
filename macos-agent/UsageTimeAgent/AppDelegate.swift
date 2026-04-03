@@ -25,6 +25,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if agentConfig.devMode {
+            NSLog("[UsageTimeAgent] ⚠️ DEV MODE ENABLED — lock screen will auto-dismiss, quit allowed")
+        }
+
         // Initialize services
         apiClient = APIClient(serverURL: agentConfig.serverURL, apiToken: agentConfig.apiToken)
         usageTracker = UsageTracker()
@@ -32,24 +36,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         policyEnforcer = PolicyEnforcer(notificationManager: notificationManager)
         selfProtection = SelfProtection()
 
+        // Configure dev mode on enforcer (auto-unlock, emergency hotkey, floating window)
+        policyEnforcer.configureDevMode(
+            enabled: agentConfig.devMode,
+            autoUnlockSeconds: agentConfig.devAutoUnlockSeconds
+        )
+
         // Initialize menu bar
         statusBar = StatusBarController(usageTracker: usageTracker)
+        statusBar.devMode = agentConfig.devMode
 
         // Request notification permissions
         notificationManager.requestPermission()
 
-        // Start self-protection
-        selfProtection.start()
+        // Start self-protection (skip in dev mode — allows normal quit)
+        if !agentConfig.devMode {
+            selfProtection.start()
+        } else {
+            NSLog("[UsageTimeAgent] DEV: Self-protection DISABLED")
+        }
 
-        // Start tracking timer (every 30 seconds)
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // Timer intervals: faster in dev mode for quick testing
+        let tickInterval: TimeInterval = agentConfig.devMode ? 5 : 30
+        let syncInterval: TimeInterval = agentConfig.devMode ? 10 : agentConfig.pollInterval
+
+        // Start tracking timer
+        tickTimer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { [weak self] _ in
             self?.performTick()
         }
         // Fire immediately
         performTick()
 
         // Start server sync timer
-        let syncInterval = agentConfig.pollInterval
         syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
             Task { await self?.performSync() }
         }
@@ -60,7 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         RunLoop.current.add(tickTimer!, forMode: .common)
         RunLoop.current.add(syncTimer!, forMode: .common)
 
-        NSLog("[UsageTimeAgent] Started. Server: \(agentConfig.serverURL), poll: \(Int(syncInterval))s")
+        NSLog("[UsageTimeAgent] Started. Server: \(agentConfig.serverURL), poll: \(Int(syncInterval))s, devMode: \(agentConfig.devMode)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {

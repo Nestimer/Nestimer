@@ -7,15 +7,23 @@ class LockScreenWindow {
     private var windows: [NSWindow] = []
     private var isShowing = false
     private var currentReason: LockReason?
+    /// Dev mode: enables emergency unlock hotkey and auto-dismiss.
+    var devMode = false
+    var devAutoUnlockSeconds: TimeInterval = 10
+    private var devAutoUnlockTimer: Timer?
+    private var globalHotkeyMonitor: Any?
 
     enum LockReason: Equatable {
         case downtime(until: String)
         case timeExpired
+        /// Dev mode wrapper: shows the real reason + dev mode badge with auto-unlock countdown
+        case devOverlay(wrapped: LockReason, autoUnlock: Int)
 
         var title: String {
             switch self {
             case .downtime: return "Время отдыха"
             case .timeExpired: return "Время вышло"
+            case .devOverlay(let wrapped, _): return "⚠️ DEV: \(wrapped.title)"
             }
         }
 
@@ -23,6 +31,8 @@ class LockScreenWindow {
             switch self {
             case .downtime(let until): return "Компьютер доступен с \(until)"
             case .timeExpired: return "Экранное время на сегодня закончилось"
+            case .devOverlay(let wrapped, let seconds):
+                return "\(wrapped.message)\n\nDEV MODE: Авто-разблокировка через \(seconds)с\nCtrl+Opt+Cmd+U — разблокировать сейчас"
             }
         }
 
@@ -30,6 +40,7 @@ class LockScreenWindow {
             switch self {
             case .downtime: return "moon.zzz.fill"
             case .timeExpired: return "hourglass.bottomhalf.filled"
+            case .devOverlay(let wrapped, _): return wrapped.icon
             }
         }
     }
@@ -42,9 +53,18 @@ class LockScreenWindow {
         currentReason = reason
         isShowing = true
 
+        // In dev mode, show at a lower window level so you can still switch apps
+        let windowLevel: NSWindow.Level = devMode
+            ? .floating  // above normal windows but still switchable
+            : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+
         // Create a blocking window on every screen
         for screen in NSScreen.screens {
-            let window = createBlockingWindow(for: screen, reason: reason)
+            let displayReason = devMode
+                ? LockReason.devOverlay(wrapped: reason, autoUnlock: Int(devAutoUnlockSeconds))
+                : reason
+            let window = createBlockingWindow(for: screen, reason: displayReason)
+            window.level = windowLevel
             windows.append(window)
             window.makeKeyAndOrderFront(nil)
         }
@@ -52,8 +72,28 @@ class LockScreenWindow {
         // Also hide the Dock and steal focus
         NSApp.activate(ignoringOtherApps: true)
 
-        // Disable Force Quit (Cmd+Opt+Esc) by setting window level extremely high
-        // and preventing app switching
+        // Dev mode: auto-unlock after N seconds
+        if devMode {
+            devAutoUnlockTimer?.invalidate()
+            devAutoUnlockTimer = Timer.scheduledTimer(withTimeInterval: devAutoUnlockSeconds, repeats: false) { [weak self] _ in
+                NSLog("[UsageTimeAgent] DEV: Auto-unlock after \(self?.devAutoUnlockSeconds ?? 0)s")
+                self?.hide()
+            }
+            NSLog("[UsageTimeAgent] DEV: Lock shown (auto-unlock in \(Int(devAutoUnlockSeconds))s, Ctrl+Opt+Cmd+U to unlock now)")
+        }
+
+        // Dev mode: register global hotkey Ctrl+Opt+Cmd+U to unlock
+        if devMode && globalHotkeyMonitor == nil {
+            globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                let requiredFlags: NSEvent.ModifierFlags = [.control, .option, .command]
+                if event.modifierFlags.contains(requiredFlags),
+                   event.charactersIgnoringModifiers?.lowercased() == "u" {
+                    NSLog("[UsageTimeAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U")
+                    DispatchQueue.main.async { self?.hide() }
+                }
+            }
+        }
+
         NSLog("[UsageTimeAgent] Lock screen shown: \(reason.title)")
     }
 
@@ -61,6 +101,14 @@ class LockScreenWindow {
         guard isShowing else { return }
         isShowing = false
         currentReason = nil
+
+        devAutoUnlockTimer?.invalidate()
+        devAutoUnlockTimer = nil
+
+        if let monitor = globalHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalHotkeyMonitor = nil
+        }
 
         for window in windows {
             window.orderOut(nil)
@@ -82,10 +130,7 @@ class LockScreenWindow {
             screen: screen
         )
 
-        // Critical window level settings:
-        // .screenSaver level is above everything except the actual screen saver
-        // Adding +1 puts us above even that
-        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+        // Window level is set by show() — devMode uses .floating, production uses .maximumWindow
         window.isOpaque = true
         window.backgroundColor = .black
         window.ignoresMouseEvents = false

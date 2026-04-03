@@ -5,6 +5,11 @@ struct AgentConfig {
     let serverURL: String
     let apiToken: String
     let pollInterval: TimeInterval
+    /// Dev mode: emergency unlock hotkey, auto-unlock after timeout, quit allowed, no self-protection.
+    /// Activate via config plist key "DevMode", UserDefaults, or env var UTC_DEV_MODE=1.
+    let devMode: Bool
+    /// In dev mode, lock screen auto-dismisses after this many seconds (default 10).
+    let devAutoUnlockSeconds: TimeInterval
 
     static let configPath = "/etc/usagetime/config.plist"
 
@@ -15,7 +20,9 @@ struct AgentConfig {
             return AgentConfig(
                 serverURL: plist["ServerURL"] as? String ?? "http://localhost:8000",
                 apiToken: plist["APIToken"] as? String ?? "",
-                pollInterval: plist["PollInterval"] as? TimeInterval ?? 60
+                pollInterval: plist["PollInterval"] as? TimeInterval ?? 60,
+                devMode: plist["DevMode"] as? Bool ?? false,
+                devAutoUnlockSeconds: plist["DevAutoUnlockSeconds"] as? TimeInterval ?? 10
             )
         }
 
@@ -25,15 +32,20 @@ struct AgentConfig {
             return AgentConfig(
                 serverURL: defaults.string(forKey: "ServerURL") ?? "http://localhost:8000",
                 apiToken: token,
-                pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 60
+                pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 60,
+                devMode: defaults.bool(forKey: "DevMode"),
+                devAutoUnlockSeconds: defaults.double(forKey: "DevAutoUnlockSeconds").nonZero ?? 10
             )
         }
 
         // Fallback: environment
+        let env = ProcessInfo.processInfo.environment
         return AgentConfig(
-            serverURL: ProcessInfo.processInfo.environment["UTC_SERVER_URL"] ?? "http://localhost:8000",
-            apiToken: ProcessInfo.processInfo.environment["UTC_API_TOKEN"] ?? "",
-            pollInterval: TimeInterval(ProcessInfo.processInfo.environment["UTC_POLL_INTERVAL"] ?? "60") ?? 60
+            serverURL: env["UTC_SERVER_URL"] ?? "http://localhost:8000",
+            apiToken: env["UTC_API_TOKEN"] ?? "",
+            pollInterval: TimeInterval(env["UTC_POLL_INTERVAL"] ?? "60") ?? 60,
+            devMode: env["UTC_DEV_MODE"] == "1",
+            devAutoUnlockSeconds: TimeInterval(env["UTC_DEV_AUTO_UNLOCK"] ?? "10") ?? 10
         )
     }
 }

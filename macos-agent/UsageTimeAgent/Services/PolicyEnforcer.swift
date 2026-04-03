@@ -14,6 +14,15 @@ class PolicyEnforcer {
         self.notifications = notificationManager
     }
 
+    /// Enable dev mode on the lock screen (auto-unlock, emergency hotkey, lower window level).
+    func configureDevMode(enabled: Bool, autoUnlockSeconds: TimeInterval = 10) {
+        lockScreen.devMode = enabled
+        lockScreen.devAutoUnlockSeconds = autoUnlockSeconds
+        if enabled {
+            NSLog("[UsageTimeAgent] PolicyEnforcer: dev mode enabled (auto-unlock: \(Int(autoUnlockSeconds))s)")
+        }
+    }
+
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
     func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
         // Reset warnings if policy limit changed (parent granted more time)
