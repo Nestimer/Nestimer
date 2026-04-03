@@ -75,11 +75,13 @@ export default function DevicesPage() {
             </form>
           ) : (
             <div>
-              <p style={{ marginBottom: 8 }}>Device created! Use this token when installing the agent on the child's Mac:</p>
-              <div className="token-display">{newToken}</div>
-              <p style={{ marginTop: 12, fontSize: 13, color: '#86868b' }}>
-                Copy this token — you'll need it when running install.sh on the child's Mac.
-                The token is also available on the device page.
+              <p style={{ marginBottom: 8, fontWeight: 500 }}>Device created! Paste this into the agent app on the child's Mac:</p>
+              <div className="token-display" style={{ fontSize: 13, userSelect: 'all', cursor: 'pointer' }}
+                onClick={(e) => { navigator.clipboard.writeText(e.target.textContent) }}>
+                {`http://${window.location.hostname}:8000|${newToken}`}
+              </div>
+              <p style={{ marginTop: 8, fontSize: 12, color: '#86868b' }}>
+                Click to copy. Paste this single line when the agent asks for setup string.
               </p>
               <button className="btn btn-secondary btn-small" style={{ marginTop: 12 }} onClick={() => { setShowAdd(false); setNewToken('') }}>
                 Done

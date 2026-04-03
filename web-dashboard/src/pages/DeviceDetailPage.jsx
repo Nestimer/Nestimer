@@ -270,16 +270,22 @@ export default function DeviceDetailPage() {
         )}
       </div>
 
-      {/* Device token (hidden by default) */}
+      {/* Setup string for agent */}
       <h2 className="section-title">Device Settings</h2>
       <div className="card">
         <div className="toggle-row">
-          <div className="toggle-label">Agent API Token</div>
+          <div className="toggle-label">Agent Setup String</div>
           <button className="btn btn-secondary btn-small" onClick={() => setShowToken(!showToken)}>
             {showToken ? 'Hide' : 'Show'}
           </button>
         </div>
-        {showToken && <div className="token-display">{device.api_token}</div>}
+        {showToken && (
+          <div className="token-display" style={{ cursor: 'pointer', userSelect: 'all' }}
+            onClick={(e) => { navigator.clipboard.writeText(e.target.textContent) }}>
+            {`http://${window.location.hostname}:8000|${device.api_token}`}
+          </div>
+        )}
+        {showToken && <p style={{ fontSize: 12, color: '#86868b', marginTop: 6 }}>Click to copy</p>}
       </div>
 
       {saving && <p style={{ textAlign: 'center', color: '#86868b', marginTop: 16 }}>Saving...</p>}

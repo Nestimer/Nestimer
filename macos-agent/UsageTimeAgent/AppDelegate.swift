@@ -156,19 +156,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showSetupRequiredAlert() {
         let alert = NSAlert()
         alert.messageText = "UsageTime Setup"
-        alert.informativeText = """
-        The agent requires an API token to work.
+        alert.informativeText = "Paste the setup string from the parent dashboard.\nFormat: http://server:8000|token"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Connect")
+        alert.addButton(withTitle: "Quit")
 
-        1. Create config: /etc/usagetime/config.plist
-        2. Set ServerURL and APIToken
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 400, height: 24))
+        input.placeholderString = "http://server:8000|your-agent-token"
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
 
-        Or install via: sudo ./install.sh
-        """
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else {
+            NSApp.terminate(nil)
+            return
+        }
 
-        // Still show status bar so the app is visible
-        statusBar = StatusBarController(usageTracker: nil)
+        let setupString = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = setupString.components(separatedBy: "|")
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            let err = NSAlert()
+            err.messageText = "Invalid setup string"
+            err.informativeText = "Expected format: http://server:8000|token\nGot: \(setupString)"
+            err.alertStyle = .critical
+            err.runModal()
+            NSApp.terminate(nil)
+            return
+        }
+
+        let serverURL = parts[0]
+        let apiToken = parts[1]
+
+        // Save to UserDefaults so it persists across restarts
+        let defaults = UserDefaults.standard
+        defaults.set(serverURL, forKey: "ServerURL")
+        defaults.set(apiToken, forKey: "APIToken")
+        NSLog("[UsageTimeAgent] Setup saved: server=\(serverURL)")
+
+        // Restart app to pick up new config
+        let url = URL(fileURLWithPath: Bundle.main.bundlePath)
+        NSWorkspace.shared.openApplication(at: url, configuration: .init())
+        NSApp.terminate(nil)
     }
 }

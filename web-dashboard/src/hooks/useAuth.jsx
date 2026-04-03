@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Token is valid (login succeeded) but me() failed — clean up
       localStorage.removeItem('token')
-      throw new Error('Не удалось загрузить профиль')
+      throw new Error('Failed to load profile')
     }
   }
 
@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
       setUser(u)
     } catch {
       localStorage.removeItem('token')
-      throw new Error('Не удалось загрузить профиль')
+      throw new Error('Failed to load profile')
     }
   }
 
