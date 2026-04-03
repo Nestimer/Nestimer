@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.usagetime.agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/UsageTimeAgent</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/usagetime/agent.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/usagetime/agent-error.log</string>
+
+    <!-- Restart if crashes, with 10 second delay -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>
