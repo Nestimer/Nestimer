@@ -1,14 +1,15 @@
 """Endpoints called by the macOS agent on the child's computer."""
 from datetime import datetime, time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
 from ..models.models import Device, Policy, UsageLog
-from ..schemas import AgentConfig, UsageReport
+from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse
+from ..totp import verify_totp
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -64,6 +65,7 @@ async def get_config(
             screen_time_enabled=False,
             screen_time_limit_minutes=999,
             used_minutes_today=0,
+            shared_secret=device.shared_secret,
         )
 
     # Get today's usage
@@ -83,6 +85,7 @@ async def get_config(
         screen_time_enabled=policy.screen_time_enabled,
         screen_time_limit_minutes=limit,
         used_minutes_today=used_today,
+        shared_secret=device.shared_secret,
     )
 
 
@@ -114,3 +117,16 @@ async def report_usage(
     device.last_seen = datetime.utcnow()
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/verify-totp", response_model=TOTPVerifyResponse)
+async def verify_totp_endpoint(
+    body: TOTPVerifyRequest,
+    device: Device = Depends(get_device_by_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify a TOTP code (optional online verification by the agent)."""
+    if not device.shared_secret:
+        raise HTTPException(status_code=400, detail="No shared secret configured")
+    valid = verify_totp(device.shared_secret, body.code)
+    return TOTPVerifyResponse(valid=valid, granted_minutes=30 if valid else 0)

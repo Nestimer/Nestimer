@@ -8,7 +8,7 @@ import './App.css'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
-  if (loading) return <div className="loading">Загрузка...</div>
+  if (loading) return <div className="loading">Loading...</div>
   if (!user) return <Navigate to="/login" />
   return children
 }

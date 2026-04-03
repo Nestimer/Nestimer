@@ -12,6 +12,8 @@ class LockScreenWindow {
     var devAutoUnlockSeconds: TimeInterval = 10
     private var devAutoUnlockTimer: Timer?
     private var globalHotkeyMonitor: Any?
+    /// Callback when a TOTP code is submitted on the lock screen.
+    var onCodeSubmitted: ((String) -> Void)?
 
     enum LockReason: Equatable {
         case downtime(until: String)
@@ -21,18 +23,18 @@ class LockScreenWindow {
 
         var title: String {
             switch self {
-            case .downtime: return "Время отдыха"
-            case .timeExpired: return "Время вышло"
+            case .downtime: return "Downtime"
+            case .timeExpired: return "Time's Up"
             case .devOverlay(let wrapped, _): return "⚠️ DEV: \(wrapped.title)"
             }
         }
 
         var message: String {
             switch self {
-            case .downtime(let until): return "Компьютер доступен с \(until)"
-            case .timeExpired: return "Экранное время на сегодня закончилось"
+            case .downtime(let until): return "Computer available at \(until)"
+            case .timeExpired: return "Screen time for today has ended"
             case .devOverlay(let wrapped, let seconds):
-                return "\(wrapped.message)\n\nDEV MODE: Авто-разблокировка через \(seconds)с\nCtrl+Opt+Cmd+U — разблокировать сейчас"
+                return "\(wrapped.message)\n\nDEV MODE: Auto-unlock in \(seconds)s\nCtrl+Opt+Cmd+U — unlock now"
             }
         }
 
@@ -145,8 +147,12 @@ class LockScreenWindow {
         ]
 
         // SwiftUI content
-        let lockView = LockScreenView(reason: reason)
-        window.contentView = NSHostingView(rootView: lockView)
+        let lockView = LockScreenView(reason: reason, onCodeSubmitted: onCodeSubmitted)
+        let hostingView = NSHostingView(rootView: lockView)
+        window.contentView = hostingView
+
+        // Ensure the window can accept keyboard input for the code field
+        window.makeFirstResponder(hostingView)
 
         return window
     }
@@ -156,8 +162,12 @@ class LockScreenWindow {
 
 struct LockScreenView: View {
     let reason: LockScreenWindow.LockReason
+    var onCodeSubmitted: ((String) -> Void)?
 
     @State private var opacity: Double = 0
+    @State private var codeInput: String = ""
+    @State private var codeError: Bool = false
+    @State private var showCodeField: Bool = false
 
     var body: some View {
         ZStack {
@@ -195,6 +205,75 @@ struct LockScreenView: View {
                 TimeDisplayView()
                     .padding(.top, 20)
 
+                // TOTP code entry
+                if showCodeField {
+                    VStack(spacing: 12) {
+                        Text("Enter unlock code from parent")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+
+                        HStack(spacing: 12) {
+                            TextField("000000", text: $codeInput)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 220)
+                                .padding(12)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(12)
+                                .onChange(of: codeInput) { _, newValue in
+                                    // Only allow digits, max 6
+                                    let filtered = newValue.filter { $0.isNumber }
+                                    if filtered.count <= 6 {
+                                        codeInput = filtered
+                                    } else {
+                                        codeInput = String(filtered.prefix(6))
+                                    }
+                                    codeError = false
+                                }
+                                .onSubmit {
+                                    submitCode()
+                                }
+
+                            Button(action: submitCode) {
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(.system(size: 36))
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(codeInput.count != 6)
+                        }
+
+                        if codeError {
+                            Text("Invalid code")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.red)
+                                .transition(.opacity)
+                        }
+
+                        Text("Code is valid for 5 minutes")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            showCodeField = true
+                        }
+                    } label: {
+                        Label("Enter unlock code", systemImage: "key.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(20)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Spacer()
                 Spacer()
             }
@@ -203,6 +282,19 @@ struct LockScreenView: View {
         .onAppear {
             withAnimation(.easeIn(duration: 0.5)) {
                 opacity = 1
+            }
+        }
+    }
+
+    private func submitCode() {
+        guard codeInput.count == 6 else { return }
+        onCodeSubmitted?(codeInput)
+        // The handler will hide the lock screen if valid;
+        // if we're still showing, the code was wrong
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if self.opacity > 0 {
+                withAnimation { self.codeError = true }
+                self.codeInput = ""
             }
         }
     }

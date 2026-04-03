@@ -4,12 +4,12 @@ import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 
 function timeSince(dateStr) {
-  if (!dateStr) return 'никогда'
+  if (!dateStr) return 'never'
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000
-  if (diff < 120) return 'только что'
-  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`
-  return `${Math.floor(diff / 86400)} дн назад`
+  if (diff < 120) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`
+  return `${Math.floor(diff / 86400)} days ago`
 }
 
 function isOnline(dateStr) {
@@ -49,40 +49,40 @@ export default function DevicesPage() {
   return (
     <div className="page">
       <div className="header">
-        <h1>Устройства</h1>
+        <h1>Devices</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary btn-small" onClick={() => { setShowAdd(!showAdd); setNewToken('') }}>
-            + Добавить
+            + Add Device
           </button>
-          <button className="btn btn-secondary btn-small" onClick={logout}>Выйти</button>
+          <button className="btn btn-secondary btn-small" onClick={logout}>Sign Out</button>
         </div>
       </div>
 
       {showAdd && (
         <div className="card">
-          <h3>Новое устройство</h3>
+          <h3>New Device</h3>
           {!newToken ? (
             <form onSubmit={addDevice}>
               <div className="form-group">
-                <label>Название устройства</label>
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="MacBook Миши" required />
+                <label>Device Name</label>
+                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Misha's MacBook" required />
               </div>
               <div className="form-group">
-                <label>Имя ребёнка</label>
-                <input type="text" value={childName} onChange={(e) => setChildName(e.target.value)} placeholder="Миша" required />
+                <label>Child's Name</label>
+                <input type="text" value={childName} onChange={(e) => setChildName(e.target.value)} placeholder="Misha" required />
               </div>
-              <button className="btn btn-primary" type="submit">Создать</button>
+              <button className="btn btn-primary" type="submit">Create</button>
             </form>
           ) : (
             <div>
-              <p style={{ marginBottom: 8 }}>Устройство создано! Используйте этот токен при установке агента на Mac ребёнка:</p>
+              <p style={{ marginBottom: 8 }}>Device created! Use this token when installing the agent on the child's Mac:</p>
               <div className="token-display">{newToken}</div>
               <p style={{ marginTop: 12, fontSize: 13, color: '#86868b' }}>
-                Скопируйте этот токен — он понадобится при запуске install.sh на Mac ребёнка.
-                Токен также доступен на странице устройства.
+                Copy this token — you'll need it when running install.sh on the child's Mac.
+                The token is also available on the device page.
               </p>
               <button className="btn btn-secondary btn-small" style={{ marginTop: 12 }} onClick={() => { setShowAdd(false); setNewToken('') }}>
-                Готово
+                Done
               </button>
             </div>
           )}
@@ -91,8 +91,8 @@ export default function DevicesPage() {
 
       {devices.length === 0 && !showAdd && (
         <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-          <p style={{ fontSize: 18, marginBottom: 8 }}>Нет устройств</p>
-          <p style={{ color: '#86868b' }}>Добавьте Mac ребёнка, чтобы начать контроль</p>
+          <p style={{ fontSize: 18, marginBottom: 8 }}>No devices</p>
+          <p style={{ color: '#86868b' }}>Add your child's Mac to start monitoring</p>
         </div>
       )}
 
@@ -104,7 +104,7 @@ export default function DevicesPage() {
           </div>
           <div className="device-status">
             <span className={`status-dot ${isOnline(device.last_seen) ? 'status-online' : 'status-offline'}`}></span>
-            {isOnline(device.last_seen) ? 'Онлайн' : timeSince(device.last_seen)}
+            {isOnline(device.last_seen) ? 'Online' : timeSince(device.last_seen)}
           </div>
         </div>
       ))}

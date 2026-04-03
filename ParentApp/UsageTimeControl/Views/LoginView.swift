@@ -24,14 +24,14 @@ struct LoginView: View {
                         .font(.largeTitle)
                         .fontWeight(.bold)
 
-                    Text("Родительский контроль для macOS")
+                    Text("Parental controls for macOS")
                         .foregroundStyle(.secondary)
                 }
 
                 // Tab picker
                 Picker("", selection: $isRegister) {
-                    Text("Вход").tag(false)
-                    Text("Регистрация").tag(true)
+                    Text("Sign In").tag(false)
+                    Text("Sign Up").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -39,7 +39,7 @@ struct LoginView: View {
                 // Form
                 VStack(spacing: 16) {
                     if isRegister {
-                        TextField("Имя", text: $name)
+                        TextField("Name", text: $name)
                             .textFieldStyle(.roundedBorder)
                             #if os(iOS)
                             .textContentType(.name)
@@ -54,7 +54,7 @@ struct LoginView: View {
                         .textInputAutocapitalization(.never)
                         #endif
 
-                    SecureField("Пароль", text: $password)
+                    SecureField("Password", text: $password)
                         .textFieldStyle(.roundedBorder)
                         #if os(iOS)
                         .textContentType(isRegister ? .newPassword : .password)
@@ -82,7 +82,7 @@ struct LoginView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                     } else {
-                        Text(isRegister ? "Создать аккаунт" : "Войти")
+                        Text(isRegister ? "Create Account" : "Sign In")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -95,7 +95,7 @@ struct LoginView: View {
                 Button {
                     showServerSettings.toggle()
                 } label: {
-                    Label("Настройки сервера", systemImage: "server.rack")
+                    Label("Server Settings", systemImage: "server.rack")
                         .font(.callout)
                 }
                 .buttonStyle(.plain)
@@ -103,7 +103,7 @@ struct LoginView: View {
 
                 if showServerSettings {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("URL сервера")
+                        Text("Server URL")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 

@@ -1,3 +1,4 @@
+import secrets
 from datetime import time
 from typing import List
 
@@ -45,6 +46,7 @@ async def create_device(
         name=data.name,
         child_name=data.child_name,
         api_token="placeholder",
+        shared_secret=secrets.token_hex(20),
     )
     db.add(device)
     await db.flush()
@@ -63,6 +65,7 @@ async def create_device(
         name=device.name,
         child_name=device.child_name,
         api_token=device.api_token,
+        shared_secret=device.shared_secret,
         last_seen=device.last_seen,
         created_at=device.created_at,
     )
@@ -102,6 +105,7 @@ async def get_device(
         name=device.name,
         child_name=device.child_name,
         api_token=device.api_token,
+        shared_secret=device.shared_secret,
         last_seen=device.last_seen,
         created_at=device.created_at,
     )
@@ -236,3 +240,32 @@ async def get_usage(
     )
     logs = result.scalars().all()
     return [UsageOut(date=l.date, total_minutes=l.total_minutes) for l in logs]
+
+
+@router.post("/{device_id}/regenerate-secret", response_model=DeviceOut)
+async def regenerate_secret(
+    device_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a new TOTP shared secret for an existing device."""
+    result = await db.execute(
+        select(Device).where(Device.id == device_id, Device.owner_id == user.id)
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    device.shared_secret = secrets.token_hex(20)
+    await db.commit()
+    await db.refresh(device)
+
+    return DeviceOut(
+        id=device.id,
+        name=device.name,
+        child_name=device.child_name,
+        api_token=device.api_token,
+        shared_secret=device.shared_secret,
+        last_seen=device.last_seen,
+        created_at=device.created_at,
+    )

@@ -68,7 +68,7 @@ async def register_user(client: AsyncClient, email="parent@test.com", password="
     return resp.json()["access_token"]
 
 
-async def create_device(client: AsyncClient, token: str, name="MacBook Test", child_name="Миша"):
+async def create_device(client: AsyncClient, token: str, name="MacBook Test", child_name="Misha"):
     resp = await client.post(
         "/api/v1/devices",
         json={"name": name, "child_name": child_name},

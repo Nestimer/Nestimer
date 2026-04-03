@@ -14,7 +14,7 @@ struct UsageChartView: View {
             // Limit line label
             HStack {
                 Spacer()
-                Text("Лимит: \(formatMinutes(limitMinutes))")
+                Text("Limit: \(formatMinutes(limitMinutes))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

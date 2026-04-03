@@ -9,11 +9,11 @@ struct DevicesListView: View {
         List {
             if vm.devices.isEmpty && !vm.isLoading {
                 ContentUnavailableView {
-                    Label("Нет устройств", systemImage: "desktopcomputer")
+                    Label("No Devices", systemImage: "desktopcomputer")
                 } description: {
-                    Text("Добавьте Mac ребёнка, чтобы начать контроль")
+                    Text("Add your child's Mac to start monitoring")
                 } actions: {
-                    Button("Добавить устройство") {
+                    Button("Add Device") {
                         showAddDevice = true
                     }
                     .buttonStyle(.borderedProminent)
@@ -32,7 +32,7 @@ struct DevicesListView: View {
                 }
             }
         }
-        .navigationTitle("Устройства")
+        .navigationTitle("Devices")
         .navigationDestination(for: String.self) { deviceId in
             DeviceDetailView(deviceId: deviceId)
         }
@@ -52,7 +52,7 @@ struct DevicesListView: View {
                         Text(user.email)
                         Divider()
                     }
-                    Button("Выйти", role: .destructive) {
+                    Button("Sign Out", role: .destructive) {
                         authVM.logout()
                     }
                 } label: {
@@ -93,7 +93,7 @@ struct DeviceRow: View {
                     .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
                     .frame(width: 8, height: 8)
 
-                Text(device.isOnline ? "Онлайн" : device.lastSeenText)
+                Text(device.isOnline ? "Online" : device.lastSeenText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

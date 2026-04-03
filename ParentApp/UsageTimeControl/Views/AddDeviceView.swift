@@ -16,11 +16,11 @@ struct AddDeviceView: View {
                     // Success state — show token
                     Section {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label("Устройство создано!", systemImage: "checkmark.circle.fill")
+                            Label("Device created!", systemImage: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                                 .font(.headline)
 
-                            Text("Используйте этот токен при установке агента на Mac ребёнка:")
+                            Text("Use this token when installing the agent on the child's Mac:")
                                 .font(.callout)
 
                             if let token = device.apiToken {
@@ -39,7 +39,7 @@ struct AddDeviceView: View {
                                     NSPasteboard.general.setString(token, forType: .string)
                                     #endif
                                 } label: {
-                                    Label("Скопировать токен", systemImage: "doc.on.doc")
+                                    Label("Copy Token", systemImage: "doc.on.doc")
                                 }
                                 .buttonStyle(.bordered)
                             }
@@ -47,7 +47,7 @@ struct AddDeviceView: View {
                     }
 
                     Section {
-                        Text("Запустите на Mac ребёнка:")
+                        Text("Run on the child's Mac:")
                             .font(.callout)
 
                         Text("sudo ./install.sh")
@@ -57,28 +57,28 @@ struct AddDeviceView: View {
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(8)
                     } header: {
-                        Text("Установка агента")
+                        Text("Agent Installation")
                     }
                 } else {
                     // Creation form
                     Section {
-                        TextField("MacBook Миши", text: $deviceName)
+                        TextField("Misha's MacBook", text: $deviceName)
 
-                        TextField("Миша", text: $childName)
+                        TextField("Misha", text: $childName)
                     } header: {
-                        Text("Новое устройство")
+                        Text("New Device")
                     } footer: {
-                        Text("Введите название Mac и имя ребёнка")
+                        Text("Enter the Mac name and child's name")
                     }
                 }
             }
-            .navigationTitle(createdDevice != nil ? "Готово" : "Новое устройство")
+            .navigationTitle(createdDevice != nil ? "Done" : "New Device")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
 
                 if createdDevice == nil {
@@ -93,7 +93,7 @@ struct AddDeviceView: View {
                             if isCreating {
                                 ProgressView()
                             } else {
-                                Text("Создать")
+                                Text("Create")
                             }
                         }
                         .disabled(deviceName.isEmpty || childName.isEmpty || isCreating)

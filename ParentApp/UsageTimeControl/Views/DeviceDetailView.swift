@@ -12,11 +12,12 @@ struct DeviceDetailView: View {
     var body: some View {
         Group {
             if vm.isLoading && vm.device == nil {
-                ProgressView("Загрузка...")
+                ProgressView("Loading...")
             } else if let policy = vm.policy {
                 ScrollView {
                     VStack(spacing: 20) {
                         todayCard
+                        unlockCodeSection
                         downtimeSection(policy: policy)
                         screenTimeSection(policy: policy)
                         usageHistorySection
@@ -26,13 +27,13 @@ struct DeviceDetailView: View {
                 }
             } else if let error = vm.error {
                 ContentUnavailableView {
-                    Label("Ошибка", systemImage: "exclamationmark.triangle")
+                    Label("Error", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
                 }
             }
         }
-        .navigationTitle(vm.device?.name ?? "Устройство")
+        .navigationTitle(vm.device?.name ?? "Device")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.large)
         #endif
@@ -49,7 +50,7 @@ struct DeviceDetailView: View {
     private var todayCard: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Сегодня")
+                Text("Today")
                     .font(.headline)
                 Spacer()
                 if let device = vm.device {
@@ -57,7 +58,7 @@ struct DeviceDetailView: View {
                         Circle()
                             .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
                             .frame(width: 8, height: 8)
-                        Text(device.isOnline ? "Онлайн" : "Офлайн")
+                        Text(device.isOnline ? "Online" : "Offline")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -68,7 +69,7 @@ struct DeviceDetailView: View {
                 Text(formatMinutes(Int(vm.usedToday)))
                     .font(.system(size: 40, weight: .bold, design: .rounded))
 
-                Text("из \(formatMinutes(vm.limitMinutes))")
+                Text("of \(formatMinutes(vm.limitMinutes))")
                     .foregroundStyle(.secondary)
 
                 Spacer()
@@ -99,18 +100,69 @@ struct DeviceDetailView: View {
         return .green
     }
 
+    // MARK: - Unlock code (TOTP)
+
+    private var unlockCodeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Unlock Code")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 16) {
+                Text("Tell this code to your child — unlocks for 30 minutes")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let code = vm.currentTOTPCode {
+                    Text(code)
+                        .font(.system(size: 48, weight: .bold, design: .monospaced))
+                        .tracking(8)
+                        .frame(maxWidth: .infinity)
+
+                    let remaining = vm.totpSecondsRemaining
+                    let minutes = remaining / 60
+                    let seconds = remaining % 60
+                    Text("Valid for \(minutes):\(String(format: "%02d", seconds))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.blue.opacity(0.15))
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.blue)
+                                .frame(width: geo.size.width * CGFloat(remaining) / 300.0)
+                        }
+                    }
+                    .frame(height: 4)
+                } else {
+                    Text("Secret not configured")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(16)
+        }
+        .onAppear { vm.startTOTPGeneration() }
+        .onDisappear { vm.stopTOTPGeneration() }
+    }
+
     // MARK: - Downtime
 
     private func downtimeSection(policy: Policy) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Время отдыха")
+            Text("Downtime")
                 .font(.title2)
                 .fontWeight(.semibold)
 
             VStack(spacing: 0) {
                 toggleRow(
-                    title: "Даунтайм",
-                    subtitle: "Компьютер заблокирован в это время",
+                    title: "Downtime",
+                    subtitle: "Computer is locked during this time",
                     icon: "moon.fill",
                     iconColor: .indigo,
                     isOn: policy.downtimeEnabled
@@ -122,7 +174,7 @@ struct DeviceDetailView: View {
                     Divider().padding(.leading, 44)
 
                     timePickerRow(
-                        label: "Начало",
+                        label: "Start",
                         time: policy.downtimeStart
                     ) { newTime in
                         Task { await vm.setDowntimeStart(newTime) }
@@ -131,7 +183,7 @@ struct DeviceDetailView: View {
                     Divider().padding(.leading, 44)
 
                     timePickerRow(
-                        label: "Конец",
+                        label: "End",
                         time: policy.downtimeEnd
                     ) { newTime in
                         Task { await vm.setDowntimeEnd(newTime) }
@@ -147,14 +199,14 @@ struct DeviceDetailView: View {
 
     private func screenTimeSection(policy: Policy) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Экранное время")
+            Text("Screen Time")
                 .font(.title2)
                 .fontWeight(.semibold)
 
             VStack(spacing: 0) {
                 toggleRow(
-                    title: "Лимит времени",
-                    subtitle: "Максимум за день вне даунтайма",
+                    title: "Time Limit",
+                    subtitle: "Max per day outside downtime",
                     icon: "hourglass",
                     iconColor: .blue,
                     isOn: policy.screenTimeEnabled
@@ -166,7 +218,7 @@ struct DeviceDetailView: View {
                     Divider().padding(.leading, 44)
 
                     minutesPickerRow(
-                        label: "Будни",
+                        label: "Weekdays",
                         minutes: policy.screenTimeLimitMinutes
                     ) { newMin in
                         Task { await vm.setScreenTimeLimit(newMin) }
@@ -175,9 +227,9 @@ struct DeviceDetailView: View {
                     Divider().padding(.leading, 44)
 
                     minutesPickerRow(
-                        label: "Выходные",
+                        label: "Weekends",
                         minutes: policy.screenTimeWeekendLimitMinutes ?? policy.screenTimeLimitMinutes,
-                        placeholder: "Как в будни"
+                        placeholder: "Same as weekdays"
                     ) { newMin in
                         Task { await vm.setWeekendLimit(newMin) }
                     }
@@ -192,12 +244,12 @@ struct DeviceDetailView: View {
 
     private var usageHistorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("За неделю")
+            Text("This Week")
                 .font(.title2)
                 .fontWeight(.semibold)
 
             if vm.usage.isEmpty {
-                Text("Нет данных")
+                Text("No data")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -216,22 +268,22 @@ struct DeviceDetailView: View {
 
     private var deviceInfoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Устройство")
+            Text("Device")
                 .font(.title2)
                 .fontWeight(.semibold)
 
             VStack(spacing: 0) {
                 if let device = vm.device {
-                    infoRow(label: "Имя", value: device.name)
+                    infoRow(label: "Name", value: device.name)
                     Divider().padding(.leading, 16)
-                    infoRow(label: "Ребёнок", value: device.childName)
+                    infoRow(label: "Child", value: device.childName)
                     Divider().padding(.leading, 16)
-                    infoRow(label: "Последняя связь", value: device.lastSeenText)
+                    infoRow(label: "Last Seen", value: device.lastSeenText)
 
                     if let token = device.apiToken {
                         Divider().padding(.leading, 16)
                         HStack {
-                            Text("API токен")
+                            Text("API Token")
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Button {
@@ -242,7 +294,7 @@ struct DeviceDetailView: View {
                                 NSPasteboard.general.setString(token, forType: .string)
                                 #endif
                             } label: {
-                                Label("Копировать", systemImage: "doc.on.doc")
+                                Label("Copy", systemImage: "doc.on.doc")
                                     .font(.callout)
                             }
                             .buttonStyle(.bordered)

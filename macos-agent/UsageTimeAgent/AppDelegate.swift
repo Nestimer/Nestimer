@@ -12,6 +12,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var syncTimer: Timer?
     private var tickTimer: Timer?
+    /// Cached TOTP shared secret (received from server, persisted in UserDefaults for offline use).
+    private var sharedSecret: String? {
+        get { UserDefaults.standard.string(forKey: "totp_shared_secret") }
+        set { UserDefaults.standard.set(newValue, forKey: "totp_shared_secret") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[UsageTimeAgent] Application starting...")
@@ -41,6 +46,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             enabled: agentConfig.devMode,
             autoUnlockSeconds: agentConfig.devAutoUnlockSeconds
         )
+
+        // Wire up TOTP code handler on lock screen
+        policyEnforcer.setCodeHandler { [weak self] code in
+            self?.handleCodeSubmission(code)
+        }
 
         // Initialize menu bar
         statusBar = StatusBarController(usageTracker: usageTracker)
@@ -109,6 +119,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 totalMinutes: usedMinutes
             )
 
+            // Cache the shared secret for offline TOTP verification
+            if let secret = policy.sharedSecret {
+                self.sharedSecret = secret
+            }
+
             // Enforce policy (lock/unlock, warnings)
             await MainActor.run {
                 policyEnforcer.evaluate(policy: policy, usedMinutesToday: usedMinutes)
@@ -121,18 +136,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - TOTP code handling
+
+    private func handleCodeSubmission(_ code: String) {
+        guard let secret = sharedSecret else {
+            NSLog("[UsageTimeAgent] TOTP: No shared secret available")
+            return
+        }
+        if TOTPGenerator.verifyCode(secretHex: secret, code: code) {
+            NSLog("[UsageTimeAgent] TOTP: Code accepted — granting 30 minutes")
+            policyEnforcer.grantTemporaryAccess(minutes: 30)
+        } else {
+            NSLog("[UsageTimeAgent] TOTP: Code rejected")
+        }
+    }
+
     // MARK: - Setup alert
 
     private func showSetupRequiredAlert() {
         let alert = NSAlert()
-        alert.messageText = "Настройка UsageTime"
+        alert.messageText = "UsageTime Setup"
         alert.informativeText = """
-        Для работы агента нужен API-токен.
+        The agent requires an API token to work.
 
-        1. Создайте конфиг: /etc/usagetime/config.plist
-        2. Укажите ServerURL и APIToken
+        1. Create config: /etc/usagetime/config.plist
+        2. Set ServerURL and APIToken
 
-        Или установите через: sudo ./install.sh
+        Or install via: sudo ./install.sh
         """
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")

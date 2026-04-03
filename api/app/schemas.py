@@ -46,6 +46,7 @@ class DeviceOut(BaseModel):
     name: str
     child_name: str
     api_token: str
+    shared_secret: Optional[str] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
 
@@ -135,3 +136,13 @@ class AgentConfig(BaseModel):
     screen_time_enabled: bool
     screen_time_limit_minutes: int
     used_minutes_today: float
+    shared_secret: Optional[str] = None
+
+
+class TOTPVerifyRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+
+
+class TOTPVerifyResponse(BaseModel):
+    valid: bool
+    granted_minutes: int = 0

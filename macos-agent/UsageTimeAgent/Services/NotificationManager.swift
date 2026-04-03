@@ -22,8 +22,8 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Show a time warning notification.
     func showTimeWarning(remainingMinutes: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Экранное время"
-        content.body = "Осталось \(remainingMinutes) минут"
+        content.title = "Screen Time"
+        content.body = "\(remainingMinutes) minutes remaining"
         content.sound = .default
         content.interruptionLevel = .timeSensitive
 
@@ -38,8 +38,8 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Show notification when time is up.
     func showTimeExpired() {
         let content = UNMutableNotificationContent()
-        content.title = "Время вышло"
-        content.body = "Экранное время на сегодня закончилось"
+        content.title = "Time's Up"
+        content.body = "Screen time for today has ended"
         content.sound = .defaultCritical
         content.interruptionLevel = .critical
 
@@ -54,8 +54,8 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     /// Show notification about upcoming downtime.
     func showDowntimeStarting(inMinutes minutes: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Время отдыха"
-        content.body = "Даунтайм начнётся через \(minutes) минут"
+        content.title = "Downtime"
+        content.body = "Downtime starts in \(minutes) minutes"
         content.sound = .default
 
         let request = UNNotificationRequest(

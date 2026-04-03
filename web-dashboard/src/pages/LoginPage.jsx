@@ -39,18 +39,18 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="card login-card">
         <h1>UsageTime</h1>
-        <p className="subtitle">Родительский контроль для macOS</p>
+        <p className="subtitle">Parental controls for macOS</p>
 
         <div className="tab-switch">
-          <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>Вход</button>
-          <button className={tab === 'register' ? 'active' : ''} onClick={() => setTab('register')}>Регистрация</button>
+          <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>Sign In</button>
+          <button className={tab === 'register' ? 'active' : ''} onClick={() => setTab('register')}>Sign Up</button>
         </div>
 
         <form onSubmit={handleSubmit}>
           {tab === 'register' && (
             <div className="form-group">
-              <label>Имя</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ваше имя" required />
+              <label>Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
             </div>
           )}
           <div className="form-group">
@@ -58,12 +58,12 @@ export default function LoginPage() {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" required />
           </div>
           <div className="form-group">
-            <label>Пароль</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Пароль" required />
+            <label>Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required />
           </div>
           {error && <p className="error">{error}</p>}
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Подождите...' : (tab === 'login' ? 'Войти' : 'Создать аккаунт')}
+            {loading ? 'Please wait...' : (tab === 'login' ? 'Sign In' : 'Create Account')}
           </button>
         </form>
       </div>

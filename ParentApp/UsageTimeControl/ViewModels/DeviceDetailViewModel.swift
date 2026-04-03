@@ -10,6 +10,9 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isSaving = false
     @Published var error: String?
+    @Published var currentTOTPCode: String?
+    @Published var totpSecondsRemaining: Int = 0
+    private var totpTimer: Timer?
 
     private let api = APIClient.shared
 
@@ -99,6 +102,29 @@ class DeviceDetailViewModel: ObservableObject {
 
     func setWeekendLimit(_ minutes: Int?) async {
         await updatePolicy(PolicyUpdate(screenTimeWeekendLimitMinutes: minutes))
+    }
+
+    // MARK: - TOTP code generation
+
+    func startTOTPGeneration() {
+        updateTOTPCode()
+        totpTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateTOTPCode() }
+        }
+    }
+
+    func stopTOTPGeneration() {
+        totpTimer?.invalidate()
+        totpTimer = nil
+    }
+
+    private func updateTOTPCode() {
+        guard let secret = device?.sharedSecret else {
+            currentTOTPCode = nil
+            return
+        }
+        currentTOTPCode = TOTPGenerator.generateCode(secretHex: secret)
+        totpSecondsRemaining = TOTPGenerator.secondsRemaining
     }
 
     // Computed helpers

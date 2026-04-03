@@ -33,6 +33,7 @@ class Device(Base):
     name = Column(String, nullable=False)  # e.g. "Misha's MacBook"
     child_name = Column(String, nullable=False)
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
+    shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

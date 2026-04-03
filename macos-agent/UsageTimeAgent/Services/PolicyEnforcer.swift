@@ -9,9 +9,23 @@ class PolicyEnforcer {
     /// Tracks which warning thresholds have been crossed (remaining went below this value).
     private var warningThresholdsCrossed: Set<Int> = []
     private var previousRemaining: Double?
+    /// Temporary unlock granted via TOTP code.
+    private var temporaryUnlockUntil: Date?
 
     init(notificationManager: NotificationManager) {
         self.notifications = notificationManager
+    }
+
+    /// Set a callback for when a TOTP code is submitted on the lock screen.
+    func setCodeHandler(_ handler: @escaping (String) -> Void) {
+        lockScreen.onCodeSubmitted = handler
+    }
+
+    /// Grant temporary access (e.g. 30 minutes) — hides lock screen immediately.
+    func grantTemporaryAccess(minutes: Int = 30) {
+        temporaryUnlockUntil = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        lockScreen.hide()
+        NSLog("[UsageTimeAgent] Temporary access granted for \(minutes) minutes (until \(temporaryUnlockUntil!))")
     }
 
     /// Enable dev mode on the lock screen (auto-unlock, emergency hotkey, lower window level).
@@ -25,6 +39,16 @@ class PolicyEnforcer {
 
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
     func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
+        // Check temporary unlock (granted via TOTP code)
+        if let unlockUntil = temporaryUnlockUntil {
+            if Date() < unlockUntil {
+                lockScreen.hide()
+                return  // Temporary override active
+            } else {
+                temporaryUnlockUntil = nil  // Expired
+            }
+        }
+
         // Reset warnings if policy limit changed (parent granted more time)
         if let lastLimit = lastPolicyLimitMinutes, lastLimit != policy.screenTimeLimitMinutes {
             warningThresholdsCrossed.removeAll()

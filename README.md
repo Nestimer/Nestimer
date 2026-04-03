@@ -1,70 +1,71 @@
 # UsageTimeController
 
-Родительский контроль для macOS — аналог Family Link. Позволяет удалённо управлять экранным временем и расписанием даунтайма на Mac ребёнка.
+Parental controls for macOS — a Family Link alternative. Remotely manage screen time and downtime schedules on your child's Mac.
 
-## Возможности (v1)
+## Features (v1)
 
-- **Downtime (время отдыха)** — задайте расписание, когда компьютер полностью заблокирован (например, 22:00–08:00)
-- **Screen Time (экранное время)** — лимит минут в день, которые ребёнок может использовать компьютер вне даунтайма
-- **Раздельные настройки для будней и выходных**
-- **Удалённое управление** через нативное iOS/macOS приложение или веб-дашборд
-- **Умный трекинг** — считает только реальное использование (не lock screen, не idle)
-- **Статистика использования** — сколько времени ребёнок провёл за компьютером по дням
+- **Downtime** — set a schedule when the computer is fully locked (e.g., 10 PM – 8 AM)
+- **Screen Time** — daily limit of minutes the child can use the computer outside of downtime
+- **Separate settings for weekdays and weekends**
+- **Remote management** via a native iOS/macOS app or web dashboard
+- **Smart tracking** — only counts real usage (not lock screen, not idle)
+- **Usage stats** — how much time the child spent on the computer each day
+- **Offline unlock codes** — TOTP-based 6-digit codes for unlocking without internet
 
-## Архитектура
+## Architecture
 
 ```
 ┌───────────────────┐
 │  Native App       │     ┌──────────────┐      ┌─────────────────┐
 │  (SwiftUI,        │────▶│   API Server │◀─────│  macOS Agent    │
 │  iOS + macOS)     │     │  (FastAPI)   │      │  (Swift daemon) │
-│  Родитель         │     │  Сервер      │      │  Mac ребёнка    │
-├───────────────────┤     └──────────────┘      └─────────────────┘
-│  Web Dashboard    │────▶       ▲
-│  (React, браузер) │            │
+│  Parent           │     └──────────────┘      │  Child's Mac    │
+├───────────────────┤            ▲              └─────────────────┘
+│  Web Dashboard    │────▶       │
+│  (React, browser) │            │
 └───────────────────┘            │
 ```
 
-## Быстрый старт
+## Quick Start
 
-### 1. Запустить сервер (API + Web Dashboard)
+### 1. Start the server (API + Web Dashboard)
 
 ```bash
-# Установите SECRET_KEY для продакшена
+# Set SECRET_KEY for production
 export SECRET_KEY=$(openssl rand -hex 32)
 
 docker-compose up -d
 ```
 
-Дашборд будет на `http://localhost:3000`, API на `http://localhost:8000`.
+Dashboard at `http://localhost:3000`, API at `http://localhost:8000`.
 
-### 2. Настроить аккаунт
+### 2. Set up an account
 
-1. Откройте `http://localhost:3000`
-2. Зарегистрируйте аккаунт родителя
-3. Нажмите "Добавить устройство" — введите имя Mac и имя ребёнка
-4. Скопируйте API-токен
+1. Open `http://localhost:3000`
+2. Register a parent account
+3. Click "Add Device" — enter the Mac name and child's name
+4. Copy the API token
 
-### 3. Установить агент на Mac ребёнка
+### 3. Install the agent on the child's Mac
 
 ```bash
-# Склонировать репозиторий на Mac ребёнка
+# Clone the repo on the child's Mac
 git clone <repo-url>
 cd UsageTimeController/macos-agent
 
-# Запустить установку (нужен sudo)
+# Run the installer (requires sudo)
 sudo ./install.sh
-# Вас попросят ввести URL сервера и API-токен
+# You'll be prompted for the server URL and API token
 ```
 
-### 4. Настроить правила
+### 4. Configure rules
 
-Вернитесь в дашборд и настройте:
-- **Downtime**: время, когда комп заблокирован (по умолчанию 22:00–08:00)
-- **Screen Time**: сколько минут в день можно пользоваться (по умолчанию 120 мин)
-- Отдельные лимиты для будней и выходных
+Go back to the dashboard and set:
+- **Downtime**: when the computer is locked (default 10 PM – 8 AM)
+- **Screen Time**: how many minutes per day are allowed (default 120 min)
+- Separate limits for weekdays and weekends
 
-## Разработка
+## Development
 
 ### API Server
 
@@ -84,13 +85,13 @@ npm run dev
 
 ### Native Parent App (iOS + macOS)
 
-Откройте `ParentApp/UsageTimeControl.xcodeproj` в Xcode и запустите на iPhone, iPad или Mac.
-Приложение поддерживает iOS 16+ и macOS 13+.
+Open `ParentApp/UsageTimeControl.xcodeproj` in Xcode and run on iPhone, iPad, or Mac.
+Supports iOS 16+ and macOS 13+.
 
 ### macOS Agent
 
-Открыть `macos-agent/UsageTimeAgent.xcodeproj` в Xcode → Build & Run.
-Или установить через скрипт:
+Open `macos-agent/UsageTimeAgent.xcodeproj` in Xcode → Build & Run.
+Or install via script:
 ```bash
 cd macos-agent
 sudo ./install.sh
@@ -98,42 +99,57 @@ sudo ./install.sh
 
 ## API Endpoints
 
-| Endpoint | Метод | Описание |
+| Endpoint | Method | Description |
 |---|---|---|
-| `/api/v1/auth/register` | POST | Регистрация |
-| `/api/v1/auth/login` | POST | Вход |
-| `/api/v1/devices` | GET/POST | Список/создание устройств |
-| `/api/v1/devices/{id}/policy` | GET/PUT | Настройки контроля |
-| `/api/v1/devices/{id}/usage` | GET | Статистика использования |
-| `/api/v1/agent/config` | GET | Конфиг для агента |
-| `/api/v1/agent/usage` | POST | Отчёт агента о использовании |
+| `/api/v1/auth/register` | POST | Register |
+| `/api/v1/auth/login` | POST | Login |
+| `/api/v1/devices` | GET/POST | List/create devices |
+| `/api/v1/devices/{id}/policy` | GET/PUT | Control settings |
+| `/api/v1/devices/{id}/usage` | GET | Usage statistics |
+| `/api/v1/devices/{id}/regenerate-secret` | POST | Regenerate TOTP secret |
+| `/api/v1/agent/config` | GET | Agent config |
+| `/api/v1/agent/usage` | POST | Agent usage report |
+| `/api/v1/agent/verify-totp` | POST | Verify TOTP code |
 
-## Как работает агент
+## How the Agent Works
 
-Агент — это полноценное **macOS приложение** (menu bar app), а не скрипт:
+The agent is a full **macOS app** (menu bar app), not a script:
 
-1. **Иконка в меню-баре** — показывает оставшееся время, даунтайм, статус
-2. Каждые 30 секунд проверяет активность, считает время **только когда**:
-   - Экран включён (не в sleep) — IOKit `DevicePowerState`
-   - Экран **не заблокирован** (не lock screen) — `CGSessionCopyCurrentDictionary`
-   - Пользователь **не idle >5 мин** (мышь/клавиатура) — IOKit `HIDIdleTime`
-3. Каждые 60 секунд синхронизируется с сервером
-4. При блокировке — **полноэкранный overlay** (`NSWindow` на уровне `maximumWindow`):
-   - Покрывает все экраны, включая полноэкранные приложения
-   - Тёмный фон с анимированной иконкой и часами
-   - Нельзя свернуть, закрыть, переключиться
-5. **Нативные уведомления** (UserNotifications) за 15, 10, 5, 1 минуту до конца
+1. **Menu bar icon** — shows remaining time, downtime, status
+2. Every 30 seconds checks activity, counts time **only when**:
+   - Screen is on (not sleeping) — IOKit `DevicePowerState`
+   - Screen is **not locked** — `CGSessionCopyCurrentDictionary`
+   - User is **not idle >5 min** (mouse/keyboard) — IOKit `HIDIdleTime`
+3. Syncs with the server every 60 seconds
+4. When locked — **full-screen overlay** (`NSWindow` at `maximumWindow` level):
+   - Covers all screens including full-screen apps
+   - Dark background with animated icon and clock
+   - Cannot minimize, close, or switch away
+   - **Code input field** for offline TOTP unlock
+5. **Native notifications** (UserNotifications) at 15, 10, 5, 1 minutes before time expires
 
-## Защита от обхода
+## Offline Unlock Codes
 
-- **Watchdog daemon** (LaunchDaemon от root) — проверяет каждые 15 сек, если агент убит — перезапускает
-- **Self-protection**: блокирует Cmd+Q, отключает sudden termination
-- Приложение принадлежит root (`/Applications/UsageTimeAgent.app`) — ребёнок не может удалить без пароля
-- Конфиг в `/etc/usagetime/` с правами 600 — только root может менять
-- Данные кешируются локально на случай отсутствия сети
+When the parent needs to unlock the child's Mac without internet:
 
-## Безопасность
+1. Open the parent app or web dashboard — a 6-digit code is displayed
+2. Tell the code to the child (verbally, by phone, etc.)
+3. The child enters the code on the lock screen
+4. The Mac unlocks for 30 minutes
 
-- JWT токены для аутентификации устройств
-- Keychain для хранения токенов (в Parent App)
-- CORS на API сервере (настроить для продакшена)
+Codes are TOTP-based (HMAC-SHA1, 5-minute step) and work completely offline — both the parent app and the agent compute codes independently from a shared secret.
+
+## Tamper Protection
+
+- **Watchdog daemon** (LaunchDaemon running as root) — checks every 15 sec, restarts agent if killed
+- **Self-protection**: blocks Cmd+Q, disables sudden termination
+- App is owned by root (`/Applications/UsageTimeAgent.app`) — child cannot delete without admin password
+- Config in `/etc/usagetime/` with 600 permissions — only root can modify
+- Data cached locally for offline operation
+
+## Security
+
+- JWT tokens for device authentication
+- Keychain for token storage (in Parent App)
+- TOTP shared secrets for offline unlock
+- CORS on API server (configure for production)

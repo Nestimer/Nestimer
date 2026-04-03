@@ -1,8 +1,8 @@
-# Тестирование UsageTimeController
+# Testing UsageTimeController
 
-## Быстрый старт (безопасно на своем компе)
+## Quick Start (safe to run on your own Mac)
 
-### 1. Запустить API сервер
+### 1. Start the API server
 
 ```bash
 cd api
@@ -12,9 +12,9 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
-Сервер стартует на `http://localhost:8000`. Swagger UI: `http://localhost:8000/docs`.
+Server starts at `http://localhost:8000`. Swagger UI: `http://localhost:8000/docs`.
 
-### 2. Запустить API тесты
+### 2. Run API tests
 
 ```bash
 cd api
@@ -22,23 +22,23 @@ source venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-Все 60 тестов должны проходить.
+All 70+ tests should pass.
 
-### 3. Запустить macOS агент в DEV MODE
+### 3. Run the macOS agent in DEV MODE
 
 ```bash
 cd macos-agent
 ./dev-test.sh
 ```
 
-Скрипт автоматически:
-- Проверит что API сервер запущен
-- Создаст тестового пользователя и устройство
-- Установит тестовую политику (5 минут экранного времени)
-- Соберет приложение в Debug
-- Запустит с DEV MODE
+The script automatically:
+- Checks that the API server is running
+- Creates a test user and device
+- Sets a test policy (5 minutes of screen time)
+- Builds the app in Debug
+- Launches with DEV MODE
 
-### 4. Запустить веб-дашборд
+### 4. Run the web dashboard
 
 ```bash
 cd web-dashboard
@@ -46,48 +46,48 @@ npm install
 npm run dev
 ```
 
-Откроется на `http://localhost:5173`. Логин: `dev-test@usagetime.local` / `devtest123`.
+Opens at `http://localhost:5173`. Login: `dev-test@usagetime.local` / `devtest123`.
 
 ---
 
-## Dev Mode — защита от самоблокировки
+## Dev Mode — Self-Lock Protection
 
-Когда агент запущен в dev mode (`UTC_DEV_MODE=1`), активны следующие защиты:
+When the agent runs in dev mode (`UTC_DEV_MODE=1`), the following safeguards are active:
 
-| Защита | Описание |
-|--------|----------|
-| **Auto-unlock** | Лок-скрин автоматически уходит через 10 секунд |
-| **Emergency hotkey** | `Ctrl+Opt+Cmd+U` — мгновенно снимает лок-скрин |
-| **Floating window** | Лок-скрин на уровне `.floating`, можно переключиться через `Cmd+Tab` |
-| **Quit доступен** | В меню бара есть пункт "Quit (Dev Mode)", `Cmd+Q` работает |
-| **Нет self-protection** | Процесс можно свободно убить через Activity Monitor или `pkill` |
-| **Нет watchdog** | Не устанавливается LaunchDaemon, процесс не воскресает |
-| **Быстрые таймеры** | Tick каждые 5с (вместо 30), sync каждые 10с (вместо 60) |
-| **DEV метка** | Метка "DEV MODE" в меню баре и на лок-скрине |
+| Safeguard | Description |
+|-----------|-------------|
+| **Auto-unlock** | Lock screen auto-dismisses after 10 seconds |
+| **Emergency hotkey** | `Ctrl+Opt+Cmd+U` — instantly dismisses lock screen |
+| **Floating window** | Lock screen at `.floating` level, can switch away via `Cmd+Tab` |
+| **Quit available** | Menu bar has "Quit (Dev Mode)" item, `Cmd+Q` works |
+| **No self-protection** | Process can be freely killed via Activity Monitor or `pkill` |
+| **No watchdog** | No LaunchDaemon installed, process won't respawn |
+| **Fast timers** | Tick every 5s (instead of 30), sync every 10s (instead of 60) |
+| **DEV badge** | "DEV MODE" label in menu bar and on lock screen |
 
-### Как остановить агент в dev mode
+### How to stop the agent in dev mode
 
-Любой способ работает:
+Any method works:
 ```bash
-# Через меню бар → "Quit (Dev Mode)"
+# Via menu bar → "Quit (Dev Mode)"
 # Cmd+Q
-# Из терминала:
+# From terminal:
 pkill -f UsageTimeAgent
 # Activity Monitor → UsageTimeAgent → Force Quit
 ```
 
-### Конфигурация dev mode
+### Dev mode configuration
 
-Через переменные окружения:
+Via environment variables:
 ```bash
-export UTC_DEV_MODE=1              # включить dev mode
-export UTC_DEV_AUTO_UNLOCK=10      # авто-разблокировка через N секунд
+export UTC_DEV_MODE=1              # enable dev mode
+export UTC_DEV_AUTO_UNLOCK=10      # auto-unlock after N seconds
 export UTC_SERVER_URL=http://localhost:8000
 export UTC_API_TOKEN=your-token
-export UTC_POLL_INTERVAL=10        # sync каждые N секунд
+export UTC_POLL_INTERVAL=10        # sync every N seconds
 ```
 
-Или через plist (`/etc/usagetime/config.plist`):
+Or via plist (`/etc/usagetime/config.plist`):
 ```xml
 <key>DevMode</key>
 <true/>
@@ -95,7 +95,7 @@ export UTC_POLL_INTERVAL=10        # sync каждые N секунд
 <integer>10</integer>
 ```
 
-Или через UserDefaults:
+Or via UserDefaults:
 ```bash
 defaults write com.usagetime.agent DevMode -bool true
 defaults write com.usagetime.agent DevAutoUnlockSeconds -int 10
@@ -103,56 +103,62 @@ defaults write com.usagetime.agent DevAutoUnlockSeconds -int 10
 
 ---
 
-## Что тестировать
+## Test Scenarios
 
-### Сценарий 1: Экранное время
-1. Запустить агент в dev mode
-2. В веб-дашборде установить лимит 1 минута
-3. Подождать — через ~1 минуту должен появиться лок-скрин
-4. Лок-скрин автоматически уйдет через 10с (dev mode)
-5. В меню баре должно показываться оставшееся время
+### Scenario 1: Screen Time
+1. Launch the agent in dev mode
+2. Set the limit to 1 minute in the web dashboard
+3. Wait — the lock screen should appear after ~1 minute
+4. Lock screen auto-dismisses after 10s (dev mode)
+5. Menu bar should show remaining time
 
-### Сценарий 2: Даунтайм
-1. Установить downtime: текущее время → +2 минуты
-2. Лок-скрин должен появиться немедленно (следующий sync)
-3. Проверить что показывается "Время отдыха"
+### Scenario 2: Downtime
+1. Set downtime: current time → +2 minutes
+2. Lock screen should appear immediately (next sync)
+3. Verify it shows "Downtime"
 
-### Сценарий 3: Добавление времени
-1. Довести до лимита (лок-скрин появится)
-2. В дашборде увеличить лимит
-3. На следующем sync (10с в dev mode) лок-скрин должен уйти
-4. Предупреждения должны сброситься
+### Scenario 3: Adding Time
+1. Hit the limit (lock screen appears)
+2. Increase the limit in the dashboard
+3. On next sync (10s in dev mode) lock screen should dismiss
+4. Warnings should reset
 
-### Сценарий 4: Выходные/будни
-1. Установить разные лимиты для weekday/weekend
-2. Проверить что применяется правильный лимит
+### Scenario 4: Weekday/Weekend
+1. Set different limits for weekday/weekend
+2. Verify the correct limit is applied
 
-### Сценарий 5: Parent App (iOS/macOS)
-1. Открыть ParentApp в Xcode, запустить на симуляторе или устройстве
-2. Залогиниться с тестовыми кредами
-3. Проверить что устройства и политики видны
-4. Изменить политику — проверить что агент подхватывает
+### Scenario 5: Offline Unlock Code
+1. Hit the limit (lock screen appears)
+2. In the parent app or web dashboard, find the 6-digit unlock code
+3. Enter the code on the lock screen
+4. Mac should unlock for 30 minutes
+
+### Scenario 6: Parent App (iOS/macOS)
+1. Open ParentApp in Xcode, run on simulator or device
+2. Log in with test credentials
+3. Verify devices and policies are visible
+4. Change a policy — verify the agent picks it up
 
 ---
 
-## Production установка (НЕ для тестирования на своем компе!)
+## Production Install (NOT for testing on your own Mac!)
 
 ```bash
 cd macos-agent
 sudo ./install.sh
 ```
 
-Это установит агент с полной защитой:
-- Лок-скрин на максимальном уровне (нельзя переключиться)
-- Cmd+Q заблокирован
-- Watchdog воскрешает процесс каждые 15 секунд
-- Приложение принадлежит root (нельзя удалить без sudo)
+This installs the agent with full protection:
+- Lock screen at maximum window level (cannot switch away)
+- Cmd+Q blocked
+- Watchdog restarts the process every 15 seconds
+- App owned by root (cannot delete without sudo)
 
-**НИКОГДА не запускайте production установку на своем рабочем компе без настроенного удаленного доступа!**
+**NEVER run a production install on your own work Mac without configured remote access!**
 
 ---
 
-## Архитектура тестирования
+## Testing Architecture
 
 ```
 ┌─────────────────┐     HTTP      ┌──────────────┐
@@ -171,4 +177,4 @@ sudo ./install.sh
 └─────────────────┘
 ```
 
-Все компоненты работают локально, никакого внешнего сервера не нужно.
+All components run locally, no external server needed.

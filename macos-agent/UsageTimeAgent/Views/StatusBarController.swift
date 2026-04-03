@@ -31,9 +31,9 @@ class StatusBarController {
                 let h = Int(remaining) / 60
                 let m = Int(remaining) % 60
                 if h > 0 {
-                    button.title = " \(h)ч \(m)м"
+                    button.title = " \(h)h \(m)m"
                 } else {
-                    button.title = " \(m)м"
+                    button.title = " \(m)m"
                 }
             } else {
                 button.title = " 0м"
@@ -85,7 +85,7 @@ class StatusBarController {
                     let limitText = formatMinutes(policy.screenTimeLimitMinutes)
 
                     let usageItem = NSMenuItem(
-                        title: "Использовано: \(usedText) из \(limitText)",
+                        title: "Used: \(usedText) of \(limitText)",
                         action: nil,
                         keyEquivalent: ""
                     )
@@ -93,7 +93,7 @@ class StatusBarController {
                     menu.addItem(usageItem)
 
                     let remainingItem = NSMenuItem(
-                        title: "Осталось: \(formatMinutes(Int(remaining)))",
+                        title: "Remaining: \(formatMinutes(Int(remaining)))",
                         action: nil,
                         keyEquivalent: ""
                     )
@@ -101,7 +101,7 @@ class StatusBarController {
                     menu.addItem(remainingItem)
                 } else {
                     let usageItem = NSMenuItem(
-                        title: "Использовано: \(usedText)",
+                        title: "Used: \(usedText)",
                         action: nil,
                         keyEquivalent: ""
                     )
@@ -114,7 +114,7 @@ class StatusBarController {
                 // Downtime info
                 if policy.downtimeEnabled {
                     let dtItem = NSMenuItem(
-                        title: "Даунтайм: \(policy.downtimeStart) – \(policy.downtimeEnd)",
+                        title: "Downtime: \(policy.downtimeStart) – \(policy.downtimeEnd)",
                         action: nil,
                         keyEquivalent: ""
                     )
@@ -123,19 +123,19 @@ class StatusBarController {
                 }
             } else {
                 let usageItem = NSMenuItem(
-                    title: "Использовано: \(usedText)",
+                    title: "Used: \(usedText)",
                     action: nil,
                     keyEquivalent: ""
                 )
                 usageItem.isEnabled = false
                 menu.addItem(usageItem)
 
-                let syncItem = NSMenuItem(title: "Синхронизация...", action: nil, keyEquivalent: "")
+                let syncItem = NSMenuItem(title: "Syncing...", action: nil, keyEquivalent: "")
                 syncItem.isEnabled = false
                 menu.addItem(syncItem)
             }
         } else {
-            let noConfig = NSMenuItem(title: "Не настроено", action: nil, keyEquivalent: "")
+            let noConfig = NSMenuItem(title: "Not configured", action: nil, keyEquivalent: "")
             noConfig.isEnabled = false
             menu.addItem(noConfig)
         }
@@ -170,7 +170,7 @@ class StatusBarController {
     private func formatMinutes(_ m: Int) -> String {
         let h = m / 60
         let min = m % 60
-        if h > 0 { return "\(h)ч \(min)м" }
-        return "\(min)м"
+        if h > 0 { return "\(h)h \(min)m" }
+        return "\(min)m"
     }
 }

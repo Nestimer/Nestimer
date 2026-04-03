@@ -20,16 +20,16 @@ pytestmark = pytest.mark.anyio
 
 async def test_full_lifecycle(client):
     # === STEP 1: Parent registers ===
-    parent_token = await register_user(client, email="parent@family.com", name="Мама")
+    parent_token = await register_user(client, email="parent@family.com", name="Mom")
 
     # Verify parent identity
     resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {parent_token}"})
-    assert resp.json()["name"] == "Мама"
+    assert resp.json()["name"] == "Mom"
 
     # === STEP 2: Parent adds child's device ===
     resp = await client.post(
         "/api/v1/devices",
-        json={"name": "MacBook Миши", "child_name": "Миша"},
+        json={"name": "Misha's MacBook", "child_name": "Misha"},
         headers={"Authorization": f"Bearer {parent_token}"},
     )
     assert resp.status_code == 200
@@ -173,7 +173,7 @@ async def test_full_lifecycle(client):
     # === STEP 10: Multi-device support ===
     resp = await client.post(
         "/api/v1/devices",
-        json={"name": "iPad Пети", "child_name": "Петя"},
+        json={"name": "Petya's iPad", "child_name": "Petya"},
         headers={"Authorization": f"Bearer {parent_token}"},
     )
     device2 = resp.json()

@@ -9,15 +9,15 @@ async def test_create_device(client):
     device = await create_device(client, token)
 
     assert device["name"] == "MacBook Test"
-    assert device["child_name"] == "Миша"
+    assert device["child_name"] == "Misha"
     assert "api_token" in device
     assert device["api_token"]  # not empty
 
 
 async def test_list_devices(client):
     token = await register_user(client)
-    await create_device(client, token, name="Mac 1", child_name="Миша")
-    await create_device(client, token, name="Mac 2", child_name="Петя")
+    await create_device(client, token, name="Mac 1", child_name="Misha")
+    await create_device(client, token, name="Mac 2", child_name="Petya")
 
     resp = await client.get("/api/v1/devices", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200

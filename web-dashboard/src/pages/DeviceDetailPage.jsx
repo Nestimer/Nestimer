@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../services/api'
+import { generateTOTP, totpSecondsRemaining } from '../utils/totp'
 
 function formatMinutes(m) {
   const h = Math.floor(m / 60)
   const min = Math.round(m % 60)
-  if (h > 0) return `${h}ч ${min}м`
-  return `${min}м`
+  if (h > 0) return `${h}h ${min}m`
+  return `${min}m`
 }
 
 export default function DeviceDetailPage() {
@@ -16,6 +17,8 @@ export default function DeviceDetailPage() {
   const [usage, setUsage] = useState([])
   const [saving, setSaving] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  const [totpCode, setTotpCode] = useState(null)
+  const [totpRemaining, setTotpRemaining] = useState(0)
 
   const load = useCallback(async () => {
     try {
@@ -32,6 +35,21 @@ export default function DeviceDetailPage() {
 
   useEffect(() => { load() }, [load])
 
+  // TOTP code generation
+  useEffect(() => {
+    if (!device?.shared_secret) return
+    const update = async () => {
+      try {
+        const code = await generateTOTP(device.shared_secret)
+        setTotpCode(code)
+        setTotpRemaining(totpSecondsRemaining())
+      } catch (e) { console.error('TOTP error:', e) }
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [device?.shared_secret])
+
   const savePolicy = async (updates) => {
     setSaving(true)
     try {
@@ -41,7 +59,7 @@ export default function DeviceDetailPage() {
     setSaving(false)
   }
 
-  if (!device || !policy) return <div className="loading">Загрузка...</div>
+  if (!device || !policy) return <div className="loading">Loading...</div>
 
   const todayUsage = usage.length > 0 ? usage[0] : null
   const usedMinutes = todayUsage ? todayUsage.total_minutes : 0
@@ -51,7 +69,7 @@ export default function DeviceDetailPage() {
 
   return (
     <div className="page">
-      <Link to="/" className="back-link">&larr; Все устройства</Link>
+      <Link to="/" className="back-link">&larr; All Devices</Link>
 
       <div className="header">
         <div>
@@ -62,23 +80,51 @@ export default function DeviceDetailPage() {
 
       {/* Today's usage summary */}
       <div className="card">
-        <h3>Сегодня</h3>
+        <h3>Today</h3>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontSize: 32, fontWeight: 700 }}>{formatMinutes(usedMinutes)}</span>
-          <span style={{ color: '#86868b' }}>из {formatMinutes(limitMinutes)}</span>
+          <span style={{ color: '#86868b' }}>of {formatMinutes(limitMinutes)}</span>
         </div>
         <div className="usage-bar">
           <div className={`usage-bar-fill ${barClass}`} style={{ width: `${usagePercent}%` }} />
         </div>
       </div>
 
+      {/* Unlock code (TOTP) */}
+      <h2 className="section-title">Unlock Code</h2>
+      <div className="card">
+        <p style={{ color: '#86868b', marginBottom: 12, fontSize: 14 }}>
+          Tell this code to your child — unlocks for 30 minutes
+        </p>
+        {totpCode ? (
+          <>
+            <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: 8, fontFamily: 'monospace', textAlign: 'center', padding: '12px 0' }}>
+              {totpCode}
+            </div>
+            <div style={{ color: '#86868b', textAlign: 'center', marginTop: 8, fontSize: 13 }}>
+              Valid for {Math.floor(totpRemaining / 60)}:{String(totpRemaining % 60).padStart(2, '0')}
+            </div>
+            <div style={{ height: 4, background: '#e5e5e5', borderRadius: 2, marginTop: 8 }}>
+              <div style={{
+                height: '100%', borderRadius: 2,
+                background: '#007aff',
+                width: `${(totpRemaining / 300) * 100}%`,
+                transition: 'width 1s linear'
+              }} />
+            </div>
+          </>
+        ) : (
+          <p style={{ color: '#86868b', textAlign: 'center' }}>Secret not configured</p>
+        )}
+      </div>
+
       {/* Downtime settings */}
-      <h2 className="section-title">Время отдыха (Downtime)</h2>
+      <h2 className="section-title">Downtime</h2>
       <div className="card">
         <div className="toggle-row">
           <div>
-            <div className="toggle-label">Включить даунтайм</div>
-            <div className="toggle-sublabel">Компьютер заблокирован в это время</div>
+            <div className="toggle-label">Enable Downtime</div>
+            <div className="toggle-sublabel">Computer is locked during this time</div>
           </div>
           <input
             type="checkbox"
@@ -91,16 +137,16 @@ export default function DeviceDetailPage() {
           <>
             <div style={{ marginTop: 16 }}>
               <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
-                Основное расписание (каждый день)
+                Default schedule (every day)
               </label>
               <div className="time-inputs">
-                <span>с</span>
+                <span>from</span>
                 <input
                   type="time"
                   value={policy.downtime_start}
                   onChange={(e) => savePolicy({ downtime_start: e.target.value })}
                 />
-                <span>до</span>
+                <span>to</span>
                 <input
                   type="time"
                   value={policy.downtime_end}
@@ -111,16 +157,16 @@ export default function DeviceDetailPage() {
 
             <div style={{ marginTop: 16 }}>
               <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
-                Будни (Пн-Пт) — если отличается
+                Weekdays (Mon-Fri) — if different
               </label>
               <div className="time-inputs">
-                <span>с</span>
+                <span>from</span>
                 <input
                   type="time"
                   value={policy.downtime_weekday_start || ''}
                   onChange={(e) => savePolicy({ downtime_weekday_start: e.target.value || policy.downtime_start })}
                 />
-                <span>до</span>
+                <span>to</span>
                 <input
                   type="time"
                   value={policy.downtime_weekday_end || ''}
@@ -131,16 +177,16 @@ export default function DeviceDetailPage() {
 
             <div style={{ marginTop: 16 }}>
               <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
-                Выходные (Сб-Вс) — если отличается
+                Weekends (Sat-Sun) — if different
               </label>
               <div className="time-inputs">
-                <span>с</span>
+                <span>from</span>
                 <input
                   type="time"
                   value={policy.downtime_weekend_start || ''}
                   onChange={(e) => savePolicy({ downtime_weekend_start: e.target.value || policy.downtime_start })}
                 />
-                <span>до</span>
+                <span>to</span>
                 <input
                   type="time"
                   value={policy.downtime_weekend_end || ''}
@@ -153,12 +199,12 @@ export default function DeviceDetailPage() {
       </div>
 
       {/* Screen time settings */}
-      <h2 className="section-title">Экранное время</h2>
+      <h2 className="section-title">Screen Time</h2>
       <div className="card">
         <div className="toggle-row">
           <div>
-            <div className="toggle-label">Лимит экранного времени</div>
-            <div className="toggle-sublabel">Максимум минут за день (вне даунтайма)</div>
+            <div className="toggle-label">Screen Time Limit</div>
+            <div className="toggle-sublabel">Max minutes per day (outside downtime)</div>
           </div>
           <input
             type="checkbox"
@@ -171,7 +217,7 @@ export default function DeviceDetailPage() {
           <>
             <div style={{ marginTop: 16 }}>
               <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
-                Лимит в будни
+                Weekday limit
               </label>
               <div className="minutes-input">
                 <input
@@ -182,13 +228,13 @@ export default function DeviceDetailPage() {
                   value={policy.screen_time_limit_minutes}
                   onChange={(e) => savePolicy({ screen_time_limit_minutes: parseInt(e.target.value) || 120 })}
                 />
-                <span className="unit">минут ({formatMinutes(policy.screen_time_limit_minutes)})</span>
+                <span className="unit">minutes ({formatMinutes(policy.screen_time_limit_minutes)})</span>
               </div>
             </div>
 
             <div style={{ marginTop: 16 }}>
               <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
-                Лимит в выходные (оставьте пустым = как в будни)
+                Weekend limit (leave empty = same as weekdays)
               </label>
               <div className="minutes-input">
                 <input
@@ -200,7 +246,7 @@ export default function DeviceDetailPage() {
                   placeholder={String(policy.screen_time_limit_minutes)}
                   onChange={(e) => savePolicy({ screen_time_weekend_limit_minutes: parseInt(e.target.value) || null })}
                 />
-                <span className="unit">минут</span>
+                <span className="unit">minutes</span>
               </div>
             </div>
           </>
@@ -208,15 +254,15 @@ export default function DeviceDetailPage() {
       </div>
 
       {/* Usage history */}
-      <h2 className="section-title">История за неделю</h2>
+      <h2 className="section-title">This Week</h2>
       <div className="card">
         {usage.length === 0 ? (
-          <p style={{ color: '#86868b' }}>Данных пока нет</p>
+          <p style={{ color: '#86868b' }}>No data yet</p>
         ) : (
           <div className="usage-stats">
             {usage.map(u => (
               <div key={u.date} className="usage-day">
-                <div className="date">{new Date(u.date + 'T00:00').toLocaleDateString('ru', { weekday: 'short', day: 'numeric' })}</div>
+                <div className="date">{new Date(u.date + 'T00:00').toLocaleDateString('en', { weekday: 'short', day: 'numeric' })}</div>
                 <div className="time">{formatMinutes(u.total_minutes)}</div>
               </div>
             ))}
@@ -225,18 +271,18 @@ export default function DeviceDetailPage() {
       </div>
 
       {/* Device token (hidden by default) */}
-      <h2 className="section-title">Настройки устройства</h2>
+      <h2 className="section-title">Device Settings</h2>
       <div className="card">
         <div className="toggle-row">
-          <div className="toggle-label">API токен агента</div>
+          <div className="toggle-label">Agent API Token</div>
           <button className="btn btn-secondary btn-small" onClick={() => setShowToken(!showToken)}>
-            {showToken ? 'Скрыть' : 'Показать'}
+            {showToken ? 'Hide' : 'Show'}
           </button>
         </div>
         {showToken && <div className="token-display">{device.api_token}</div>}
       </div>
 
-      {saving && <p style={{ textAlign: 'center', color: '#86868b', marginTop: 16 }}>Сохранение...</p>}
+      {saving && <p style={{ textAlign: 'center', color: '#86868b', marginTop: 16 }}>Saving...</p>}
     </div>
   )
 }

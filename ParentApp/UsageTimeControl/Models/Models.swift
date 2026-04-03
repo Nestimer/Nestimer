@@ -46,6 +46,7 @@ struct Device: Decodable, Identifiable {
     let name: String
     let childName: String
     let apiToken: String?
+    let sharedSecret: String?
     let lastSeen: String?
     let createdAt: String?
 
@@ -53,6 +54,7 @@ struct Device: Decodable, Identifiable {
         case id, name
         case childName = "child_name"
         case apiToken = "api_token"
+        case sharedSecret = "shared_secret"
         case lastSeen = "last_seen"
         case createdAt = "created_at"
     }
@@ -63,12 +65,12 @@ struct Device: Decodable, Identifiable {
     }
 
     var lastSeenText: String {
-        guard let lastSeen, let date = ISO8601DateFormatter().date(from: lastSeen) else { return "никогда" }
+        guard let lastSeen, let date = ISO8601DateFormatter().date(from: lastSeen) else { return "never" }
         let diff = Date().timeIntervalSince(date)
-        if diff < 120 { return "только что" }
-        if diff < 3600 { return "\(Int(diff / 60)) мин назад" }
-        if diff < 86400 { return "\(Int(diff / 3600)) ч назад" }
-        return "\(Int(diff / 86400)) дн назад"
+        if diff < 120 { return "just now" }
+        if diff < 3600 { return "\(Int(diff / 60)) min ago" }
+        if diff < 86400 { return "\(Int(diff / 3600)) hr ago" }
+        return "\(Int(diff / 86400)) days ago"
     }
 }
 
@@ -142,15 +144,15 @@ struct UsageEntry: Decodable, Identifiable {
     var formattedTime: String {
         let h = Int(totalMinutes) / 60
         let m = Int(totalMinutes) % 60
-        if h > 0 { return "\(h)ч \(m)м" }
-        return "\(m)м"
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
     }
 
     var dayLabel: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         guard let d = formatter.date(from: date) else { return date }
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "EE, d"
         return formatter.string(from: d)
     }
@@ -161,6 +163,6 @@ struct UsageEntry: Decodable, Identifiable {
 func formatMinutes(_ m: Int) -> String {
     let h = m / 60
     let min = m % 60
-    if h > 0 { return "\(h)ч \(min)м" }
-    return "\(min)м"
+    if h > 0 { return "\(h)h \(min)m" }
+    return "\(min)m"
 }
