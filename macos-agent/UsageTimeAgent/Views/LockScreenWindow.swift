@@ -15,7 +15,7 @@ class LockScreenWindow {
     /// Callback when a TOTP code is submitted on the lock screen.
     var onCodeSubmitted: ((String) -> Void)?
 
-    enum LockReason: Equatable {
+    indirect enum LockReason: Equatable {
         case downtime(until: String)
         case timeExpired
         /// Dev mode wrapper: shows the real reason + dev mode badge with auto-unlock countdown
@@ -186,10 +186,16 @@ struct LockScreenView: View {
                 Spacer()
 
                 // Icon
-                Image(systemName: reason.icon)
-                    .font(.system(size: 80))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .symbolEffect(.pulse, options: .repeating)
+                if #available(macOS 14.0, *) {
+                    Image(systemName: reason.icon)
+                        .font(.system(size: 80))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .symbolEffect(.pulse, options: .repeating)
+                } else {
+                    Image(systemName: reason.icon)
+                        .font(.system(size: 80))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
 
                 // Title
                 Text(reason.title)
@@ -222,7 +228,7 @@ struct LockScreenView: View {
                                 .padding(12)
                                 .background(Color.white.opacity(0.1))
                                 .cornerRadius(12)
-                                .onChange(of: codeInput) { _, newValue in
+                                .onChange(of: codeInput) { newValue in
                                     // Only allow digits, max 6
                                     let filtered = newValue.filter { $0.isNumber }
                                     if filtered.count <= 6 {

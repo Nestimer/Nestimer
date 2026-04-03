@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.pwr_mgt
+import ApplicationServices
 
 /// Tracks actual screen usage time by monitoring user activity.
 /// Only counts time when:
