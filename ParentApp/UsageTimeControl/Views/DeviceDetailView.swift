@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct DeviceDetailView: View {
     let deviceId: String
@@ -124,10 +129,22 @@ struct DeviceDetailView: View {
                     .foregroundStyle(.secondary)
 
                 if let code = vm.currentTOTPCode {
-                    Text(code)
-                        .font(.system(size: 48, weight: .bold, design: .monospaced))
-                        .tracking(8)
-                        .frame(maxWidth: .infinity)
+                    Button {
+                        #if os(iOS)
+                        UIPasteboard.general.string = code
+                        #elseif os(macOS)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                        #endif
+                    } label: {
+                        Text(code)
+                            .font(.system(size: 48, weight: .bold, design: .monospaced))
+                            .tracking(8)
+                            .frame(maxWidth: .infinity)
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Click to copy")
 
                     let remaining = vm.totpSecondsRemaining
                     let minutes = remaining / 60
@@ -412,16 +429,17 @@ struct DeviceDetailView: View {
 
                     if let token = device.apiToken {
                         Divider().padding(.leading, 16)
+                        let setupString = "\(KeychainHelper.getServerURL())|\(token)"
                         HStack {
-                            Text("API Token")
+                            Text("Setup String")
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Button {
                                 #if os(iOS)
-                                UIPasteboard.general.string = token
+                                UIPasteboard.general.string = setupString
                                 #elseif os(macOS)
                                 NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(token, forType: .string)
+                                NSPasteboard.general.setString(setupString, forType: .string)
                                 #endif
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
