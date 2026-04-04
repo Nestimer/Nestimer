@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -19,3 +20,8 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migrate: add shared_secret column if missing (for DBs created before TOTP feature)
+        result = await conn.execute(text("PRAGMA table_info(devices)"))
+        columns = [row[1] for row in result.fetchall()]
+        if "shared_secret" not in columns:
+            await conn.execute(text("ALTER TABLE devices ADD COLUMN shared_secret TEXT"))
