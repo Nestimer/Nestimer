@@ -12,6 +12,7 @@ class LockScreenWindow {
     var devAutoUnlockSeconds: TimeInterval = 10
     private var devAutoUnlockTimer: Timer?
     private var globalHotkeyMonitor: Any?
+    private var localHotkeyMonitor: Any?
     /// Callback when a TOTP code is submitted on the lock screen.
     var onCodeSubmitted: ((String) -> Void)?
 
@@ -84,15 +85,27 @@ class LockScreenWindow {
             NSLog("[UsageTimeAgent] DEV: Lock shown (auto-unlock in \(Int(devAutoUnlockSeconds))s, Ctrl+Opt+Cmd+U to unlock now)")
         }
 
-        // Dev mode: register global hotkey Ctrl+Opt+Cmd+U to unlock
+        // Dev mode: register hotkey Ctrl+Opt+Cmd+U to unlock
+        // Need BOTH local (for own window focus) and global (for other apps) monitors
         if devMode && globalHotkeyMonitor == nil {
-            globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let hotkeyHandler: (NSEvent) -> Void = { [weak self] event in
                 let requiredFlags: NSEvent.ModifierFlags = [.control, .option, .command]
                 if event.modifierFlags.contains(requiredFlags),
                    event.charactersIgnoringModifiers?.lowercased() == "u" {
                     NSLog("[UsageTimeAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U")
                     DispatchQueue.main.async { self?.hide() }
                 }
+            }
+            globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: hotkeyHandler)
+            localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                let requiredFlags: NSEvent.ModifierFlags = [.control, .option, .command]
+                if event.modifierFlags.contains(requiredFlags),
+                   event.charactersIgnoringModifiers?.lowercased() == "u" {
+                    NSLog("[UsageTimeAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U (local)")
+                    DispatchQueue.main.async { [weak self] in self?.hide() }
+                    return nil  // swallow the event
+                }
+                return event
             }
         }
 
@@ -111,6 +124,10 @@ class LockScreenWindow {
             NSEvent.removeMonitor(monitor)
             globalHotkeyMonitor = nil
         }
+        if let monitor = localHotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            localHotkeyMonitor = nil
+        }
 
         for window in windows {
             window.orderOut(nil)
@@ -124,7 +141,8 @@ class LockScreenWindow {
     // MARK: - Window creation
 
     private func createBlockingWindow(for screen: NSScreen, reason: LockReason) -> NSWindow {
-        let window = NSWindow(
+        // Use KeyableWindow subclass so borderless window can accept keyboard input
+        let window = KeyableWindow(
             contentRect: screen.frame,
             styleMask: .borderless,
             backing: .buffered,
@@ -304,6 +322,12 @@ struct LockScreenView: View {
             }
         }
     }
+}
+
+/// Borderless NSWindow subclass that can become key window (accept keyboard input).
+class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
 
 /// Live clock on the lock screen

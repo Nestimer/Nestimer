@@ -53,4 +53,7 @@ export const api = {
 
   // Usage
   getUsage: (deviceId, days = 7) => request(`/devices/${deviceId}/usage?days=${days}`),
+
+  // TOTP
+  regenerateSecret: (deviceId) => request(`/devices/${deviceId}/regenerate-secret`, { method: 'POST' }),
 }

@@ -114,7 +114,15 @@ export default function DeviceDetailPage() {
             </div>
           </>
         ) : (
-          <p style={{ color: '#86868b', textAlign: 'center' }}>Secret not configured</p>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ color: '#86868b', marginBottom: 12 }}>Secret not configured</p>
+            <button className="btn btn-primary btn-small" onClick={async () => {
+              try {
+                const updated = await api.regenerateSecret(id)
+                setDevice(updated)
+              } catch (e) { alert(e.message) }
+            }}>Generate Secret</button>
+          </div>
         )}
       </div>
 

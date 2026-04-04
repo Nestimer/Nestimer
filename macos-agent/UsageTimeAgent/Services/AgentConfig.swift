@@ -13,6 +13,15 @@ struct AgentConfig {
 
     static let configPath = "/etc/usagetime/config.plist"
 
+    /// True when running a Debug build (from Xcode or DerivedData).
+    static var isDebugBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static func load() -> AgentConfig {
         // Try plist first
         if let data = FileManager.default.contents(atPath: configPath),
@@ -21,7 +30,7 @@ struct AgentConfig {
                 serverURL: plist["ServerURL"] as? String ?? "http://localhost:8000",
                 apiToken: plist["APIToken"] as? String ?? "",
                 pollInterval: plist["PollInterval"] as? TimeInterval ?? 60,
-                devMode: plist["DevMode"] as? Bool ?? false,
+                devMode: (plist["DevMode"] as? Bool ?? false) || isDebugBuild,
                 devAutoUnlockSeconds: plist["DevAutoUnlockSeconds"] as? TimeInterval ?? 10
             )
         }
@@ -33,7 +42,7 @@ struct AgentConfig {
                 serverURL: defaults.string(forKey: "ServerURL") ?? "http://localhost:8000",
                 apiToken: token,
                 pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 60,
-                devMode: defaults.bool(forKey: "DevMode"),
+                devMode: defaults.bool(forKey: "DevMode") || isDebugBuild,
                 devAutoUnlockSeconds: defaults.double(forKey: "DevAutoUnlockSeconds").nonZero ?? 10
             )
         }
@@ -44,7 +53,7 @@ struct AgentConfig {
             serverURL: env["UTC_SERVER_URL"] ?? "http://localhost:8000",
             apiToken: env["UTC_API_TOKEN"] ?? "",
             pollInterval: TimeInterval(env["UTC_POLL_INTERVAL"] ?? "60") ?? 60,
-            devMode: env["UTC_DEV_MODE"] == "1",
+            devMode: env["UTC_DEV_MODE"] == "1" || isDebugBuild,
             devAutoUnlockSeconds: TimeInterval(env["UTC_DEV_AUTO_UNLOCK"] ?? "10") ?? 10
         )
     }
