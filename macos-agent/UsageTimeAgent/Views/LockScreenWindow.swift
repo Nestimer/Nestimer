@@ -75,6 +75,18 @@ class LockScreenWindow {
         // Also hide the Dock and steal focus
         NSApp.activate(ignoringOtherApps: true)
 
+        // Make the main window key again after activate, and ensure first responder
+        if let mainWindow = windows.first {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                mainWindow.makeKeyAndOrderFront(nil)
+                // Recursively find NSTextField inside SwiftUI hierarchy
+                if let contentView = mainWindow.contentView,
+                   let textField = self.findTextField(in: contentView) {
+                    mainWindow.makeFirstResponder(textField)
+                }
+            }
+        }
+
         // Dev mode: auto-unlock after N seconds
         if devMode {
             devAutoUnlockTimer?.invalidate()
@@ -138,6 +150,15 @@ class LockScreenWindow {
         NSLog("[UsageTimeAgent] Lock screen hidden")
     }
 
+    /// Recursively search for an NSTextField in a view hierarchy.
+    private func findTextField(in view: NSView) -> NSTextField? {
+        if let tf = view as? NSTextField { return tf }
+        for sub in view.subviews {
+            if let found = findTextField(in: sub) { return found }
+        }
+        return nil
+    }
+
     // MARK: - Window creation
 
     private func createBlockingWindow(for screen: NSScreen, reason: LockReason) -> NSWindow {
@@ -187,7 +208,7 @@ struct LockScreenView: View {
     @State private var opacity: Double = 0
     @State private var codeInput: String = ""
     @State private var codeError: Bool = false
-    @State private var showCodeField: Bool = false
+    @FocusState private var codeFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -231,73 +252,57 @@ struct LockScreenView: View {
                 TimeDisplayView()
                     .padding(.top, 20)
 
-                // TOTP code entry
-                if showCodeField {
-                    VStack(spacing: 12) {
-                        Text("Enter unlock code from parent")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
+                // TOTP code entry — always visible, auto-focused
+                VStack(spacing: 12) {
+                    Text("Enter unlock code from parent")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
 
-                        HStack(spacing: 12) {
-                            TextField("000000", text: $codeInput)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 36, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.center)
-                                .frame(width: 220)
-                                .padding(12)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(12)
-                                .onChange(of: codeInput) { newValue in
-                                    // Only allow digits, max 6
-                                    let filtered = newValue.filter { $0.isNumber }
-                                    if filtered.count <= 6 {
-                                        codeInput = filtered
-                                    } else {
-                                        codeInput = String(filtered.prefix(6))
-                                    }
-                                    codeError = false
+                    HStack(spacing: 12) {
+                        TextField("000000", text: $codeInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 36, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .frame(width: 220)
+                            .padding(12)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(12)
+                            .focused($codeFieldFocused)
+                            .onChange(of: codeInput) { newValue in
+                                let filtered = newValue.filter { $0.isNumber }
+                                if filtered.count <= 6 {
+                                    codeInput = filtered
+                                } else {
+                                    codeInput = String(filtered.prefix(6))
                                 }
-                                .onSubmit {
+                                codeError = false
+                                // Auto-submit when 6 digits entered
+                                if codeInput.count == 6 {
                                     submitCode()
                                 }
-
-                            Button(action: submitCode) {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.system(size: 36))
-                                    .foregroundStyle(.white.opacity(0.8))
                             }
-                            .buttonStyle(.plain)
-                            .disabled(codeInput.count != 6)
-                        }
+                            .onSubmit { submitCode() }
 
-                        if codeError {
-                            Text("Invalid code")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(.red)
-                                .transition(.opacity)
+                        Button(action: submitCode) {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .font(.system(size: 36))
+                                .foregroundStyle(codeInput.isEmpty ? .white.opacity(0.3) : .white.opacity(0.9))
                         }
-
-                        Text("Code is valid for 5 minutes")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.3))
+                        .buttonStyle(.plain)
+                        .disabled(codeInput.isEmpty)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                } else {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            showCodeField = true
-                        }
-                    } label: {
-                        Label("Enter unlock code", systemImage: "key.fill")
+
+                    if codeError {
+                        Text("Invalid code")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.4))
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.05))
-                            .cornerRadius(20)
+                            .foregroundStyle(.red)
+                            .transition(.opacity)
                     }
-                    .buttonStyle(.plain)
+
+                    Text("Code is valid for 5 minutes")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.3))
                 }
 
                 Spacer()

@@ -11,6 +11,8 @@ class PolicyEnforcer {
     private var previousRemaining: Double?
     /// Temporary unlock granted via TOTP code.
     private var temporaryUnlockUntil: Date?
+    /// Whether the lock screen is currently visible (used to drive fast sync).
+    private(set) var isLocked: Bool = false
 
     init(notificationManager: NotificationManager) {
         self.notifications = notificationManager
@@ -25,6 +27,7 @@ class PolicyEnforcer {
     func grantTemporaryAccess(minutes: Int = 30) {
         temporaryUnlockUntil = Date().addingTimeInterval(TimeInterval(minutes * 60))
         lockScreen.hide()
+        isLocked = false
         NSLog("[UsageTimeAgent] Temporary access granted for \(minutes) minutes (until \(temporaryUnlockUntil!))")
     }
 
@@ -50,6 +53,7 @@ class PolicyEnforcer {
         activeActivityEndsAt = endsAt
         if active != nil {
             lockScreen.hide()
+            isLocked = false
             return
         }
 
@@ -57,6 +61,7 @@ class PolicyEnforcer {
         if let unlockUntil = temporaryUnlockUntil {
             if Date() < unlockUntil {
                 lockScreen.hide()
+                isLocked = false
                 return  // Temporary override active
             } else {
                 temporaryUnlockUntil = nil  // Expired
@@ -73,6 +78,7 @@ class PolicyEnforcer {
         // 1. Check downtime
         if policy.downtimeEnabled && isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd) {
             lockScreen.show(reason: .downtime(until: policy.downtimeEnd))
+            isLocked = true
             return
         }
 
@@ -86,6 +92,7 @@ class PolicyEnforcer {
                 notifications.showTimeExpired()
                 lockScreen.show(reason: .timeExpired)
                 previousRemaining = remaining
+                isLocked = true
                 return
             }
 
@@ -108,6 +115,7 @@ class PolicyEnforcer {
 
         // No restrictions active — unlock
         lockScreen.hide()
+        isLocked = false
     }
 
     // MARK: - Downtime check

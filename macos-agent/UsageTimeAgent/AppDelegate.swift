@@ -89,9 +89,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Fire immediately
         performTick()
 
-        // Start server sync timer
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            Task { await self?.performSync() }
+        // Start server sync timer — runs every 5s so we can do fast sync when locked.
+        // When not locked, only every Nth tick does a real sync (to avoid hammering server).
+        var syncTickCount = 0
+        let normalTicksBetweenSync = max(1, Int(syncInterval / 5))
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            syncTickCount += 1
+            // When lock screen is active: sync every 5s. Otherwise sync every `normalTicksBetweenSync` ticks.
+            let shouldSync = self.policyEnforcer.isLocked || (syncTickCount % normalTicksBetweenSync == 0)
+            if shouldSync {
+                Task { await self.performSync() }
+            }
         }
         // Initial sync
         Task { await performSync() }

@@ -29,7 +29,7 @@ struct AgentConfig {
             return AgentConfig(
                 serverURL: plist["ServerURL"] as? String ?? "http://localhost:8000",
                 apiToken: plist["APIToken"] as? String ?? "",
-                pollInterval: plist["PollInterval"] as? TimeInterval ?? 60,
+                pollInterval: plist["PollInterval"] as? TimeInterval ?? 20,
                 devMode: (plist["DevMode"] as? Bool ?? false) || isDebugBuild,
                 devAutoUnlockSeconds: plist["DevAutoUnlockSeconds"] as? TimeInterval ?? 10
             )
@@ -41,7 +41,7 @@ struct AgentConfig {
             return AgentConfig(
                 serverURL: defaults.string(forKey: "ServerURL") ?? "http://localhost:8000",
                 apiToken: token,
-                pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 60,
+                pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 20,
                 devMode: defaults.bool(forKey: "DevMode") || isDebugBuild,
                 devAutoUnlockSeconds: defaults.double(forKey: "DevAutoUnlockSeconds").nonZero ?? 10
             )
@@ -52,7 +52,7 @@ struct AgentConfig {
         return AgentConfig(
             serverURL: env["UTC_SERVER_URL"] ?? "http://localhost:8000",
             apiToken: env["UTC_API_TOKEN"] ?? "",
-            pollInterval: TimeInterval(env["UTC_POLL_INTERVAL"] ?? "60") ?? 60,
+            pollInterval: TimeInterval(env["UTC_POLL_INTERVAL"] ?? "20") ?? 20,
             devMode: env["UTC_DEV_MODE"] == "1" || isDebugBuild,
             devAutoUnlockSeconds: TimeInterval(env["UTC_DEV_AUTO_UNLOCK"] ?? "10") ?? 10
         )
