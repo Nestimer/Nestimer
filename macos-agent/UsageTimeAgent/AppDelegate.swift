@@ -22,11 +22,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[UsageTimeAgent] Application starting...")
 
-        // Register as login item (auto-start on system login). macOS 13+.
-        registerAsLoginItem()
-
         // Load config
         agentConfig = AgentConfig.load()
+
+        // On first launch in Release builds, offer to install as a protected system service.
+        // Dev mode (Debug build) skips this — you don't want a system watchdog when testing.
+        if !agentConfig.devMode && !SystemInstaller.isInstalled {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                SystemInstaller.promptAndInstallIfNeeded()
+            }
+        } else if !SystemInstaller.isInstalled {
+            // Fallback for debug: register as login item only
+            registerAsLoginItem()
+        }
 
         guard !agentConfig.apiToken.isEmpty else {
             NSLog("[UsageTimeAgent] ERROR: No API token configured.")

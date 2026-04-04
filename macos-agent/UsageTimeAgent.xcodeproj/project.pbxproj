@@ -19,6 +19,7 @@
 		AA0010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0010; };
 		AA0011 /* SelfProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0011; };
 		AA0012 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0012; };
+		AA0013 /* SystemInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0013; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +35,7 @@
 		BB0010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB0011 /* SelfProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfProtection.swift; sourceTree = "<group>"; };
 		BB0012 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
+		BB0013 /* SystemInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInstaller.swift; sourceTree = "<group>"; };
 		CC0001 /* UsageTimeAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageTimeAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC0002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CC0003 /* UsageTimeAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UsageTimeAgent.entitlements; sourceTree = "<group>"; };
@@ -72,6 +74,7 @@
 				BB0009,
 				BB0011,
 				BB0012,
+				BB0013,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -157,6 +160,7 @@
 				AA0009,
 				AA0011,
 				AA0012,
+				AA0013,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
