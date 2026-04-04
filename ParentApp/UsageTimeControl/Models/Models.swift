@@ -59,13 +59,24 @@ struct Device: Decodable, Identifiable {
         case createdAt = "created_at"
     }
 
+    private var lastSeenDate: Date? {
+        guard let lastSeen else { return nil }
+        // Try with fractional seconds first (Python datetime default), then without
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: lastSeen) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: lastSeen)
+    }
+
     var isOnline: Bool {
-        guard let lastSeen, let date = ISO8601DateFormatter().date(from: lastSeen) else { return false }
+        guard let date = lastSeenDate else { return false }
         return Date().timeIntervalSince(date) < 180 // 3 minutes
     }
 
     var lastSeenText: String {
-        guard let lastSeen, let date = ISO8601DateFormatter().date(from: lastSeen) else { return "never" }
+        guard let date = lastSeenDate else { return "never" }
         let diff = Date().timeIntervalSince(date)
         if diff < 120 { return "just now" }
         if diff < 3600 { return "\(Int(diff / 60)) min ago" }
