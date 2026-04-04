@@ -120,8 +120,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Core loop
 
     private func performTick() {
-        // Pause counting during scheduled activity window
-        if policyEnforcer.activeActivity != nil {
+        // Pause counting during scheduled activity OR TOTP temporary unlock
+        if policyEnforcer.activeActivity != nil || policyEnforcer.isTemporaryUnlockActive {
             let current = usageTracker.getUsedMinutesToday()
             statusBar?.updateDisplay(usedMinutes: current)
             return

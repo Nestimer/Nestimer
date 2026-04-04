@@ -14,6 +14,12 @@ class PolicyEnforcer {
     /// Whether the lock screen is currently visible (used to drive fast sync).
     private(set) var isLocked: Bool = false
 
+    /// True while a TOTP-granted temporary unlock window is active.
+    var isTemporaryUnlockActive: Bool {
+        guard let until = temporaryUnlockUntil else { return false }
+        return Date() < until
+    }
+
     init(notificationManager: NotificationManager) {
         self.notifications = notificationManager
     }
