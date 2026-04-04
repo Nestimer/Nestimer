@@ -25,3 +25,11 @@ async def init_db():
         columns = [row[1] for row in result.fetchall()]
         if "shared_secret" not in columns:
             await conn.execute(text("ALTER TABLE devices ADD COLUMN shared_secret TEXT"))
+
+        # Per-day screen time limits
+        result = await conn.execute(text("PRAGMA table_info(policies)"))
+        policy_columns = {row[1] for row in result.fetchall()}
+        for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]:
+            col = f"screen_time_{day}_minutes"
+            if col not in policy_columns:
+                await conn.execute(text(f"ALTER TABLE policies ADD COLUMN {col} INTEGER"))

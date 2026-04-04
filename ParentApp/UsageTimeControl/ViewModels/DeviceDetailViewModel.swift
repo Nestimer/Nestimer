@@ -75,8 +75,31 @@ class DeviceDetailViewModel: ObservableObject {
             downtimeWeekendEnd: new.downtimeWeekendEnd ?? existing.downtimeWeekendEnd,
             screenTimeEnabled: new.screenTimeEnabled ?? existing.screenTimeEnabled,
             screenTimeLimitMinutes: new.screenTimeLimitMinutes ?? existing.screenTimeLimitMinutes,
-            screenTimeWeekendLimitMinutes: new.screenTimeWeekendLimitMinutes ?? existing.screenTimeWeekendLimitMinutes
+            screenTimeWeekendLimitMinutes: new.screenTimeWeekendLimitMinutes ?? existing.screenTimeWeekendLimitMinutes,
+            screenTimeMonMinutes: new.screenTimeMonMinutes ?? existing.screenTimeMonMinutes,
+            screenTimeTueMinutes: new.screenTimeTueMinutes ?? existing.screenTimeTueMinutes,
+            screenTimeWedMinutes: new.screenTimeWedMinutes ?? existing.screenTimeWedMinutes,
+            screenTimeThuMinutes: new.screenTimeThuMinutes ?? existing.screenTimeThuMinutes,
+            screenTimeFriMinutes: new.screenTimeFriMinutes ?? existing.screenTimeFriMinutes,
+            screenTimeSatMinutes: new.screenTimeSatMinutes ?? existing.screenTimeSatMinutes,
+            screenTimeSunMinutes: new.screenTimeSunMinutes ?? existing.screenTimeSunMinutes
         )
+    }
+
+    func setDayLimit(day: Int, minutes: Int) async {
+        // day: 0=Mon, 6=Sun
+        var update = PolicyUpdate()
+        switch day {
+        case 0: update.screenTimeMonMinutes = minutes
+        case 1: update.screenTimeTueMinutes = minutes
+        case 2: update.screenTimeWedMinutes = minutes
+        case 3: update.screenTimeThuMinutes = minutes
+        case 4: update.screenTimeFriMinutes = minutes
+        case 5: update.screenTimeSatMinutes = minutes
+        case 6: update.screenTimeSunMinutes = minutes
+        default: return
+        }
+        await updatePolicy(update)
     }
 
     // Convenience helpers for toggling

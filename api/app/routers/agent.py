@@ -33,7 +33,15 @@ def get_effective_downtime(policy: Policy, now: datetime) -> tuple[str, str]:
 
 
 def get_effective_limit(policy: Policy, now: datetime) -> int:
-    weekday = now.weekday()
+    weekday = now.weekday()  # 0=Mon, 6=Sun
+    # Check per-day override first
+    day_fields = ["screen_time_mon_minutes", "screen_time_tue_minutes", "screen_time_wed_minutes",
+                  "screen_time_thu_minutes", "screen_time_fri_minutes", "screen_time_sat_minutes",
+                  "screen_time_sun_minutes"]
+    day_value = getattr(policy, day_fields[weekday], None)
+    if day_value is not None:
+        return day_value
+    # Fall back to weekend/weekday default
     is_weekend = weekday >= 5
     if is_weekend and policy.screen_time_weekend_limit_minutes is not None:
         return policy.screen_time_weekend_limit_minutes

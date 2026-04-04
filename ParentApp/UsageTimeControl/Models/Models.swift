@@ -87,6 +87,13 @@ struct Policy: Decodable {
     let screenTimeEnabled: Bool
     let screenTimeLimitMinutes: Int
     let screenTimeWeekendLimitMinutes: Int?
+    let screenTimeMonMinutes: Int?
+    let screenTimeTueMinutes: Int?
+    let screenTimeWedMinutes: Int?
+    let screenTimeThuMinutes: Int?
+    let screenTimeFriMinutes: Int?
+    let screenTimeSatMinutes: Int?
+    let screenTimeSunMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case downtimeEnabled = "downtime_enabled"
@@ -99,6 +106,13 @@ struct Policy: Decodable {
         case screenTimeEnabled = "screen_time_enabled"
         case screenTimeLimitMinutes = "screen_time_limit_minutes"
         case screenTimeWeekendLimitMinutes = "screen_time_weekend_limit_minutes"
+        case screenTimeMonMinutes = "screen_time_mon_minutes"
+        case screenTimeTueMinutes = "screen_time_tue_minutes"
+        case screenTimeWedMinutes = "screen_time_wed_minutes"
+        case screenTimeThuMinutes = "screen_time_thu_minutes"
+        case screenTimeFriMinutes = "screen_time_fri_minutes"
+        case screenTimeSatMinutes = "screen_time_sat_minutes"
+        case screenTimeSunMinutes = "screen_time_sun_minutes"
     }
 }
 
@@ -113,6 +127,13 @@ struct PolicyUpdate: Encodable {
     var screenTimeEnabled: Bool?
     var screenTimeLimitMinutes: Int?
     var screenTimeWeekendLimitMinutes: Int?
+    var screenTimeMonMinutes: Int?
+    var screenTimeTueMinutes: Int?
+    var screenTimeWedMinutes: Int?
+    var screenTimeThuMinutes: Int?
+    var screenTimeFriMinutes: Int?
+    var screenTimeSatMinutes: Int?
+    var screenTimeSunMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case downtimeEnabled = "downtime_enabled"
@@ -125,6 +146,13 @@ struct PolicyUpdate: Encodable {
         case screenTimeEnabled = "screen_time_enabled"
         case screenTimeLimitMinutes = "screen_time_limit_minutes"
         case screenTimeWeekendLimitMinutes = "screen_time_weekend_limit_minutes"
+        case screenTimeMonMinutes = "screen_time_mon_minutes"
+        case screenTimeTueMinutes = "screen_time_tue_minutes"
+        case screenTimeWedMinutes = "screen_time_wed_minutes"
+        case screenTimeThuMinutes = "screen_time_thu_minutes"
+        case screenTimeFriMinutes = "screen_time_fri_minutes"
+        case screenTimeSatMinutes = "screen_time_sat_minutes"
+        case screenTimeSunMinutes = "screen_time_sun_minutes"
     }
 }
 

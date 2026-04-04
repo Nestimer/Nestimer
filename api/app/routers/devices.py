@@ -35,6 +35,31 @@ def format_time(t: time | None) -> str | None:
     return t.strftime("%H:%M")
 
 
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def policy_to_out(policy: Policy) -> PolicyOut:
+    return PolicyOut(
+        downtime_enabled=policy.downtime_enabled,
+        downtime_start=format_time(policy.downtime_start),
+        downtime_end=format_time(policy.downtime_end),
+        downtime_weekday_start=format_time(policy.downtime_weekday_start),
+        downtime_weekday_end=format_time(policy.downtime_weekday_end),
+        downtime_weekend_start=format_time(policy.downtime_weekend_start),
+        downtime_weekend_end=format_time(policy.downtime_weekend_end),
+        screen_time_enabled=policy.screen_time_enabled,
+        screen_time_limit_minutes=policy.screen_time_limit_minutes,
+        screen_time_weekend_limit_minutes=policy.screen_time_weekend_limit_minutes,
+        screen_time_mon_minutes=policy.screen_time_mon_minutes,
+        screen_time_tue_minutes=policy.screen_time_tue_minutes,
+        screen_time_wed_minutes=policy.screen_time_wed_minutes,
+        screen_time_thu_minutes=policy.screen_time_thu_minutes,
+        screen_time_fri_minutes=policy.screen_time_fri_minutes,
+        screen_time_sat_minutes=policy.screen_time_sat_minutes,
+        screen_time_sun_minutes=policy.screen_time_sun_minutes,
+    )
+
+
 @router.post("", response_model=DeviceOut)
 async def create_device(
     data: DeviceCreate,
@@ -147,18 +172,7 @@ async def get_policy(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
-    return PolicyOut(
-        downtime_enabled=policy.downtime_enabled,
-        downtime_start=format_time(policy.downtime_start),
-        downtime_end=format_time(policy.downtime_end),
-        downtime_weekday_start=format_time(policy.downtime_weekday_start),
-        downtime_weekday_end=format_time(policy.downtime_weekday_end),
-        downtime_weekend_start=format_time(policy.downtime_weekend_start),
-        downtime_weekend_end=format_time(policy.downtime_weekend_end),
-        screen_time_enabled=policy.screen_time_enabled,
-        screen_time_limit_minutes=policy.screen_time_limit_minutes,
-        screen_time_weekend_limit_minutes=policy.screen_time_weekend_limit_minutes,
-    )
+    return policy_to_out(policy)
 
 
 @router.put("/{device_id}/policy", response_model=PolicyOut)
@@ -200,22 +214,16 @@ async def update_policy(
         policy.screen_time_limit_minutes = data.screen_time_limit_minutes
     if data.screen_time_weekend_limit_minutes is not None:
         policy.screen_time_weekend_limit_minutes = data.screen_time_weekend_limit_minutes
+    for day in DAYS:
+        field = f"screen_time_{day}_minutes"
+        value = getattr(data, field)
+        if value is not None:
+            setattr(policy, field, value)
 
     await db.commit()
     await db.refresh(policy)
 
-    return PolicyOut(
-        downtime_enabled=policy.downtime_enabled,
-        downtime_start=format_time(policy.downtime_start),
-        downtime_end=format_time(policy.downtime_end),
-        downtime_weekday_start=format_time(policy.downtime_weekday_start),
-        downtime_weekday_end=format_time(policy.downtime_weekday_end),
-        downtime_weekend_start=format_time(policy.downtime_weekend_start),
-        downtime_weekend_end=format_time(policy.downtime_weekend_end),
-        screen_time_enabled=policy.screen_time_enabled,
-        screen_time_limit_minutes=policy.screen_time_limit_minutes,
-        screen_time_weekend_limit_minutes=policy.screen_time_weekend_limit_minutes,
-    )
+    return policy_to_out(policy)
 
 
 # --- Usage logs ---

@@ -256,6 +256,42 @@ export default function DeviceDetailPage() {
                 <span className="unit">minutes</span>
               </div>
             </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 14, color: '#86868b', display: 'block', marginBottom: 6 }}>
+                Per day overrides (leave empty = use weekday/weekend default)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                {[
+                  { key: 'mon', label: 'Mon', idx: 0 },
+                  { key: 'tue', label: 'Tue', idx: 1 },
+                  { key: 'wed', label: 'Wed', idx: 2 },
+                  { key: 'thu', label: 'Thu', idx: 3 },
+                  { key: 'fri', label: 'Fri', idx: 4 },
+                  { key: 'sat', label: 'Sat', idx: 5 },
+                  { key: 'sun', label: 'Sun', idx: 6 },
+                ].map(day => {
+                  const field = `screen_time_${day.key}_minutes`
+                  const fallback = (day.idx >= 5 ? policy.screen_time_weekend_limit_minutes : null) || policy.screen_time_limit_minutes
+                  return (
+                    <div key={day.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, color: '#86868b', width: 32 }}>{day.label}</span>
+                      <input
+                        type="number"
+                        min="15"
+                        max="1440"
+                        step="15"
+                        style={{ width: 70, padding: '6px 8px', border: '1px solid #d2d2d7', borderRadius: 8, fontSize: 14 }}
+                        value={policy[field] || ''}
+                        placeholder={String(fallback)}
+                        onChange={(e) => savePolicy({ [field]: parseInt(e.target.value) || null })}
+                      />
+                      <span style={{ fontSize: 12, color: '#86868b' }}>m</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </>
         )}
       </div>

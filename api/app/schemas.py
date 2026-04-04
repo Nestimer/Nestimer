@@ -81,6 +81,13 @@ class PolicyUpdate(BaseModel):
     screen_time_enabled: Optional[bool] = None
     screen_time_limit_minutes: Optional[int] = Field(None, ge=15, le=1440)
     screen_time_weekend_limit_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_mon_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_tue_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_wed_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_thu_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_fri_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_sat_minutes: Optional[int] = Field(None, ge=15, le=1440)
+    screen_time_sun_minutes: Optional[int] = Field(None, ge=15, le=1440)
 
     @field_validator(
         "downtime_start", "downtime_end",
@@ -103,6 +110,13 @@ class PolicyOut(BaseModel):
     screen_time_enabled: bool
     screen_time_limit_minutes: int
     screen_time_weekend_limit_minutes: Optional[int] = None
+    screen_time_mon_minutes: Optional[int] = None
+    screen_time_tue_minutes: Optional[int] = None
+    screen_time_wed_minutes: Optional[int] = None
+    screen_time_thu_minutes: Optional[int] = None
+    screen_time_fri_minutes: Optional[int] = None
+    screen_time_sat_minutes: Optional[int] = None
+    screen_time_sun_minutes: Optional[int] = None
 
 
 # --- Usage ---

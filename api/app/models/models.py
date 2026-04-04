@@ -68,6 +68,15 @@ class Policy(Base):
     # Weekend can have different limit
     screen_time_weekend_limit_minutes = Column(Integer, nullable=True)  # if null, use weekday limit
 
+    # Per-day overrides (Mon=0, Sun=6). If null, fall back to weekend/weekday/default.
+    screen_time_mon_minutes = Column(Integer, nullable=True)
+    screen_time_tue_minutes = Column(Integer, nullable=True)
+    screen_time_wed_minutes = Column(Integer, nullable=True)
+    screen_time_thu_minutes = Column(Integer, nullable=True)
+    screen_time_fri_minutes = Column(Integer, nullable=True)
+    screen_time_sat_minutes = Column(Integer, nullable=True)
+    screen_time_sun_minutes = Column(Integer, nullable=True)
+
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="policy")

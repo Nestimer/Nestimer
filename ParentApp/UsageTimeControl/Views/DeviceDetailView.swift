@@ -233,10 +233,66 @@ struct DeviceDetailView: View {
                     ) { newMin in
                         Task { await vm.setWeekendLimit(newMin) }
                     }
+
+                    Divider().padding(.leading, 44)
+                    perDayPickerRows(policy: policy)
                 }
             }
             .background(.regularMaterial)
             .cornerRadius(16)
+        }
+    }
+
+    // MARK: - Per-day limits
+
+    private func perDayPickerRows(policy: Policy) -> some View {
+        let days: [(label: String, index: Int, value: Int?)] = [
+            ("Mon", 0, policy.screenTimeMonMinutes),
+            ("Tue", 1, policy.screenTimeTueMinutes),
+            ("Wed", 2, policy.screenTimeWedMinutes),
+            ("Thu", 3, policy.screenTimeThuMinutes),
+            ("Fri", 4, policy.screenTimeFriMinutes),
+            ("Sat", 5, policy.screenTimeSatMinutes),
+            ("Sun", 6, policy.screenTimeSunMinutes),
+        ]
+        return VStack(spacing: 0) {
+            HStack {
+                Text("Per day overrides")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 44)
+                Spacer()
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            ForEach(days, id: \.index) { day in
+                let fallback = (day.index >= 5 ? policy.screenTimeWeekendLimitMinutes : nil) ?? policy.screenTimeLimitMinutes
+                let current = day.value ?? fallback
+                HStack {
+                    Text(day.label)
+                        .foregroundStyle(day.value != nil ? .primary : .secondary)
+                        .font(.system(.body, design: .rounded))
+                        .frame(width: 40, alignment: .leading)
+                        .padding(.leading, 44)
+                    Spacer()
+                    Stepper(
+                        value: Binding(
+                            get: { current },
+                            set: { newMin in Task { await vm.setDayLimit(day: day.index, minutes: newMin) } }
+                        ),
+                        in: 15...720,
+                        step: 15
+                    ) {
+                        Text(formatMinutes(current))
+                            .font(.system(.body, design: .rounded))
+                            .fontWeight(day.value != nil ? .medium : .regular)
+                            .foregroundStyle(day.value != nil ? .primary : .secondary)
+                            .monospacedDigit()
+                    }
+                    .padding(.trailing, 16)
+                }
+                .padding(.vertical, 6)
+            }
         }
     }
 
