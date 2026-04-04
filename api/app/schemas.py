@@ -1,8 +1,17 @@
 import re
-from datetime import time, datetime
+from datetime import time, datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, field_validator, Field, field_serializer
+
+
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Convert naive datetimes (from legacy rows) to UTC-aware."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 # --- Auth ---
@@ -50,12 +59,22 @@ class DeviceOut(BaseModel):
     last_seen: Optional[datetime] = None
     created_at: datetime
 
+    @field_serializer("last_seen", "created_at")
+    def _serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        dt = _ensure_utc(dt)
+        return dt.isoformat() if dt else None
+
 
 class DeviceListOut(BaseModel):
     id: str
     name: str
     child_name: str
     last_seen: Optional[datetime] = None
+
+    @field_serializer("last_seen")
+    def _serialize_last_seen(self, dt: Optional[datetime]) -> Optional[str]:
+        dt = _ensure_utc(dt)
+        return dt.isoformat() if dt else None
 
 
 # --- Policy ---

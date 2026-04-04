@@ -19,7 +19,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
 
@@ -34,8 +34,8 @@ class Device(Base):
     child_name = Column(String, nullable=False)
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
     shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)
-    last_seen = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="devices")
     policy = relationship("Policy", back_populates="device", uselist=False, cascade="all, delete-orphan")
@@ -78,7 +78,7 @@ class Policy(Base):
     screen_time_sat_minutes = Column(Integer, nullable=True)
     screen_time_sun_minutes = Column(Integer, nullable=True)
 
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="policy")
 
@@ -95,7 +95,7 @@ class UsageLog(Base):
     device_id = Column(String, ForeignKey("devices.id"), nullable=False)
     date = Column(String, nullable=False)  # YYYY-MM-DD
     total_minutes = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_updated = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="usage_logs")
 
@@ -113,6 +113,6 @@ class Activity(Base):
     buffer_before_minutes = Column(Integer, default=5)
     buffer_after_minutes = Column(Integer, default=5)
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="activities")
