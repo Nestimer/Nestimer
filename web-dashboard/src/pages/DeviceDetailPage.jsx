@@ -38,10 +38,9 @@ export default function DeviceDetailPage() {
   // TOTP code generation
   useEffect(() => {
     if (!device?.shared_secret) return
-    const update = async () => {
+    const update = () => {
       try {
-        const code = await generateTOTP(device.shared_secret)
-        setTotpCode(code)
+        setTotpCode(generateTOTP(device.shared_secret))
         setTotpRemaining(totpSecondsRemaining())
       } catch (e) { console.error('TOTP error:', e) }
     }
