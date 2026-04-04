@@ -151,6 +151,50 @@ class AgentConfig(BaseModel):
     screen_time_limit_minutes: int
     used_minutes_today: float
     shared_secret: Optional[str] = None
+    activities: list["ActivityOut"] = Field(default_factory=list)
+
+
+class ActivityCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    day_of_week: int = Field(ge=0, le=6)
+    start_time: str
+    end_time: str
+    buffer_before_minutes: int = Field(5, ge=0, le=60)
+    buffer_after_minutes: int = Field(5, ge=0, le=60)
+    enabled: bool = True
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def check_time(cls, v):
+        if not TIME_PATTERN.match(v):
+            raise ValueError(f"Invalid time format '{v}', expected HH:MM")
+        return v
+
+
+class ActivityUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    day_of_week: Optional[int] = Field(None, ge=0, le=6)
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    buffer_before_minutes: Optional[int] = Field(None, ge=0, le=60)
+    buffer_after_minutes: Optional[int] = Field(None, ge=0, le=60)
+    enabled: Optional[bool] = None
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def check_time(cls, v):
+        return validate_time_str(v)
+
+
+class ActivityOut(BaseModel):
+    id: str
+    name: str
+    day_of_week: int
+    start_time: str
+    end_time: str
+    buffer_before_minutes: int
+    buffer_after_minutes: int
+    enabled: bool
 
 
 class TOTPVerifyRequest(BaseModel):
@@ -160,3 +204,7 @@ class TOTPVerifyRequest(BaseModel):
 class TOTPVerifyResponse(BaseModel):
     valid: bool
     granted_minutes: int = 0
+
+
+# Resolve forward reference
+AgentConfig.model_rebuild()

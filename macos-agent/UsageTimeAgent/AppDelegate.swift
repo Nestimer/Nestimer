@@ -99,6 +99,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Core loop
 
     private func performTick() {
+        // Pause counting during scheduled activity window
+        if policyEnforcer.activeActivity != nil {
+            let current = usageTracker.getUsedMinutesToday()
+            statusBar?.updateDisplay(usedMinutes: current)
+            return
+        }
         let usedMinutes = usageTracker.tick()
         statusBar?.updateDisplay(usedMinutes: usedMinutes)
     }
@@ -128,6 +134,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await MainActor.run {
                 policyEnforcer.evaluate(policy: policy, usedMinutesToday: usedMinutes)
                 statusBar?.updatePolicy(policy: policy)
+                statusBar?.activeActivityName = policyEnforcer.activeActivity?.name
+                statusBar?.activeActivityEndsAt = policyEnforcer.activeActivityEndsAt
             }
 
             NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", usedMinutes))m, limit: \(policy.screenTimeLimitMinutes)m")

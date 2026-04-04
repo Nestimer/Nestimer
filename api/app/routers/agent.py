@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
-from ..models.models import Device, Policy, UsageLog
-from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse
+from ..models.models import Device, Policy, UsageLog, Activity
+from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import verify_totp
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -86,6 +86,24 @@ async def get_config(
     ds, de = get_effective_downtime(policy, now)
     limit = get_effective_limit(policy, now)
 
+    # Load all enabled activities for this device
+    result = await db.execute(
+        select(Activity).where(Activity.device_id == device.id, Activity.enabled == True)
+    )
+    activities = [
+        ActivityOut(
+            id=a.id,
+            name=a.name,
+            day_of_week=a.day_of_week,
+            start_time=a.start_time.strftime("%H:%M"),
+            end_time=a.end_time.strftime("%H:%M"),
+            buffer_before_minutes=a.buffer_before_minutes,
+            buffer_after_minutes=a.buffer_after_minutes,
+            enabled=a.enabled,
+        )
+        for a in result.scalars().all()
+    ]
+
     return AgentConfig(
         downtime_enabled=policy.downtime_enabled,
         downtime_start=ds,
@@ -94,6 +112,7 @@ async def get_config(
         screen_time_limit_minutes=limit,
         used_minutes_today=used_today,
         shared_secret=device.shared_secret,
+        activities=activities,
     )
 
 

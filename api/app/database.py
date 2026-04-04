@@ -33,3 +33,5 @@ async def init_db():
             col = f"screen_time_{day}_minutes"
             if col not in policy_columns:
                 await conn.execute(text(f"ALTER TABLE policies ADD COLUMN {col} INTEGER"))
+
+        # activities table is created by metadata.create_all if missing — nothing to do

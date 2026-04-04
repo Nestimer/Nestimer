@@ -19,17 +19,21 @@ export default function DeviceDetailPage() {
   const [showToken, setShowToken] = useState(false)
   const [totpCode, setTotpCode] = useState(null)
   const [totpRemaining, setTotpRemaining] = useState(0)
+  const [activities, setActivities] = useState([])
+  const [newActivity, setNewActivity] = useState(null)
 
   const load = useCallback(async () => {
     try {
-      const [dev, pol, usg] = await Promise.all([
+      const [dev, pol, usg, acts] = await Promise.all([
         api.getDevice(id),
         api.getPolicy(id),
         api.getUsage(id, 7),
+        api.listActivities(id),
       ])
       setDevice(dev)
       setPolicy(pol)
       setUsage(usg)
+      setActivities(acts)
     } catch (e) { console.error(e) }
   }, [id])
 
@@ -293,6 +297,88 @@ export default function DeviceDetailPage() {
               </div>
             </div>
           </>
+        )}
+      </div>
+
+      {/* Scheduled activities */}
+      <h2 className="section-title">Scheduled Activities</h2>
+      <div className="card">
+        <p style={{ color: '#86868b', fontSize: 13, marginBottom: 12 }}>
+          Time within these windows (including buffer) is not counted toward screen time, and the computer is unlocked even during downtime.
+        </p>
+        {activities.length === 0 && !newActivity && (
+          <p style={{ color: '#86868b', textAlign: 'center', padding: '12px 0' }}>No activities yet</p>
+        )}
+        {activities.map(a => {
+          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+          return (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f5f5f7' }}>
+              <input type="checkbox" checked={a.enabled} onChange={async (e) => {
+                try { const upd = await api.updateActivity(id, a.id, { enabled: e.target.checked }); setActivities(activities.map(x => x.id === a.id ? upd : x)) } catch (err) { alert(err.message) }
+              }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500 }}>{a.name}</div>
+                <div style={{ fontSize: 12, color: '#86868b' }}>
+                  {days[a.day_of_week]} {a.start_time}–{a.end_time} (±{a.buffer_before_minutes}m)
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-small" onClick={async () => {
+                if (!confirm(`Delete activity "${a.name}"?`)) return
+                try { await api.deleteActivity(id, a.id); setActivities(activities.filter(x => x.id !== a.id)) } catch (err) { alert(err.message) }
+              }}>Delete</button>
+            </div>
+          )
+        })}
+        {newActivity ? (
+          <div style={{ padding: '12px 0', borderTop: activities.length > 0 ? '1px solid #f5f5f7' : 'none' }}>
+            <div className="form-group">
+              <label>Name</label>
+              <input type="text" value={newActivity.name} onChange={e => setNewActivity({ ...newActivity, name: e.target.value })} placeholder="English" />
+            </div>
+            <div className="form-group">
+              <label>Day</label>
+              <select value={newActivity.day_of_week} onChange={e => setNewActivity({ ...newActivity, day_of_week: parseInt(e.target.value) })}
+                style={{ width: '100%', padding: 10, border: '1px solid #d2d2d7', borderRadius: 10, fontSize: 16 }}>
+                <option value={0}>Monday</option>
+                <option value={1}>Tuesday</option>
+                <option value={2}>Wednesday</option>
+                <option value={3}>Thursday</option>
+                <option value={4}>Friday</option>
+                <option value={5}>Saturday</option>
+                <option value={6}>Sunday</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Start</label>
+                <input type="time" value={newActivity.start_time} onChange={e => setNewActivity({ ...newActivity, start_time: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>End</label>
+                <input type="time" value={newActivity.end_time} onChange={e => setNewActivity({ ...newActivity, end_time: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Buffer before (min)</label>
+                <input type="number" min="0" max="60" value={newActivity.buffer_before_minutes} onChange={e => setNewActivity({ ...newActivity, buffer_before_minutes: parseInt(e.target.value) || 0 })} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Buffer after (min)</label>
+                <input type="number" min="0" max="60" value={newActivity.buffer_after_minutes} onChange={e => setNewActivity({ ...newActivity, buffer_after_minutes: parseInt(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="btn btn-primary btn-small" onClick={async () => {
+                try { const created = await api.createActivity(id, newActivity); setActivities([...activities, created]); setNewActivity(null) } catch (err) { alert(err.message) }
+              }}>Create</button>
+              <button className="btn btn-secondary btn-small" onClick={() => setNewActivity(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn btn-secondary btn-small" style={{ marginTop: 8 }} onClick={() => setNewActivity({
+            name: '', day_of_week: 0, start_time: '16:00', end_time: '17:00', buffer_before_minutes: 5, buffer_after_minutes: 5, enabled: true
+          })}>+ Add Activity</button>
         )}
       </div>
 

@@ -1,6 +1,26 @@
 import Foundation
 
 /// Response from GET /api/v1/agent/config
+struct ScheduledActivity: Codable {
+    let id: String
+    let name: String
+    let dayOfWeek: Int
+    let startTime: String
+    let endTime: String
+    let bufferBeforeMinutes: Int
+    let bufferAfterMinutes: Int
+    let enabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, enabled
+        case dayOfWeek = "day_of_week"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case bufferBeforeMinutes = "buffer_before_minutes"
+        case bufferAfterMinutes = "buffer_after_minutes"
+    }
+}
+
 struct ServerPolicy: Codable {
     let downtimeEnabled: Bool
     let downtimeStart: String
@@ -9,6 +29,7 @@ struct ServerPolicy: Codable {
     let screenTimeLimitMinutes: Int
     let usedMinutesToday: Double
     let sharedSecret: String?
+    let activities: [ScheduledActivity]?
 
     enum CodingKeys: String, CodingKey {
         case downtimeEnabled = "downtime_enabled"
@@ -18,6 +39,7 @@ struct ServerPolicy: Codable {
         case screenTimeLimitMinutes = "screen_time_limit_minutes"
         case usedMinutesToday = "used_minutes_today"
         case sharedSecret = "shared_secret"
+        case activities
     }
 }
 

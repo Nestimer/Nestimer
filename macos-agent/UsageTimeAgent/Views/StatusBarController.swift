@@ -10,6 +10,9 @@ class StatusBarController {
     private var menu: NSMenu
     /// When true, shows DEV badge and Quit menu item.
     var devMode = false
+    /// Currently active scheduled activity (e.g. "English") — shown in menu bar title.
+    var activeActivityName: String?
+    var activeActivityEndsAt: String?
 
     init(usageTracker: UsageTracker?) {
         self.usageTracker = usageTracker
@@ -24,6 +27,13 @@ class StatusBarController {
 
     func updateDisplay(usedMinutes: Double) {
         guard let button = statusItem.button else { return }
+
+        // If activity is active, show its name+end time and skip usage display
+        if let name = activeActivityName, let endsAt = activeActivityEndsAt {
+            button.title = " \(name) until \(endsAt)"
+            buildMenu()
+            return
+        }
 
         if let policy = currentPolicy, policy.screenTimeEnabled {
             let remaining = Double(policy.screenTimeLimitMinutes) - usedMinutes

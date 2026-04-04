@@ -37,8 +37,22 @@ class PolicyEnforcer {
         }
     }
 
+    /// The activity currently active (with buffer), if any. Updated on each evaluate().
+    private(set) var activeActivity: ScheduledActivity?
+    /// End time (HH:MM) of current activity window (including buffer), for status bar display.
+    private(set) var activeActivityEndsAt: String?
+
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
     func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
+        // 0. Check scheduled activities (highest priority — bypasses downtime + limit)
+        let (active, endsAt) = findActiveActivity(in: policy.activities ?? [])
+        activeActivity = active
+        activeActivityEndsAt = endsAt
+        if active != nil {
+            lockScreen.hide()
+            return
+        }
+
         // Check temporary unlock (granted via TOTP code)
         if let unlockUntil = temporaryUnlockUntil {
             if Date() < unlockUntil {
@@ -124,5 +138,29 @@ class PolicyEnforcer {
         let parts = time.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return 0 }
         return parts[0] * 60 + parts[1]
+    }
+
+    // MARK: - Activity check
+
+    /// Returns the currently active activity (considering buffer) and its end time, if any.
+    private func findActiveActivity(in activities: [ScheduledActivity]) -> (ScheduledActivity?, String?) {
+        let now = Date()
+        let calendar = Calendar.current
+        // Swift weekday: Sun=1..Sat=7 → convert to Mon=0..Sun=6
+        let swiftWeekday = calendar.component(.weekday, from: now)
+        let mondayBased = (swiftWeekday + 5) % 7
+        let currentTotal = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+
+        for activity in activities where activity.enabled && activity.dayOfWeek == mondayBased {
+            let start = parseTimeToMinutes(activity.startTime) - activity.bufferBeforeMinutes
+            let end = parseTimeToMinutes(activity.endTime) + activity.bufferAfterMinutes
+            if currentTotal >= start && currentTotal < end {
+                let endH = end / 60
+                let endM = end % 60
+                let endStr = String(format: "%02d:%02d", endH % 24, endM)
+                return (activity, endStr)
+            }
+        }
+        return (nil, nil)
     }
 }

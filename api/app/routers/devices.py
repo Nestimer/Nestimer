@@ -9,11 +9,12 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, create_agent_token
 from ..database import get_db
-from ..models.models import User, Device, Policy, UsageLog
+from ..models.models import User, Device, Policy, UsageLog, Activity
 from ..schemas import (
     DeviceCreate, DeviceOut, DeviceListOut,
     PolicyUpdate, PolicyOut,
     UsageOut,
+    ActivityCreate, ActivityUpdate, ActivityOut,
 )
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -277,3 +278,119 @@ async def regenerate_secret(
         last_seen=device.last_seen,
         created_at=device.created_at,
     )
+
+
+# --- Activities ---
+def activity_to_out(a: Activity) -> ActivityOut:
+    return ActivityOut(
+        id=a.id,
+        name=a.name,
+        day_of_week=a.day_of_week,
+        start_time=format_time(a.start_time),
+        end_time=format_time(a.end_time),
+        buffer_before_minutes=a.buffer_before_minutes,
+        buffer_after_minutes=a.buffer_after_minutes,
+        enabled=a.enabled,
+    )
+
+
+async def _verify_device_owner(db: AsyncSession, device_id: str, user_id: str) -> Device:
+    result = await db.execute(
+        select(Device).where(Device.id == device_id, Device.owner_id == user_id)
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+
+@router.get("/{device_id}/activities", response_model=List[ActivityOut])
+async def list_activities(
+    device_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_device_owner(db, device_id, user.id)
+    result = await db.execute(
+        select(Activity).where(Activity.device_id == device_id).order_by(Activity.day_of_week, Activity.start_time)
+    )
+    return [activity_to_out(a) for a in result.scalars().all()]
+
+
+@router.post("/{device_id}/activities", response_model=ActivityOut)
+async def create_activity(
+    device_id: str,
+    data: ActivityCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_device_owner(db, device_id, user.id)
+    activity = Activity(
+        device_id=device_id,
+        name=data.name,
+        day_of_week=data.day_of_week,
+        start_time=parse_time(data.start_time),
+        end_time=parse_time(data.end_time),
+        buffer_before_minutes=data.buffer_before_minutes,
+        buffer_after_minutes=data.buffer_after_minutes,
+        enabled=data.enabled,
+    )
+    db.add(activity)
+    await db.commit()
+    await db.refresh(activity)
+    return activity_to_out(activity)
+
+
+@router.put("/{device_id}/activities/{activity_id}", response_model=ActivityOut)
+async def update_activity(
+    device_id: str,
+    activity_id: str,
+    data: ActivityUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_device_owner(db, device_id, user.id)
+    result = await db.execute(
+        select(Activity).where(Activity.id == activity_id, Activity.device_id == device_id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if data.name is not None:
+        activity.name = data.name
+    if data.day_of_week is not None:
+        activity.day_of_week = data.day_of_week
+    if data.start_time is not None:
+        activity.start_time = parse_time(data.start_time)
+    if data.end_time is not None:
+        activity.end_time = parse_time(data.end_time)
+    if data.buffer_before_minutes is not None:
+        activity.buffer_before_minutes = data.buffer_before_minutes
+    if data.buffer_after_minutes is not None:
+        activity.buffer_after_minutes = data.buffer_after_minutes
+    if data.enabled is not None:
+        activity.enabled = data.enabled
+
+    await db.commit()
+    await db.refresh(activity)
+    return activity_to_out(activity)
+
+
+@router.delete("/{device_id}/activities/{activity_id}")
+async def delete_activity(
+    device_id: str,
+    activity_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_device_owner(db, device_id, user.id)
+    result = await db.execute(
+        select(Activity).where(Activity.id == activity_id, Activity.device_id == device_id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    await db.delete(activity)
+    await db.commit()
+    return {"ok": True}

@@ -40,6 +40,7 @@ class Device(Base):
     owner = relationship("User", back_populates="devices")
     policy = relationship("Policy", back_populates="device", uselist=False, cascade="all, delete-orphan")
     usage_logs = relationship("UsageLog", back_populates="device", cascade="all, delete-orphan")
+    activities = relationship("Activity", back_populates="device", cascade="all, delete-orphan")
 
 
 class Policy(Base):
@@ -97,3 +98,21 @@ class UsageLog(Base):
     last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="usage_logs")
+
+
+class Activity(Base):
+    """A scheduled activity (e.g. English class) — screen time is not counted during these windows."""
+    __tablename__ = "activities"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)  # e.g. "English"
+    day_of_week = Column(Integer, nullable=False)  # 0=Mon, 6=Sun
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    buffer_before_minutes = Column(Integer, default=5)
+    buffer_after_minutes = Column(Integer, default=5)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    device = relationship("Device", back_populates="activities")
