@@ -12,9 +12,7 @@ struct DeviceDetailView: View {
 
     var body: some View {
         Group {
-            if vm.isLoading && vm.device == nil {
-                ProgressView("Loading...")
-            } else if let policy = vm.policy {
+            if let policy = vm.policy {
                 ScrollView {
                     VStack(spacing: 20) {
                         todayCard
@@ -32,9 +30,16 @@ struct DeviceDetailView: View {
                     Label("Error", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
+                    Button("Retry") { Task { await vm.load() } }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 8)
                 }
+            } else {
+                ProgressView("Loading...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(minWidth: 500, minHeight: 600)
         .navigationTitle(vm.device?.name ?? "Device")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.large)
