@@ -229,9 +229,9 @@ export default function DeviceDetailPage() {
               <div className="minutes-input">
                 <input
                   type="number"
-                  min="15"
+                  min="1"
                   max="1440"
-                  step="15"
+                  step="1"
                   value={policy.screen_time_limit_minutes}
                   onChange={(e) => savePolicy({ screen_time_limit_minutes: parseInt(e.target.value) || 120 })}
                 />
@@ -246,9 +246,9 @@ export default function DeviceDetailPage() {
               <div className="minutes-input">
                 <input
                   type="number"
-                  min="15"
+                  min="1"
                   max="1440"
-                  step="15"
+                  step="1"
                   value={policy.screen_time_weekend_limit_minutes || ''}
                   placeholder={String(policy.screen_time_limit_minutes)}
                   onChange={(e) => savePolicy({ screen_time_weekend_limit_minutes: parseInt(e.target.value) || null })}
@@ -278,9 +278,9 @@ export default function DeviceDetailPage() {
                       <span style={{ fontSize: 13, color: '#86868b', width: 32 }}>{day.label}</span>
                       <input
                         type="number"
-                        min="15"
+                        min="1"
                         max="1440"
-                        step="15"
+                        step="1"
                         style={{ width: 70, padding: '6px 8px', border: '1px solid #d2d2d7', borderRadius: 8, fontSize: 14 }}
                         value={policy[field] || ''}
                         placeholder={String(fallback)}

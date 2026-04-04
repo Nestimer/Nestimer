@@ -22,7 +22,16 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || `HTTP ${res.status}`)
+    let message
+    if (typeof data.detail === 'string') {
+      message = data.detail
+    } else if (Array.isArray(data.detail)) {
+      // FastAPI validation errors: array of {loc, msg, type}
+      message = data.detail.map(e => `${e.loc?.slice(-1)?.[0] || 'field'}: ${e.msg}`).join('; ')
+    } else {
+      message = `HTTP ${res.status}`
+    }
+    throw new Error(message)
   }
 
   // Handle empty responses (204, DELETE)

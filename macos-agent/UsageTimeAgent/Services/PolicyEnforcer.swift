@@ -67,7 +67,8 @@ class PolicyEnforcer {
             let limitMinutes = Double(policy.screenTimeLimitMinutes)
             let remaining = limitMinutes - usedMinutesToday
 
-            if remaining <= 0 {
+            // Lock when less than 1 minute remaining (menu shows 0m at this point)
+            if remaining < 1 {
                 notifications.showTimeExpired()
                 lockScreen.show(reason: .timeExpired)
                 previousRemaining = remaining
