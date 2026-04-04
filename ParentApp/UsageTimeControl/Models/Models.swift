@@ -186,6 +186,70 @@ struct UsageEntry: Decodable, Identifiable {
     }
 }
 
+// MARK: - Activities
+
+struct Activity: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let dayOfWeek: Int
+    let startTime: String
+    let endTime: String
+    let bufferBeforeMinutes: Int
+    let bufferAfterMinutes: Int
+    let enabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, enabled
+        case dayOfWeek = "day_of_week"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case bufferBeforeMinutes = "buffer_before_minutes"
+        case bufferAfterMinutes = "buffer_after_minutes"
+    }
+
+    var dayLabel: String {
+        ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][max(0, min(6, dayOfWeek))]
+    }
+}
+
+struct ActivityCreate: Encodable {
+    let name: String
+    let dayOfWeek: Int
+    let startTime: String
+    let endTime: String
+    let bufferBeforeMinutes: Int
+    let bufferAfterMinutes: Int
+    let enabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name, enabled
+        case dayOfWeek = "day_of_week"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case bufferBeforeMinutes = "buffer_before_minutes"
+        case bufferAfterMinutes = "buffer_after_minutes"
+    }
+}
+
+struct ActivityUpdate: Encodable {
+    var name: String?
+    var dayOfWeek: Int?
+    var startTime: String?
+    var endTime: String?
+    var bufferBeforeMinutes: Int?
+    var bufferAfterMinutes: Int?
+    var enabled: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case name, enabled
+        case dayOfWeek = "day_of_week"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case bufferBeforeMinutes = "buffer_before_minutes"
+        case bufferAfterMinutes = "buffer_after_minutes"
+    }
+}
+
 // MARK: - Helpers
 
 func formatMinutes(_ m: Int) -> String {

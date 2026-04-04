@@ -7,6 +7,7 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var device: Device?
     @Published var policy: Policy?
     @Published var usage: [UsageEntry] = []
+    @Published var activities: [Activity] = []
     @Published var isLoading = false
     @Published var isSaving = false
     @Published var error: String?
@@ -31,10 +32,12 @@ class DeviceDetailViewModel: ObservableObject {
             async let dev = api.getDevice(deviceId)
             async let pol = api.getPolicy(deviceId: deviceId)
             async let usg = api.getUsage(deviceId: deviceId, days: 7)
-            let (d, p, u) = try await (dev, pol, usg)
+            async let acts = api.listActivities(deviceId: deviceId)
+            let (d, p, u, a) = try await (dev, pol, usg, acts)
             device = d
             policy = p
             usage = u
+            activities = a
         } catch {
             self.error = error.localizedDescription
         }
@@ -162,5 +165,40 @@ class DeviceDetailViewModel: ObservableObject {
     var usagePercent: Double {
         guard limitMinutes > 0 else { return 0 }
         return min(1.0, usedToday / Double(limitMinutes))
+    }
+
+    // MARK: - Activities
+
+    func createActivity(_ create: ActivityCreate) async {
+        do {
+            let new = try await api.createActivity(deviceId: deviceId, activity: create)
+            activities.append(new)
+            activities.sort { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func toggleActivity(_ activity: Activity) async {
+        do {
+            let updated = try await api.updateActivity(
+                deviceId: deviceId, activityId: activity.id,
+                update: ActivityUpdate(enabled: !activity.enabled)
+            )
+            if let idx = activities.firstIndex(where: { $0.id == activity.id }) {
+                activities[idx] = updated
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func deleteActivity(_ activity: Activity) async {
+        do {
+            try await api.deleteActivity(deviceId: deviceId, activityId: activity.id)
+            activities.removeAll { $0.id == activity.id }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }

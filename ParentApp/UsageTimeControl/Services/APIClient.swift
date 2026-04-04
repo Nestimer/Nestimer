@@ -83,6 +83,24 @@ actor APIClient {
         try await get("/api/v1/devices/\(deviceId)/usage?days=\(days)")
     }
 
+    // MARK: - Activities
+
+    func listActivities(deviceId: String) async throws -> [Activity] {
+        try await get("/api/v1/devices/\(deviceId)/activities")
+    }
+
+    func createActivity(deviceId: String, activity: ActivityCreate) async throws -> Activity {
+        try await post("/api/v1/devices/\(deviceId)/activities", body: activity)
+    }
+
+    func updateActivity(deviceId: String, activityId: String, update: ActivityUpdate) async throws -> Activity {
+        try await request("PUT", path: "/api/v1/devices/\(deviceId)/activities/\(activityId)", body: update)
+    }
+
+    func deleteActivity(deviceId: String, activityId: String) async throws {
+        let _: [String: Bool] = try await request("DELETE", path: "/api/v1/devices/\(deviceId)/activities/\(activityId)")
+    }
+
     // MARK: - Networking
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
@@ -150,10 +168,10 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: return "Неверный URL"
-        case .invalidResponse: return "Некорректный ответ сервера"
-        case .unauthorized: return "Сессия истекла, войдите снова"
-        case .httpError(let code): return "Ошибка сервера: \(code)"
+        case .invalidURL: return "Invalid URL"
+        case .invalidResponse: return "Invalid server response"
+        case .unauthorized: return "Session expired, please sign in again"
+        case .httpError(let code): return "Server error: \(code)"
         case .server(let msg): return msg
         }
     }

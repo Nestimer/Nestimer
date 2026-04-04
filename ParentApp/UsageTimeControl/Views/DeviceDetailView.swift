@@ -3,6 +3,7 @@ import SwiftUI
 struct DeviceDetailView: View {
     let deviceId: String
     @StateObject private var vm: DeviceDetailViewModel
+    @State private var showAddActivity = false
 
     init(deviceId: String) {
         self.deviceId = deviceId
@@ -20,6 +21,7 @@ struct DeviceDetailView: View {
                         unlockCodeSection
                         downtimeSection(policy: policy)
                         screenTimeSection(policy: policy)
+                        activitiesSection
                         usageHistorySection
                         deviceInfoSection
                     }
@@ -42,6 +44,9 @@ struct DeviceDetailView: View {
         }
         .task {
             await vm.load()
+        }
+        .sheet(isPresented: $showAddActivity) {
+            AddActivityView(vm: vm)
         }
     }
 
@@ -296,6 +301,70 @@ struct DeviceDetailView: View {
         }
     }
 
+    // MARK: - Scheduled activities
+
+    private var activitiesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Scheduled Activities")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button { showAddActivity = true } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(spacing: 0) {
+                if vm.activities.isEmpty {
+                    Text("No activities yet")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                } else {
+                    ForEach(vm.activities) { activity in
+                        activityRow(activity)
+                        if activity.id != vm.activities.last?.id {
+                            Divider().padding(.leading, 16)
+                        }
+                    }
+                }
+            }
+            .background(.regularMaterial)
+            .cornerRadius(16)
+        }
+    }
+
+    private func activityRow(_ activity: Activity) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.name)
+                    .font(.body)
+                    .foregroundStyle(activity.enabled ? .primary : .secondary)
+                Text("\(activity.dayLabel) \(activity.startTime)–\(activity.endTime)  ±\(activity.bufferBeforeMinutes)m")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { activity.enabled },
+                set: { _ in Task { await vm.toggleActivity(activity) } }
+            ))
+            .labelsHidden()
+            Button(role: .destructive) {
+                Task { await vm.deleteActivity(activity) }
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
     // MARK: - Usage history
 
     private var usageHistorySection: some View {
@@ -496,5 +565,85 @@ struct TimePickerCompact: View {
             let m = Calendar.current.component(.minute, from: newDate)
             onChange(String(format: "%02d:%02d", h, m))
         }
+    }
+}
+
+// MARK: - Add activity sheet
+
+struct AddActivityView: View {
+    @ObservedObject var vm: DeviceDetailViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var dayOfWeek = 0
+    @State private var startDate = Calendar.current.date(bySettingHour: 16, minute: 0, second: 0, of: Date())!
+    @State private var endDate = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date())!
+    @State private var bufferBefore = 5
+    @State private var bufferAfter = 5
+    @State private var isSaving = false
+
+    private let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("English", text: $name)
+                }
+                Section("Day") {
+                    Picker("Day", selection: $dayOfWeek) {
+                        ForEach(0..<7) { i in Text(days[i]).tag(i) }
+                    }
+                    #if os(iOS)
+                    .pickerStyle(.menu)
+                    #endif
+                }
+                Section("Time") {
+                    DatePicker("Start", selection: $startDate, displayedComponents: .hourAndMinute)
+                    DatePicker("End", selection: $endDate, displayedComponents: .hourAndMinute)
+                }
+                Section("Buffer (minutes)") {
+                    Stepper("Before: \(bufferBefore) min", value: $bufferBefore, in: 0...60)
+                    Stepper("After: \(bufferAfter) min", value: $bufferAfter, in: 0...60)
+                }
+            }
+            .navigationTitle("New Activity")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        Task {
+                            isSaving = true
+                            await vm.createActivity(ActivityCreate(
+                                name: name.isEmpty ? "Activity" : name,
+                                dayOfWeek: dayOfWeek,
+                                startTime: formatTime(startDate),
+                                endTime: formatTime(endDate),
+                                bufferBeforeMinutes: bufferBefore,
+                                bufferAfterMinutes: bufferAfter,
+                                enabled: true
+                            ))
+                            isSaving = false
+                            dismiss()
+                        }
+                    }
+                    .disabled(name.isEmpty || isSaving)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 450, height: 500)
+        #endif
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let h = Calendar.current.component(.hour, from: date)
+        let m = Calendar.current.component(.minute, from: date)
+        return String(format: "%02d:%02d", h, m)
     }
 }
