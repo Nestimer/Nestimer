@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBar: StatusBarController!
@@ -20,6 +21,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[UsageTimeAgent] Application starting...")
+
+        // Register as login item (auto-start on system login). macOS 13+.
+        registerAsLoginItem()
 
         // Load config
         agentConfig = AgentConfig.load()
@@ -141,6 +145,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", usedMinutes))m, limit: \(policy.screenTimeLimitMinutes)m")
         } catch {
             NSLog("[UsageTimeAgent] Sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Autostart
+
+    private func registerAsLoginItem() {
+        let service = SMAppService.mainApp
+        switch service.status {
+        case .enabled:
+            NSLog("[UsageTimeAgent] Login item: already enabled")
+        case .notRegistered, .notFound:
+            do {
+                try service.register()
+                NSLog("[UsageTimeAgent] Login item: registered ✓")
+            } catch {
+                NSLog("[UsageTimeAgent] Login item: failed to register — \(error.localizedDescription)")
+            }
+        case .requiresApproval:
+            NSLog("[UsageTimeAgent] Login item: requires user approval in System Settings")
+        @unknown default:
+            break
         }
     }
 
