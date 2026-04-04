@@ -149,6 +149,8 @@ class LockScreenWindow {
             defer: false,
             screen: screen
         )
+        // CRITICAL: prevent double-free — we hold the window in `windows` array
+        window.isReleasedWhenClosed = false
 
         // Window level is set by show() — devMode uses .floating, production uses .maximumWindow
         window.isOpaque = true
