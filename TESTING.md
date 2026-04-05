@@ -1,18 +1,21 @@
 # Testing UsageTimeController
 
-## Quick Start (safe to run on your own Mac)
+Guidance for running locally, testing safely, and the escape hatches that exist so you don't lock yourself out.
+
+---
+
+## Quick Start (safe on your own Mac)
 
 ### 1. Start the API server
 
 ```bash
 cd api
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
-Server starts at `http://localhost:8000`. Swagger UI: `http://localhost:8000/docs`.
+Server at `http://localhost:8000`, Swagger at `/docs`.
 
 ### 2. Run API tests
 
@@ -22,159 +25,168 @@ source venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-All 70+ tests should pass.
+80+ tests should pass (auth, devices, policy, usage, TOTP, activities, e2e).
 
 ### 3. Run the macOS agent in DEV MODE
 
-```bash
-cd macos-agent
-./dev-test.sh
-```
+Open `macos-agent/UsageTimeAgent.xcodeproj` in Xcode → Cmd+R.
 
-The script automatically:
-- Checks that the API server is running
-- Creates a test user and device
-- Sets a test policy (5 minutes of screen time)
-- Builds the app in Debug
-- Launches with DEV MODE
+**Debug builds automatically enable Dev Mode** via `#if DEBUG`. No env vars needed. On first launch, paste the setup string from the dashboard into the dialog.
+
+If you prefer env vars:
+```bash
+export UTC_DEV_MODE=1
+export UTC_SERVER_URL=http://localhost:8000
+export UTC_API_TOKEN=<token>
+```
 
 ### 4. Run the web dashboard
 
 ```bash
 cd web-dashboard
-npm install
-npm run dev
+npm install && npm run dev
 ```
 
-Opens at `http://localhost:5173`. Login: `dev-test@usagetime.local` / `devtest123`.
+Opens at `http://localhost:5173`.
 
 ---
 
-## Dev Mode — Self-Lock Protection
+## Dev Mode safeguards
 
-When the agent runs in dev mode (`UTC_DEV_MODE=1`), the following safeguards are active:
+When the agent is a Debug build (or `UTC_DEV_MODE=1`), these protections are active so you don't lock yourself out:
 
 | Safeguard | Description |
 |-----------|-------------|
-| **Auto-unlock** | Lock screen auto-dismisses after 10 seconds |
-| **Emergency hotkey** | `Ctrl+Opt+Cmd+U` — instantly dismisses lock screen |
-| **Floating window** | Lock screen at `.floating` level, can switch away via `Cmd+Tab` |
-| **Quit available** | Menu bar has "Quit (Dev Mode)" item, `Cmd+Q` works |
-| **No self-protection** | Process can be freely killed via Activity Monitor or `pkill` |
-| **No watchdog** | No LaunchDaemon installed, process won't respawn |
-| **Fast timers** | Tick every 5s (instead of 30), sync every 10s (instead of 60) |
-| **DEV badge** | "DEV MODE" label in menu bar and on lock screen |
+| **Auto-unlock** | Lock screen dismisses itself after 10 s |
+| **Emergency hotkey** | `Ctrl+Opt+Cmd+U` — instant unlock (uses both local + global monitors) |
+| **Floating window** | Lock at `.floating` level, Cmd+Tab still works |
+| **Quit available** | "Quit (Dev Mode)" menu item + Cmd+Q works |
+| **No self-protection** | Process can be killed via Activity Monitor / `pkill` |
+| **No watchdog** | `SystemInstaller` skips the root LaunchDaemon install |
+| **Fast timers** | Tick every 5 s, sync every 10 s (vs 30/20 in Release) |
+| **DEV badge** | Visible in menu bar and on lock screen |
 
-### How to stop the agent in dev mode
-
-Any method works:
+### Stop the agent
 ```bash
-# Via menu bar → "Quit (Dev Mode)"
-# Cmd+Q
-# From terminal:
+# Via menu bar → Quit (Dev Mode)
+# or Cmd+Q
+# or from terminal:
 pkill -f UsageTimeAgent
-# Activity Monitor → UsageTimeAgent → Force Quit
 ```
 
-### Dev mode configuration
-
-Via environment variables:
+### Configure
+Plist (`/etc/usagetime/config.plist`), UserDefaults (`defaults write com.usagetime.agent …`), or env vars:
 ```bash
-export UTC_DEV_MODE=1              # enable dev mode
-export UTC_DEV_AUTO_UNLOCK=10      # auto-unlock after N seconds
-export UTC_SERVER_URL=http://localhost:8000
-export UTC_API_TOKEN=your-token
-export UTC_POLL_INTERVAL=10        # sync every N seconds
-```
-
-Or via plist (`/etc/usagetime/config.plist`):
-```xml
-<key>DevMode</key>
-<true/>
-<key>DevAutoUnlockSeconds</key>
-<integer>10</integer>
-```
-
-Or via UserDefaults:
-```bash
-defaults write com.usagetime.agent DevMode -bool true
-defaults write com.usagetime.agent DevAutoUnlockSeconds -int 10
+UTC_DEV_MODE=1
+UTC_DEV_AUTO_UNLOCK=10
+UTC_SERVER_URL=http://localhost:8000
+UTC_API_TOKEN=<token>
+UTC_POLL_INTERVAL=20
 ```
 
 ---
 
 ## Test Scenarios
 
-### Scenario 1: Screen Time
-1. Launch the agent in dev mode
-2. Set the limit to 1 minute in the web dashboard
-3. Wait — the lock screen should appear after ~1 minute
-4. Lock screen auto-dismisses after 10s (dev mode)
-5. Menu bar should show remaining time
+### 1. Screen Time limit
+- Set limit to 1 min in dashboard → wait
+- Lock screen appears at remaining < 1 (menu shows "0m")
+- In Dev Mode: dismisses after 10 s
+- Menu bar shows `XXm` remaining
 
-### Scenario 2: Downtime
-1. Set downtime: current time → +2 minutes
-2. Lock screen should appear immediately (next sync)
-3. Verify it shows "Downtime"
+### 2. Downtime
+- Set downtime: `now` → `now + 2 min`
+- Lock screen appears on next sync
+- Shows "Downtime — Computer available at HH:MM"
 
-### Scenario 3: Adding Time
-1. Hit the limit (lock screen appears)
-2. Increase the limit in the dashboard
-3. On next sync (10s in dev mode) lock screen should dismiss
-4. Warnings should reset
+### 3. Adding time (override)
+- Hit the limit → lock appears
+- Increase limit in dashboard
+- Next sync (5 s while locked) → unlock, warnings reset
 
-### Scenario 4: Weekday/Weekend
-1. Set different limits for weekday/weekend
-2. Verify the correct limit is applied
+### 4. Per-day limits
+- Set Weekday 120 min, Mon 30 min
+- On Monday the agent uses 30, other weekdays 120
+- Weekend uses weekend limit or weekday default
 
-### Scenario 5: Offline Unlock Code
-1. Hit the limit (lock screen appears)
-2. In the parent app or web dashboard, find the 6-digit unlock code
-3. Enter the code on the lock screen
-4. Mac should unlock for 30 minutes
+### 5. Scheduled activity (whitelisting)
+- Add activity: name "English", day = today, window = `now`–`now+10min`, buffer 5m
+- On next sync → lock hides, menu bar shows "English until HH:MM"
+- Screen time **is not counted** during the window
 
-### Scenario 6: Parent App (iOS/macOS)
-1. Open ParentApp in Xcode, run on simulator or device
-2. Log in with test credentials
-3. Verify devices and policies are visible
-4. Change a policy — verify the agent picks it up
+### 6. Offline unlock (TOTP)
+- Let it lock (downtime or limit)
+- Copy the 6-digit code from dashboard / parent app
+- Type it on the lock screen
+- Mac unlocks for 30 min; during that window, time is not counted
+
+### 7. Parent App
+- Open `ParentApp/UsageTimeControl.xcodeproj` → Cmd+R (macOS target)
+- Login, edit policy, watch the agent pick up changes on next sync
+- Clicking the TOTP code copies it to clipboard
 
 ---
 
-## Production Install (NOT for testing on your own Mac!)
+## If you get locked out (Release build)
+
+Release builds have **no dev safeguards**. Ways to recover:
+
+1. **TOTP code** — always works offline. Read it from dashboard/parent app, type on lock screen.
+2. **Change policy via dashboard** — move downtime window or raise limit; agent syncs every 5 s while locked.
+3. **Safe Mode** (Shift at boot) — LaunchDaemons don't run. Delete the app and plist.
+4. **Recovery Mode** (Cmd+R at boot for Intel, hold Power for Apple Silicon) → Terminal → `rm -rf` the paths.
+
+**Uninstall (with admin password):**
+```bash
+sudo launchctl unload /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
+sudo rm /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
+sudo rm -rf /Applications/UsageTimeAgent.app
+sudo rm -rf /usr/local/libexec/usagetime-watchdog.sh /var/log/usagetime
+defaults delete com.usagetime.agent
+```
+
+---
+
+## Production install (Release)
 
 ```bash
-cd macos-agent
-sudo ./install.sh
+# Build once
+xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
+  -scheme UsageTimeAgent -configuration Release build
+
+# Or use the pre-built binary in dist/
+open dist/UsageTimeAgent.app
 ```
 
-This installs the agent with full protection:
-- Lock screen at maximum window level (cannot switch away)
-- Cmd+Q blocked
-- Watchdog restarts the process every 15 seconds
-- App owned by root (cannot delete without sudo)
+On first launch the agent:
+1. Asks for the setup string (`http://server:8000|TOKEN`) → saves in UserDefaults
+2. Asks to install as a protected system service → admin password via `NSAppleScript`
+3. Copies `.app` to `/Applications/` (root), installs watchdog `LaunchDaemon`
+4. Relaunches from `/Applications`; future reboots auto-start via LaunchDaemon
 
-**NEVER run a production install on your own work Mac without configured remote access!**
+The `SystemInstaller` flow is skipped in Debug builds.
+
+**Never run a Release install on a Mac you need for work.** It's designed to resist removal.
 
 ---
 
-## Testing Architecture
+## Architecture
 
 ```
-┌─────────────────┐     HTTP      ┌──────────────┐
-│  macOS Agent    │◄────────────►│  API Server  │
-│  (dev mode)     │               │  (localhost)  │
+┌─────────────────┐     HTTP     ┌──────────────┐
+│  macOS Agent    │◀────────────▶│  API Server  │
+│  (Release/Root) │               │  localhost   │
 └─────────────────┘               └──────┬───────┘
                                          │
-┌─────────────────┐     HTTP      ┌──────┴───────┐
-│  Parent App     │◄────────────►│   SQLite DB  │
-│  (Xcode sim)    │               └──────────────┘
+┌─────────────────┐     HTTP     ┌──────┴───────┐
+│  Parent App     │◀────────────▶│  SQLite DB   │
+│  (Xcode sim/Mac)│               └──────────────┘
 └─────────────────┘
          │
 ┌────────┴────────┐
 │  Web Dashboard  │
-│  (localhost)     │
+│  http://:5173   │
 └─────────────────┘
 ```
 
-All components run locally, no external server needed.
+Everything runs locally — no external services required.
