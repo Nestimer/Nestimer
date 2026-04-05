@@ -166,8 +166,8 @@ class PolicyEnforcer {
         let currentTotal = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
 
         for activity in activities where activity.enabled && activity.dayOfWeek == mondayBased {
-            let start = parseTimeToMinutes(activity.startTime) - activity.bufferBeforeMinutes
-            let end = parseTimeToMinutes(activity.endTime) + activity.bufferAfterMinutes
+            let start = max(0, parseTimeToMinutes(activity.startTime) - activity.bufferBeforeMinutes)
+            let end = min(1440, parseTimeToMinutes(activity.endTime) + activity.bufferAfterMinutes)
             if currentTotal >= start && currentTotal < end {
                 let endH = end / 60
                 let endM = end % 60

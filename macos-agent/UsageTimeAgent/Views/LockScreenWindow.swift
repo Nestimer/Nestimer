@@ -314,6 +314,10 @@ struct LockScreenView: View {
             withAnimation(.easeIn(duration: 0.5)) {
                 opacity = 1
             }
+            // Auto-focus TOTP field after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                codeFieldFocused = true
+            }
         }
     }
 

@@ -26,9 +26,8 @@ def format_time(t: time | None) -> str:
     return t.strftime("%H:%M")
 
 
-def get_effective_downtime(policy: Policy, now: datetime) -> tuple[str, str]:
+def get_effective_downtime(policy: Policy, weekday: int) -> tuple[str, str]:
     """Return the effective downtime start/end for today (considering weekday/weekend overrides)."""
-    weekday = now.weekday()  # 0=Mon, 6=Sun
     is_weekend = weekday >= 5
 
     if is_weekend and policy.downtime_weekend_start is not None:
@@ -38,8 +37,7 @@ def get_effective_downtime(policy: Policy, now: datetime) -> tuple[str, str]:
     return format_time(policy.downtime_start), format_time(policy.downtime_end)
 
 
-def get_effective_limit(policy: Policy, now: datetime) -> int:
-    weekday = now.weekday()  # 0=Mon, 6=Sun
+def get_effective_limit(policy: Policy, weekday: int) -> int:
     # Check per-day override first
     day_fields = ["screen_time_mon_minutes", "screen_time_tue_minutes", "screen_time_wed_minutes",
                   "screen_time_thu_minutes", "screen_time_fri_minutes", "screen_time_sat_minutes",
@@ -69,8 +67,12 @@ async def get_config(
     # Use agent-provided date if valid, otherwise fall back to UTC date
     if date and re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         today = date
+        # Parse agent's local date to get correct weekday for limit/downtime
+        agent_date = datetime.strptime(date, "%Y-%m-%d")
+        agent_weekday = agent_date.weekday()  # 0=Mon, 6=Sun
     else:
         today = now.strftime("%Y-%m-%d")
+        agent_weekday = now.weekday()
 
     # Update last_seen
     device.last_seen = now
@@ -98,8 +100,8 @@ async def get_config(
     usage = result.scalar_one_or_none()
     used_today = usage.total_minutes if usage else 0.0
 
-    ds, de = get_effective_downtime(policy, now)
-    limit = get_effective_limit(policy, now)
+    ds, de = get_effective_downtime(policy, agent_weekday)
+    limit = get_effective_limit(policy, agent_weekday)
 
     # Load all enabled activities for this device
     result = await db.execute(

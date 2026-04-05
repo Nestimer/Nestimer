@@ -67,7 +67,18 @@ class UsageTracker {
 
     func setUsedMinutes(_ minutes: Double, forDate date: String) {
         if date == currentDateString() {
-            usedMinutesToday = max(usedMinutesToday, minutes)
+            // Server is the source of truth — accept its value.
+            // Local could be higher (counted between syncs) or lower (parent reset).
+            // Use server value if local was reset, otherwise keep local (more recent ticks).
+            if minutes > usedMinutesToday {
+                usedMinutesToday = minutes
+            }
+            // If server reports LESS than local (parent manually reset),
+            // respect the reset on next sync.
+            if minutes < usedMinutesToday - 5 {
+                NSLog("[UsageTimeAgent] Server reset detected: server=\(String(format: "%.1f", minutes))m, local=\(String(format: "%.1f", usedMinutesToday))m — accepting server value")
+                usedMinutesToday = minutes
+            }
         }
     }
 
