@@ -168,3 +168,150 @@ async def test_agent_updates_last_seen(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.json()["last_seen"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Agent config with ?date= parameter (timezone handling)
+# ---------------------------------------------------------------------------
+
+async def test_agent_config_with_date_param(client):
+    """Agent can pass ?date= to get usage for a specific local date."""
+    token = await register_user(client, email="dateagent@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    # Report usage for a specific date
+    await client.post(
+        "/api/v1/agent/usage",
+        json={"date": "2026-03-15", "total_minutes": 77.0},
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+
+    # Fetch config with that date
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-03-15",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["used_minutes_today"] == 77.0
+
+
+async def test_agent_config_date_correct_weekday_limit(client):
+    """?date= should pick the correct weekday for limit calculation."""
+    token = await register_user(client, email="weekday-limit@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    # Set a Tuesday-specific limit
+    await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={"screen_time_tue_minutes": 55},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    # 2026-01-06 is a Tuesday (weekday=1)
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-06",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert resp.json()["screen_time_limit_minutes"] == 55
+
+
+async def test_agent_config_weekend_date_returns_weekend_limit(client):
+    """Passing a weekend date should use the weekend limit."""
+    token = await register_user(client, email="weekend-cfg@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "screen_time_limit_minutes": 120,
+            "screen_time_weekend_limit_minutes": 240,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    # 2026-01-04 is a Sunday (weekday=6)
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-04",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert resp.json()["screen_time_limit_minutes"] == 240
+
+
+async def test_agent_config_per_day_override_over_weekend(client):
+    """A per-day override should take priority over the weekend limit."""
+    token = await register_user(client, email="perday-agent@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "screen_time_limit_minutes": 100,
+            "screen_time_weekend_limit_minutes": 200,
+            "screen_time_sun_minutes": 60,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    # 2026-01-04 is Sunday
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-04",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    # Per-day Sunday (60) beats weekend (200)
+    assert resp.json()["screen_time_limit_minutes"] == 60
+
+
+async def test_agent_config_invalid_date_falls_back(client):
+    """Invalid ?date= should fall back to UTC today without error."""
+    token = await register_user(client, email="baddate@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    resp = await client.get(
+        "/api/v1/agent/config?date=not-a-date",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert resp.status_code == 200
+    # Should still return a valid config
+    assert "screen_time_limit_minutes" in resp.json()
+
+
+async def test_agent_config_no_policy_defaults(client):
+    """If no policy exists (edge case), agent config returns safe defaults."""
+    # This is tested implicitly, but let's verify the activities list is empty too
+    token = await register_user(client, email="nopolicy@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    # Device creation always makes a policy, but let's just verify defaults
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    config = resp.json()
+    assert config["activities"] == []
+    assert config["shared_secret"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Agent update/check endpoint
+# ---------------------------------------------------------------------------
+
+async def test_agent_update_check_no_update(client):
+    """When no update files exist, check returns null version and sha256."""
+    resp = await client.get("/api/v1/agent/update/check")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version"] is None
+    assert data["sha256"] is None
+
+
+async def test_agent_update_download_404_when_no_update(client):
+    """Download endpoint returns 404 when no update zip exists."""
+    resp = await client.get("/api/v1/agent/update/download")
+    assert resp.status_code == 404
+    assert "No update available" in resp.json()["detail"]

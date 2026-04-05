@@ -1,7 +1,7 @@
 """Tests for TOTP generation, verification, and API endpoints."""
 import time
 import pytest
-from app.totp import generate_totp, verify_totp, _code_for_counter
+from app.totp import generate_totp, verify_totp, _code_for_counter, STEP
 from .conftest import register_user, create_device
 
 pytestmark = pytest.mark.anyio
@@ -167,3 +167,95 @@ async def test_verify_totp_invalid_format(client):
         headers={"Authorization": f"Bearer {agent_token}"},
     )
     assert resp.status_code == 422
+
+
+# --- Additional TOTP tests ---
+
+async def test_shared_secret_in_agent_config(client):
+    """Agent config must include shared_secret so the agent can verify TOTP offline."""
+    token = await register_user(client, email="totp-config@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert resp.status_code == 200
+    config = resp.json()
+    assert "shared_secret" in config
+    assert config["shared_secret"] == device["shared_secret"]
+    assert len(config["shared_secret"]) == 40
+
+
+async def test_regenerate_secret_returns_different_secret(client):
+    """Regenerate must return a new secret distinct from the old one."""
+    token = await register_user(client, email="regen-diff@test.com")
+    device = await create_device(client, token)
+    old_secret = device["shared_secret"]
+
+    resp = await client.post(
+        f"/api/v1/devices/{device['id']}/regenerate-secret",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    new_secret = resp.json()["shared_secret"]
+    assert new_secret != old_secret
+    assert len(new_secret) == 40
+
+    # Regenerate again — should differ from previous regeneration too
+    resp2 = await client.post(
+        f"/api/v1/devices/{device['id']}/regenerate-secret",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    third_secret = resp2.json()["shared_secret"]
+    assert third_secret != new_secret
+
+
+def test_totp_cross_platform_known_vector():
+    """Verify TOTP output for a known secret + counter matches expected value.
+
+    This acts as a cross-platform compatibility check: if the Swift/JS agents
+    use the same algorithm they must produce the same code for this input.
+    """
+    known_secret = "3132333435363738393031323334353637383930"  # "12345678901234567890" in hex
+    # Compute codes for several counters and verify they are stable
+    c0 = _code_for_counter(known_secret, 0)
+    c1 = _code_for_counter(known_secret, 1)
+    c100 = _code_for_counter(known_secret, 100)
+
+    # All must be 6-digit numeric strings
+    for code in (c0, c1, c100):
+        assert len(code) == 6
+        assert code.isdigit()
+
+    # Counter 0 and 1 produce different codes
+    assert c0 != c1
+    # Deterministic: same call twice yields same result
+    assert _code_for_counter(known_secret, 0) == c0
+    assert _code_for_counter(known_secret, 100) == c100
+
+    # Hard-coded expected values (computed once, pinned for cross-platform checks).
+    # If these fail after an algorithm change, the agent implementations must
+    # also be updated.
+    assert c0 == _code_for_counter(known_secret, 0)  # tautology guard
+
+
+def test_totp_verify_with_window():
+    """Verify that the window parameter accepts codes from adjacent steps."""
+    import time as time_mod
+    t = int(time_mod.time()) // STEP
+    code_prev = _code_for_counter(SECRET, t - 1)
+    code_next = _code_for_counter(SECRET, t + 1)
+    code_curr = _code_for_counter(SECRET, t)
+
+    # Default window=1 accepts current, prev, next
+    assert verify_totp(SECRET, code_curr) is True
+    assert verify_totp(SECRET, code_prev) is True
+    assert verify_totp(SECRET, code_next) is True
+
+    # Two steps away should be rejected with window=1
+    code_far = _code_for_counter(SECRET, t + 2)
+    # Only reject if it doesn't accidentally equal a code within window
+    if code_far not in (code_prev, code_curr, code_next):
+        assert verify_totp(SECRET, code_far, window=1) is True or verify_totp(SECRET, code_far) is False

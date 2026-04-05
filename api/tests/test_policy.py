@@ -125,3 +125,115 @@ async def test_policy_access_other_user(client):
         headers={"Authorization": f"Bearer {token2}"},
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Per-day limit tests
+# ---------------------------------------------------------------------------
+
+async def test_set_per_day_limit(client):
+    """Setting a per-day limit (e.g. Monday) should persist."""
+    token = await register_user(client, email="perday@test.com")
+    device = await create_device(client, token)
+
+    resp = await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={"screen_time_mon_minutes": 30},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    policy = resp.json()
+    assert policy["screen_time_mon_minutes"] == 30
+    # Other days remain None
+    assert policy["screen_time_tue_minutes"] is None
+    assert policy["screen_time_sun_minutes"] is None
+
+
+async def test_per_day_limit_appears_in_policy_response(client):
+    """After setting a per-day limit, GET policy also returns it."""
+    token = await register_user(client, email="perday-get@test.com")
+    device = await create_device(client, token)
+
+    await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={"screen_time_fri_minutes": 45},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    resp = await client.get(
+        f"/api/v1/devices/{device['id']}/policy",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["screen_time_fri_minutes"] == 45
+
+
+async def test_multiple_per_day_limits_coexist(client):
+    """Multiple per-day limits can be set simultaneously."""
+    token = await register_user(client, email="multi-day@test.com")
+    device = await create_device(client, token)
+
+    resp = await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "screen_time_mon_minutes": 30,
+            "screen_time_wed_minutes": 60,
+            "screen_time_sat_minutes": 180,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    policy = resp.json()
+    assert policy["screen_time_mon_minutes"] == 30
+    assert policy["screen_time_wed_minutes"] == 60
+    assert policy["screen_time_sat_minutes"] == 180
+    # Others remain None
+    assert policy["screen_time_tue_minutes"] is None
+    assert policy["screen_time_thu_minutes"] is None
+
+
+async def test_effective_limit_per_day_over_weekend_over_default(client):
+    """get_effective_limit priority: per-day > weekend > default.
+
+    Verified via the agent config endpoint with a known date.
+    """
+    token = await register_user(client, email="effective@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    # Set default=120 (already default), weekend=200, Saturday=45
+    await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "screen_time_limit_minutes": 120,
+            "screen_time_weekend_limit_minutes": 200,
+            "screen_time_sat_minutes": 45,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    # Saturday 2026-04-04 is actually a Saturday (weekday=5)
+    # Use a known Saturday: 2026-01-03 is a Saturday
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-03",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    config = resp.json()
+    # Per-day Saturday override (45) takes priority over weekend (200)
+    assert config["screen_time_limit_minutes"] == 45
+
+    # Sunday with no per-day override should use weekend limit
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-04",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    config = resp.json()
+    assert config["screen_time_limit_minutes"] == 200
+
+    # Monday (no per-day, not weekend) should use default
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-01-05",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    config = resp.json()
+    assert config["screen_time_limit_minutes"] == 120
