@@ -25,12 +25,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Load config
         agentConfig = AgentConfig.load()
 
+        // If another instance is already running from /Applications, kill it first
+        // (happens during manual update when old agent is still alive)
+        if !SystemInstaller.isRunningFromSystemLocation && SystemInstaller.isInstalled {
+            killOtherInstances()
+        }
+
         // Install or update as a protected system service (Release builds only).
         // Triggers when: not installed yet, OR running from outside /Applications (= update).
         if !agentConfig.devMode && (!SystemInstaller.isInstalled || !SystemInstaller.isRunningFromSystemLocation) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                SystemInstaller.promptAndInstallIfNeeded()
-            }
+            SystemInstaller.promptAndInstallIfNeeded()
         } else if !SystemInstaller.isInstalled && agentConfig.devMode {
             registerAsLoginItem()
         }
@@ -162,6 +166,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             NSLog("[UsageTimeAgent] Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Duplicate instance handling
+
+    private func killOtherInstances() {
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", "UsageTimeAgent"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        try? task.run()
+        task.waitUntilExit()
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        for line in output.split(separator: "\n") {
+            if let pid = Int32(line.trimmingCharacters(in: .whitespaces)), pid != myPID {
+                NSLog("[UsageTimeAgent] Killing other instance PID \(pid)")
+                kill(pid, SIGTERM)
+            }
+        }
+        usleep(500_000) // 0.5s for graceful exit
     }
 
     // MARK: - Autostart
