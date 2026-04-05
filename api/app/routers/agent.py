@@ -1,7 +1,9 @@
 """Endpoints called by the macOS agent on the child's computer."""
+import re
 from datetime import datetime, time, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,10 +54,19 @@ def get_effective_limit(policy: Policy, now: datetime) -> int:
 async def get_config(
     device: Device = Depends(get_device_by_token),
     db: AsyncSession = Depends(get_db),
+    date: Optional[str] = Query(None, description="Agent's local date YYYY-MM-DD"),
 ):
-    """Agent polls this to get current rules and usage."""
+    """Agent polls this to get current rules and usage.
+
+    If `date` is provided (agent's local date), usage is looked up for that date
+    instead of UTC today. This avoids timezone mismatches at day boundaries.
+    """
     now = datetime.now(timezone.utc)
-    today = now.strftime("%Y-%m-%d")
+    # Use agent-provided date if valid, otherwise fall back to UTC date
+    if date and re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        today = date
+    else:
+        today = now.strftime("%Y-%m-%d")
 
     # Update last_seen
     device.last_seen = now

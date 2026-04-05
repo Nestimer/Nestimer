@@ -135,7 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             // Fetch policy from server
-            let policy = try await apiClient.fetchConfig()
+            let policy = try await apiClient.fetchConfig(localDate: usageTracker.currentDateString())
 
             // Sync usage with server state
             usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())

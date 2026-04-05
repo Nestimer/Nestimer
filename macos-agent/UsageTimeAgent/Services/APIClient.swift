@@ -67,8 +67,8 @@ class APIClient {
         self.session = URLSession(configuration: config)
     }
 
-    func fetchConfig() async throws -> ServerPolicy {
-        guard let url = URL(string: "\(serverURL)/api/v1/agent/config") else {
+    func fetchConfig(localDate: String) async throws -> ServerPolicy {
+        guard let url = URL(string: "\(serverURL)/api/v1/agent/config?date=\(localDate)") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
