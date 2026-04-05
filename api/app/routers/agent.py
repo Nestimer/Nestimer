@@ -1,9 +1,13 @@
 """Endpoints called by the macOS agent on the child's computer."""
+import hashlib
+import os
 import re
 from datetime import datetime, time, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,3 +172,31 @@ async def verify_totp_endpoint(
         raise HTTPException(status_code=400, detail="No shared secret configured")
     valid = verify_totp(device.shared_secret, body.code)
     return TOTPVerifyResponse(valid=valid, granted_minutes=30 if valid else 0)
+
+
+# --- Agent auto-update ---
+# Parent uploads UsageTimeAgent.zip to data/agent-update/ on the server.
+# Agent (watchdog) checks this endpoint and downloads if version differs.
+
+UPDATE_DIR = Path("/app/data/agent-update")
+
+
+@router.get("/update/check")
+async def check_update():
+    """Returns current agent version and sha256. No auth required (public)."""
+    version_file = UPDATE_DIR / "version.txt"
+    zip_file = UPDATE_DIR / "UsageTimeAgent.zip"
+    if not version_file.exists() or not zip_file.exists():
+        return {"version": None, "sha256": None}
+    version = version_file.read_text().strip()
+    sha256 = hashlib.sha256(zip_file.read_bytes()).hexdigest()
+    return {"version": version, "sha256": sha256}
+
+
+@router.get("/update/download")
+async def download_update():
+    """Download the agent zip. No auth (watchdog runs as root, no token)."""
+    zip_file = UPDATE_DIR / "UsageTimeAgent.zip"
+    if not zip_file.exists():
+        raise HTTPException(status_code=404, detail="No update available")
+    return FileResponse(str(zip_file), filename="UsageTimeAgent.zip", media_type="application/zip")

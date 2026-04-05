@@ -9,7 +9,7 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./data/usagetime.db
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     volumes:
-      - api-data:/app/data
+      - ./data:/app/data
     restart: unless-stopped
 
   web:
@@ -20,5 +20,3 @@ services:
       - api
     restart: unless-stopped
 
-volumes:
-  api-data:
