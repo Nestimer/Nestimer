@@ -25,14 +25,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Load config
         agentConfig = AgentConfig.load()
 
-        // On first launch in Release builds, offer to install as a protected system service.
-        // Dev mode (Debug build) skips this — you don't want a system watchdog when testing.
-        if !agentConfig.devMode && !SystemInstaller.isInstalled {
+        // Install or update as a protected system service (Release builds only).
+        // Triggers when: not installed yet, OR running from outside /Applications (= update).
+        if !agentConfig.devMode && (!SystemInstaller.isInstalled || !SystemInstaller.isRunningFromSystemLocation) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 SystemInstaller.promptAndInstallIfNeeded()
             }
-        } else if !SystemInstaller.isInstalled {
-            // Fallback for debug: register as login item only
+        } else if !SystemInstaller.isInstalled && agentConfig.devMode {
             registerAsLoginItem()
         }
 
