@@ -200,6 +200,15 @@ struct DeviceDetailView: View {
                 if policy.downtimeEnabled {
                     Divider().padding(.leading, 44)
 
+                    HStack {
+                        Text("Default")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 44)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
                     timePickerRow(
                         label: "Start",
                         time: policy.downtimeStart
@@ -207,13 +216,61 @@ struct DeviceDetailView: View {
                         Task { await vm.setDowntimeStart(newTime) }
                     }
 
-                    Divider().padding(.leading, 44)
-
                     timePickerRow(
                         label: "End",
                         time: policy.downtimeEnd
                     ) { newTime in
                         Task { await vm.setDowntimeEnd(newTime) }
+                    }
+
+                    Divider().padding(.leading, 44)
+
+                    HStack {
+                        Text("Weekdays (Mon–Fri)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 44)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
+                    timePickerRow(
+                        label: "Start",
+                        time: policy.downtimeWeekdayStart ?? policy.downtimeStart
+                    ) { newTime in
+                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekdayStart: newTime)) }
+                    }
+
+                    timePickerRow(
+                        label: "End",
+                        time: policy.downtimeWeekdayEnd ?? policy.downtimeEnd
+                    ) { newTime in
+                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekdayEnd: newTime)) }
+                    }
+
+                    Divider().padding(.leading, 44)
+
+                    HStack {
+                        Text("Weekends (Sat–Sun)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 44)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
+                    timePickerRow(
+                        label: "Start",
+                        time: policy.downtimeWeekendStart ?? policy.downtimeStart
+                    ) { newTime in
+                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekendStart: newTime)) }
+                    }
+
+                    timePickerRow(
+                        label: "End",
+                        time: policy.downtimeWeekendEnd ?? policy.downtimeEnd
+                    ) { newTime in
+                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekendEnd: newTime)) }
                     }
                 }
             }
