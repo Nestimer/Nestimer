@@ -1,8 +1,9 @@
 import Foundation
 import AppKit
 
-/// Installs the agent system-wide as a root LaunchDaemon (watchdog pattern).
-/// Requires one-time admin password — after install, the child cannot disable it.
+/// Installs or updates the agent system-wide as a root LaunchDaemon (watchdog pattern).
+/// On first launch: asks for admin password, copies to /Applications, installs watchdog.
+/// On update: new binary detects old install, kills old, replaces, watchdog restarts.
 struct SystemInstaller {
 
     static let daemonLabel = "com.usagetime.agent-watchdog"
@@ -10,65 +11,78 @@ struct SystemInstaller {
     static let installedAppPath = "/Applications/UsageTimeAgent.app"
     static let watchdogScriptPath = "/usr/local/libexec/usagetime-watchdog.sh"
 
-    /// True if the daemon plist is installed.
     static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlistPath)
     }
 
-    /// True if the currently-running app is the installed copy in /Applications.
     static var isRunningFromSystemLocation: Bool {
         Bundle.main.bundlePath == installedAppPath
     }
 
-    /// Show a dialog asking to install, then run the admin install if confirmed.
-    /// Returns true if install completed; false if user declined or install failed.
+    /// Main entry point. Call from AppDelegate on launch.
+    /// Handles three scenarios:
+    ///   1. Running from /Applications and daemon exists → nothing to do
+    ///   2. Running NOT from /Applications, daemon exists → UPDATE
+    ///   3. No daemon installed → FRESH INSTALL
     @discardableResult
     static func promptAndInstallIfNeeded() -> Bool {
+        // Already running from /Applications with daemon — nothing to do
         if isInstalled && isRunningFromSystemLocation {
             return true
         }
 
-        let alert = NSAlert()
-        alert.messageText = "Install UsageTime as a protected service?"
-        alert.informativeText = """
-        This will install the agent in /Applications and set it to auto-start on boot.
-        The child will not be able to disable or remove it without the administrator password.
+        // Decide the action
+        let isUpdate = isInstalled && !isRunningFromSystemLocation
+        let title = isUpdate ? "Update UsageTime agent?" : "Install UsageTime as a protected service?"
+        let message = isUpdate
+            ? "This will replace the installed agent with this new version and restart it.\n\nRequires admin password."
+            : "This will install the agent in /Applications and set it to auto-start on boot.\nThe child will not be able to disable or remove it without the administrator password.\n\nRequires admin password (one time)."
+        let buttonTitle = isUpdate ? "Update" : "Install"
 
-        Requires admin password (one time).
-        """
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: buttonTitle)
         alert.addButton(withTitle: "Not now")
 
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else {
+        guard alert.runModal() == .alertFirstButtonReturn else {
             return false
         }
 
-        return performInstall()
+        return performInstall(isUpdate: isUpdate)
     }
 
-    /// Runs the install with admin privileges via AppleScript.
-    private static func performInstall() -> Bool {
+    private static func performInstall(isUpdate: Bool) -> Bool {
         let currentAppPath = Bundle.main.bundlePath
 
-        // Build a shell script that:
-        //  1. Copies app to /Applications (if not already there)
-        //  2. Writes the watchdog shell script
-        //  3. Writes the LaunchDaemon plist (running as root, KeepAlive, RunAtLoad)
-        //  4. Loads the daemon
-        let script = """
+        // Shell script that runs with admin privileges
+        var script = """
         set -e
         mkdir -p /usr/local/libexec /var/log/usagetime
+        """
 
-        # 1. Copy app to /Applications (if not already)
-        if [ "\(currentAppPath)" != "\(installedAppPath)" ]; then
-            rm -rf "\(installedAppPath)"
-            cp -R "\(currentAppPath)" "\(installedAppPath)"
-        fi
+        // On update: kill old agent first, wait for it to exit
+        if isUpdate {
+            script += """
+
+            # Kill existing agent
+            pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
+            sleep 1
+            pkill -9 -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
+            sleep 0.5
+            """
+        }
+
+        // Copy app (always — both install and update)
+        script += """
+
+        # Copy app to /Applications
+        rm -rf "\(installedAppPath)"
+        cp -R "\(currentAppPath)" "\(installedAppPath)"
         chown -R root:wheel "\(installedAppPath)"
 
-        # 2. Watchdog script — ensures agent is running for the console user
+        # Watchdog script
         cat > \(watchdogScriptPath) <<'WATCHDOG'
         #!/bin/bash
         APP_PATH="\(installedAppPath)"
@@ -85,7 +99,8 @@ struct SystemInstaller {
         chmod 755 \(watchdogScriptPath)
         chown root:wheel \(watchdogScriptPath)
 
-        # 3. LaunchDaemon plist
+        # LaunchDaemon plist
+        launchctl unload \(daemonPlistPath) 2>/dev/null || true
         cat > \(daemonPlistPath) <<'PLIST'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -113,13 +128,10 @@ struct SystemInstaller {
         PLIST
         chown root:wheel \(daemonPlistPath)
         chmod 644 \(daemonPlistPath)
-
-        # 4. Load the daemon
-        launchctl unload \(daemonPlistPath) 2>/dev/null || true
         launchctl load \(daemonPlistPath)
         """
 
-        // Run via AppleScript with admin privileges (shows standard admin password dialog)
+        // Run via AppleScript with admin privileges
         let escaped = script.replacingOccurrences(of: "\\", with: "\\\\")
                              .replacingOccurrences(of: "\"", with: "\\\"")
         let appleScript = "do shell script \"\(escaped)\" with administrator privileges"
@@ -130,22 +142,20 @@ struct SystemInstaller {
 
         if let error {
             NSLog("[UsageTimeAgent] SystemInstaller failed: \(error)")
-            let alert = NSAlert()
-            alert.messageText = "Install failed"
-            alert.informativeText = (error["NSAppleScriptErrorMessage"] as? String) ?? "Unknown error"
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+            let errAlert = NSAlert()
+            errAlert.messageText = isUpdate ? "Update failed" : "Install failed"
+            errAlert.informativeText = (error["NSAppleScriptErrorMessage"] as? String) ?? "Unknown error"
+            errAlert.alertStyle = .warning
+            errAlert.addButton(withTitle: "OK")
+            errAlert.runModal()
             return false
         }
 
-        NSLog("[UsageTimeAgent] SystemInstaller: installed ✓")
-        // If we're not already running from /Applications, relaunch from there and quit
-        if !isRunningFromSystemLocation {
-            NSWorkspace.shared.open(URL(fileURLWithPath: installedAppPath))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                NSApp.terminate(nil)
-            }
+        NSLog("[UsageTimeAgent] SystemInstaller: \(isUpdate ? "updated" : "installed") ✓")
+
+        // Quit this instance — watchdog will launch the new /Applications version within 15s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApp.terminate(nil)
         }
         return true
     }
