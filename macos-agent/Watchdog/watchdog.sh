@@ -75,6 +75,17 @@ fi
 
 log "Update available: $LOCAL_VERSION -> $REMOTE_VERSION"
 
+# Retry limit: don't attempt same version more than 3 times
+FAIL_COUNT_FILE="/tmp/usagetime-update-fails-$REMOTE_VERSION"
+FAIL_COUNT=0
+if [ -f "$FAIL_COUNT_FILE" ]; then
+    FAIL_COUNT=$(cat "$FAIL_COUNT_FILE")
+fi
+if [ "$FAIL_COUNT" -ge 3 ]; then
+    log "Skipping update — failed $FAIL_COUNT times for version $REMOTE_VERSION"
+    exit 0
+fi
+
 # Download
 TMPDIR=$(mktemp -d)
 ZIPFILE="$TMPDIR/UsageTimeAgent.zip"
@@ -82,6 +93,7 @@ curl -s --connect-timeout 10 --max-time 120 -o "$ZIPFILE" "$SERVER_URL/api/v1/ag
 
 if [ ! -f "$ZIPFILE" ] || [ ! -s "$ZIPFILE" ]; then
     log "Download failed"
+    echo $((FAIL_COUNT + 1)) > "$FAIL_COUNT_FILE"
     rm -rf "$TMPDIR"
     exit 1
 fi
@@ -90,6 +102,7 @@ fi
 ACTUAL_SHA256=$(shasum -a 256 "$ZIPFILE" | awk '{print $1}')
 if [ "$ACTUAL_SHA256" != "$REMOTE_SHA256" ]; then
     log "SHA256 mismatch! Expected $REMOTE_SHA256, got $ACTUAL_SHA256"
+    echo $((FAIL_COUNT + 1)) > "$FAIL_COUNT_FILE"
     rm -rf "$TMPDIR"
     exit 1
 fi
@@ -100,6 +113,7 @@ unzip -qo "$ZIPFILE" -d "$TMPDIR"
 
 if [ ! -d "$TMPDIR/UsageTimeAgent.app" ]; then
     log "Invalid zip — no UsageTimeAgent.app found"
+    echo $((FAIL_COUNT + 1)) > "$FAIL_COUNT_FILE"
     rm -rf "$TMPDIR"
     exit 1
 fi
@@ -115,8 +129,9 @@ rm -rf "$APP_PATH"
 mv "$TMPDIR/UsageTimeAgent.app" "$APP_PATH"
 chown -R root:wheel "$APP_PATH"
 
-# Save version
+# Save version + clear fail counter
 echo "$REMOTE_VERSION" > "$VERSION_FILE"
+rm -f "$FAIL_COUNT_FILE"
 
 # Cleanup
 rm -rf "$TMPDIR"

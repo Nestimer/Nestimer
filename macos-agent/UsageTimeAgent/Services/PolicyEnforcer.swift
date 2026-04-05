@@ -165,12 +165,36 @@ class PolicyEnforcer {
         let mondayBased = (swiftWeekday + 5) % 7
         let currentTotal = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
 
-        for activity in activities where activity.enabled && activity.dayOfWeek == mondayBased {
-            let start = max(0, parseTimeToMinutes(activity.startTime) - activity.bufferBeforeMinutes)
-            let end = min(1440, parseTimeToMinutes(activity.endTime) + activity.bufferAfterMinutes)
-            if currentTotal >= start && currentTotal < end {
-                let endH = end / 60
-                let endM = end % 60
+        for activity in activities where activity.enabled {
+            let rawStart = parseTimeToMinutes(activity.startTime) - activity.bufferBeforeMinutes
+            let rawEnd = parseTimeToMinutes(activity.endTime) + activity.bufferAfterMinutes
+            let start = max(0, rawStart)
+            let end = rawEnd  // can exceed 1440 for overnight
+
+            // Check if this activity matches today (or yesterday for overnight)
+            let isToday = activity.dayOfWeek == mondayBased
+            let yesterday = (mondayBased + 6) % 7
+            let isOvernightFromYesterday = activity.dayOfWeek == yesterday && end > 1440
+
+            var active = false
+            if isToday {
+                if end <= 1440 {
+                    // Normal same-day activity
+                    active = currentTotal >= start && currentTotal < end
+                } else {
+                    // Overnight: starts today, extends past midnight
+                    active = currentTotal >= start
+                }
+            } else if isOvernightFromYesterday {
+                // We're in the early morning part of an overnight activity from yesterday
+                let overflowEnd = end - 1440
+                active = currentTotal < overflowEnd
+            }
+
+            if active {
+                let displayEnd = end > 1440 ? end - 1440 : end
+                let endH = displayEnd / 60
+                let endM = displayEnd % 60
                 let endStr = String(format: "%02d:%02d", endH % 24, endM)
                 return (activity, endStr)
             }

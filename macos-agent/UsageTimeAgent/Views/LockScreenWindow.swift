@@ -49,8 +49,11 @@ class LockScreenWindow {
     }
 
     func show(reason: LockReason) {
-        // Update text if already showing with different reason
-        if isShowing && currentReason == reason { return }
+        // If already showing same reason, check if screen count changed (monitor plug/unplug)
+        if isShowing && currentReason == reason {
+            if windows.count == NSScreen.screens.count { return }
+            // Screen count changed — rebuild windows
+        }
 
         hide() // clear old windows first
         currentReason = reason

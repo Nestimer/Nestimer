@@ -89,6 +89,8 @@ class UsageTracker {
     func currentDateString() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
         return formatter.string(from: Date())
     }
 
