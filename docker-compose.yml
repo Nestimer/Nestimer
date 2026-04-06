@@ -1,15 +1,31 @@
-version: "3.8"
-
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: usagetime
+      POSTGRES_USER: usagetime
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-usagetime-secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usagetime"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build: ./api
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./data/usagetime.db
+      - DATABASE_URL=postgresql+asyncpg://usagetime:${DB_PASSWORD:-usagetime-secret}@db:5432/usagetime
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     volumes:
       - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
@@ -20,3 +36,5 @@ services:
       - api
     restart: unless-stopped
 
+volumes:
+  pgdata:
