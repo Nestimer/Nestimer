@@ -20,6 +20,8 @@
 		AA0011 /* SelfProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0011; };
 		AA0012 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0012; };
 		AA0013 /* SystemInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0013; };
+		AA0014 /* watchdog.sh in Resources */ = {isa = PBXBuildFile; fileRef = BB0014; };
+		AA0015 /* watchdog.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0015; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		BB0011 /* SelfProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfProtection.swift; sourceTree = "<group>"; };
 		BB0012 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
 		BB0013 /* SystemInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInstaller.swift; sourceTree = "<group>"; };
+		BB0014 /* watchdog.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = watchdog.sh; sourceTree = "<group>"; };
+		BB0015 /* watchdog.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = watchdog.plist; sourceTree = "<group>"; };
 		CC0001 /* UsageTimeAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageTimeAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC0002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CC0003 /* UsageTimeAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UsageTimeAgent.entitlements; sourceTree = "<group>"; };
@@ -60,6 +64,8 @@
 				DD0003 /* Services */,
 				DD0004 /* Views */,
 				BB0010,
+				BB0014,
+				BB0015,
 			);
 			path = UsageTimeAgent;
 			sourceTree = "<group>";
@@ -172,6 +178,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0010,
+				AA0014,
+				AA0015,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

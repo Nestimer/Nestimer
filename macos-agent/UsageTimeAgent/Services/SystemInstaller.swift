@@ -1,13 +1,13 @@
 import Foundation
 import AppKit
 
-/// Installs or updates the agent system-wide as a root LaunchDaemon (watchdog pattern).
+/// Installs or updates the agent as a root-protected system service.
+/// Uses bundled watchdog.sh and watchdog.plist from the app's Resources.
 struct SystemInstaller {
 
-    static let daemonLabel = "com.usagetime.agent-watchdog"
-    static let daemonPlistPath = "/Library/LaunchDaemons/\(daemonLabel).plist"
+    static let daemonPlistPath = "/Library/LaunchDaemons/com.usagetime.agent-watchdog.plist"
     static let installedAppPath = "/Applications/UsageTimeAgent.app"
-    static let watchdogScriptPath = "/usr/local/libexec/usagetime-watchdog.sh"
+    static let watchdogDst = "/usr/local/libexec/usagetime-watchdog.sh"
 
     static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlistPath)
@@ -25,7 +25,7 @@ struct SystemInstaller {
         let alert = NSAlert()
         alert.messageText = isUpdate ? "Update UsageTime agent?" : "Install UsageTime as a protected service?"
         alert.informativeText = isUpdate
-            ? "This will replace the installed agent and restart it.\nRequires admin password."
+            ? "Replaces the installed agent and restarts.\nRequires admin password."
             : "Installs to /Applications with auto-start on boot.\nChild cannot disable without admin password.\nRequires admin password (one time)."
         alert.alertStyle = .informational
         alert.addButton(withTitle: isUpdate ? "Update" : "Install")
@@ -35,181 +35,71 @@ struct SystemInstaller {
     }
 
     private static func performInstall(isUpdate: Bool) -> Bool {
-        let currentAppPath = Bundle.main.bundlePath
-
-        // 1. Write watchdog script and plist to temp files (no escaping issues)
-        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("usagetime-install-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-
-        let watchdogTmp = tmpDir.appendingPathComponent("watchdog.sh")
-        let plistTmp = tmpDir.appendingPathComponent("daemon.plist")
-
-        try? watchdogScriptContent().write(to: watchdogTmp, atomically: true, encoding: .utf8)
-        try? daemonPlistContent().write(to: plistTmp, atomically: true, encoding: .utf8)
-
-        // 2. Build a simple admin shell script that just copies files
-        var cmds = [String]()
-        cmds.append("mkdir -p /usr/local/libexec /var/log/usagetime")
-
-        if isUpdate {
-            cmds.append("pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true")
-            cmds.append("sleep 1")
+        // Get paths to bundled resources
+        guard let watchdogSrc = Bundle.main.path(forResource: "watchdog", ofType: "sh"),
+              let plistSrc = Bundle.main.path(forResource: "watchdog", ofType: "plist") else {
+            showError("Bundle resources missing (watchdog.sh / watchdog.plist)")
+            return false
         }
 
-        cmds.append("rm -rf '\(installedAppPath)'")
-        cmds.append("cp -R '\(currentAppPath)' '\(installedAppPath)'")
-        cmds.append("chown -R root:wheel '\(installedAppPath)'")
-        cmds.append("cp '\(watchdogTmp.path)' '\(watchdogScriptPath)'")
-        cmds.append("chmod 755 '\(watchdogScriptPath)'")
-        cmds.append("chown root:wheel '\(watchdogScriptPath)'")
-        cmds.append("launchctl unload '\(daemonPlistPath)' 2>/dev/null || true")
-        cmds.append("cp '\(plistTmp.path)' '\(daemonPlistPath)'")
-        cmds.append("chown root:wheel '\(daemonPlistPath)'")
-        cmds.append("chmod 644 '\(daemonPlistPath)'")
-        cmds.append("launchctl load '\(daemonPlistPath)'")
-        cmds.append("rm -rf '\(tmpDir.path)'")
+        let appSrc = Bundle.main.bundlePath
+
+        // Build shell commands — all single-quoted paths, no escaping needed
+        var cmds = [
+            "mkdir -p /usr/local/libexec /var/log/usagetime",
+        ]
+
+        if isUpdate {
+            cmds += [
+                "pkill -f '/Applications/UsageTimeAgent.app' || true",
+                "sleep 1",
+            ]
+        }
+
+        cmds += [
+            "rm -rf '\(installedAppPath)'",
+            "cp -R '\(appSrc)' '\(installedAppPath)'",
+            "chown -R root:wheel '\(installedAppPath)'",
+            "cp '\(watchdogSrc)' '\(watchdogDst)'",
+            "chmod 755 '\(watchdogDst)'",
+            "chown root:wheel '\(watchdogDst)'",
+            "launchctl unload '\(daemonPlistPath)' 2>/dev/null || true",
+            "cp '\(plistSrc)' '\(daemonPlistPath)'",
+            "chown root:wheel '\(daemonPlistPath)'",
+            "chmod 644 '\(daemonPlistPath)'",
+            "launchctl load '\(daemonPlistPath)'",
+        ]
 
         let script = cmds.joined(separator: " && ")
+        NSLog("[SystemInstaller] Running: \(script)")
+
         let appleScript = "do shell script \"\(script)\" with administrator privileges"
 
         var error: NSDictionary?
         NSAppleScript(source: appleScript)?.executeAndReturnError(&error)
 
         if let error {
-            NSLog("[UsageTimeAgent] SystemInstaller failed: \(error)")
-            let errAlert = NSAlert()
-            errAlert.messageText = isUpdate ? "Update failed" : "Install failed"
-            errAlert.informativeText = (error["NSAppleScriptErrorMessage"] as? String) ?? "Unknown error"
-            errAlert.alertStyle = .warning
-            errAlert.addButton(withTitle: "OK")
-            errAlert.runModal()
-            try? FileManager.default.removeItem(at: tmpDir)
+            let msg = (error["NSAppleScriptErrorMessage"] as? String) ?? "\(error)"
+            NSLog("[SystemInstaller] FAILED: \(msg)")
+            showError(msg)
             return false
         }
 
-        NSLog("[UsageTimeAgent] SystemInstaller: \(isUpdate ? "updated" : "installed") ✓")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+        NSLog("[SystemInstaller] \(isUpdate ? "Updated" : "Installed") ✓")
+
+        // Quit — watchdog will start the /Applications copy within 15s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApp.terminate(nil)
+        }
         return true
     }
 
-    // MARK: - File contents
-
-    private static func watchdogScriptContent() -> String {
-        return """
-        #!/bin/bash
-        # UsageTimeAgent Watchdog — restart + auto-update
-        APP_PATH="/Applications/UsageTimeAgent.app"
-        VERSION_FILE="/usr/local/libexec/usagetime-agent-version.txt"
-        UPDATE_CHECK_MARKER="/tmp/usagetime-last-update-check"
-        UPDATE_CHECK_INTERVAL=300
-
-        log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [Watchdog] $1"; }
-
-        # 1. Ensure agent is running
-        if ! pgrep -f "UsageTimeAgent" > /dev/null 2>&1; then
-            CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null)
-            if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
-                CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null)
-                if [ -n "$CONSOLE_UID" ] && [ -d "$APP_PATH" ]; then
-                    launchctl asuser "$CONSOLE_UID" open "$APP_PATH"
-                    log "Agent started as $CONSOLE_USER"
-                fi
-            fi
-        fi
-
-        # 2. Auto-update (throttled)
-        CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null)
-        [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ] && exit 0
-
-        if [ -f "$UPDATE_CHECK_MARKER" ]; then
-            LAST_CHECK=$(stat -f '%m' "$UPDATE_CHECK_MARKER" 2>/dev/null || echo 0)
-            NOW=$(date +%s)
-            [ $((NOW - LAST_CHECK)) -lt "$UPDATE_CHECK_INTERVAL" ] && exit 0
-        fi
-        touch "$UPDATE_CHECK_MARKER"
-
-        SERVER_URL=$(sudo -u "$CONSOLE_USER" defaults read com.usagetime.agent ServerURL 2>/dev/null)
-        [ -z "$SERVER_URL" ] && exit 0
-
-        UPDATE_INFO=$(curl -s --connect-timeout 5 --max-time 10 "$SERVER_URL/api/v1/agent/update/check" 2>/dev/null)
-        [ -z "$UPDATE_INFO" ] && exit 0
-
-        REMOTE_VERSION=$(echo "$UPDATE_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version') or '')" 2>/dev/null)
-        REMOTE_SHA256=$(echo "$UPDATE_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sha256') or '')" 2>/dev/null)
-        [ -z "$REMOTE_VERSION" ] || [ "$REMOTE_VERSION" = "None" ] && exit 0
-
-        LOCAL_VERSION=""
-        [ -f "$VERSION_FILE" ] && LOCAL_VERSION=$(cat "$VERSION_FILE")
-        [ "$REMOTE_VERSION" = "$LOCAL_VERSION" ] && exit 0
-
-        log "Update available: $LOCAL_VERSION -> $REMOTE_VERSION"
-
-        FAIL_FILE="/tmp/usagetime-update-fails-$REMOTE_VERSION"
-        FAIL_COUNT=0
-        [ -f "$FAIL_FILE" ] && FAIL_COUNT=$(cat "$FAIL_FILE")
-        [ "$FAIL_COUNT" -ge 3 ] && { log "Skipping — failed $FAIL_COUNT times"; exit 0; }
-
-        TMPDIR=$(mktemp -d)
-        ZIPFILE="$TMPDIR/UsageTimeAgent.zip"
-        curl -s --connect-timeout 10 --max-time 120 -o "$ZIPFILE" "$SERVER_URL/api/v1/agent/update/download"
-
-        if [ ! -f "$ZIPFILE" ] || [ ! -s "$ZIPFILE" ]; then
-            log "Download failed"; echo $((FAIL_COUNT+1)) > "$FAIL_FILE"; rm -rf "$TMPDIR"; exit 1
-        fi
-
-        ACTUAL_SHA256=$(shasum -a 256 "$ZIPFILE" | awk '{print $1}')
-        if [ "$ACTUAL_SHA256" != "$REMOTE_SHA256" ]; then
-            log "SHA256 mismatch"; echo $((FAIL_COUNT+1)) > "$FAIL_FILE"; rm -rf "$TMPDIR"; exit 1
-        fi
-
-        cd "$TMPDIR" && unzip -qo "$ZIPFILE" -d "$TMPDIR"
-        if [ ! -d "$TMPDIR/UsageTimeAgent.app" ]; then
-            log "Invalid zip"; echo $((FAIL_COUNT+1)) > "$FAIL_FILE"; rm -rf "$TMPDIR"; exit 1
-        fi
-
-        pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
-        sleep 1
-        pkill -9 -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
-        sleep 1
-
-        rm -rf "$APP_PATH"
-        mv "$TMPDIR/UsageTimeAgent.app" "$APP_PATH"
-        chown -R root:wheel "$APP_PATH"
-        echo "$REMOTE_VERSION" > "$VERSION_FILE"
-        rm -f "$FAIL_FILE"
-        rm -rf "$TMPDIR"
-
-        log "Updated to $REMOTE_VERSION — restarting"
-        CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null)
-        [ -n "$CONSOLE_UID" ] && launchctl asuser "$CONSOLE_UID" open "$APP_PATH"
-        """
-    }
-
-    private static func daemonPlistContent() -> String {
-        return """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(daemonLabel)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>/bin/bash</string>
-                <string>\(watchdogScriptPath)</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>StartInterval</key>
-            <integer>15</integer>
-            <key>ThrottleInterval</key>
-            <integer>5</integer>
-            <key>StandardOutPath</key>
-            <string>/var/log/usagetime/watchdog.log</string>
-            <key>StandardErrorPath</key>
-            <string>/var/log/usagetime/watchdog-error.log</string>
-        </dict>
-        </plist>
-        """
+    private static func showError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Install failed"
+        alert.informativeText = message
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
