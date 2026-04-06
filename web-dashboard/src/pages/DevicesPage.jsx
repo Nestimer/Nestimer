@@ -107,6 +107,7 @@ export default function DevicesPage() {
           <div className="device-status">
             <span className={`status-dot ${isOnline(device.last_seen) ? 'status-online' : 'status-offline'}`}></span>
             {isOnline(device.last_seen) ? 'Online' : timeSince(device.last_seen)}
+            {device.agent_version && <div style={{ fontSize: 11, color: '#86868b', marginTop: 2 }}>v{device.agent_version}</div>}
           </div>
         </div>
       ))}

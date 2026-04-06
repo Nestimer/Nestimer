@@ -92,6 +92,7 @@ async def create_device(
         child_name=device.child_name,
         api_token=device.api_token,
         shared_secret=device.shared_secret,
+        agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
     )
@@ -108,7 +109,7 @@ async def list_devices(
     devices = result.scalars().all()
     return [
         DeviceListOut(
-            id=d.id, name=d.name, child_name=d.child_name, last_seen=d.last_seen
+            id=d.id, name=d.name, child_name=d.child_name, agent_version=d.agent_version, last_seen=d.last_seen
         )
         for d in devices
     ]
@@ -132,6 +133,7 @@ async def get_device(
         child_name=device.child_name,
         api_token=device.api_token,
         shared_secret=device.shared_secret,
+        agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
     )
@@ -275,6 +277,7 @@ async def regenerate_secret(
         child_name=device.child_name,
         api_token=device.api_token,
         shared_secret=device.shared_secret,
+        agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
     )

@@ -56,6 +56,7 @@ class DeviceOut(BaseModel):
     child_name: str
     api_token: str
     shared_secret: Optional[str] = None
+    agent_version: Optional[str] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
 
@@ -69,6 +70,7 @@ class DeviceListOut(BaseModel):
     id: str
     name: str
     child_name: str
+    agent_version: Optional[str] = None
     last_seen: Optional[datetime] = None
 
     @field_serializer("last_seen")

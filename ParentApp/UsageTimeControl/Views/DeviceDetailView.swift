@@ -483,6 +483,10 @@ struct DeviceDetailView: View {
                     infoRow(label: "Child", value: device.childName)
                     Divider().padding(.leading, 16)
                     infoRow(label: "Last Seen", value: device.lastSeenText)
+                    if let version = device.agentVersion {
+                        Divider().padding(.leading, 16)
+                        infoRow(label: "Agent Version", value: "v\(version)")
+                    }
 
                     if let token = device.apiToken {
                         Divider().padding(.leading, 16)

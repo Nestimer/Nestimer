@@ -399,9 +399,15 @@ export default function DeviceDetailPage() {
         )}
       </div>
 
-      {/* Setup string for agent */}
+      {/* Device info */}
       <h2 className="section-title">Device Settings</h2>
       <div className="card">
+        {device.agent_version && (
+          <div className="toggle-row">
+            <div className="toggle-label">Agent Version</div>
+            <div style={{ fontWeight: 500 }}>v{device.agent_version}</div>
+          </div>
+        )}
         <div className="toggle-row">
           <div className="toggle-label">Agent Setup String</div>
           <button className="btn btn-secondary btn-small" onClick={() => setShowToken(!showToken)}>

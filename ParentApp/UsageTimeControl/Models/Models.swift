@@ -47,6 +47,7 @@ struct Device: Decodable, Identifiable {
     let childName: String
     let apiToken: String?
     let sharedSecret: String?
+    let agentVersion: String?
     let lastSeen: String?
     let createdAt: String?
 
@@ -55,6 +56,7 @@ struct Device: Decodable, Identifiable {
         case childName = "child_name"
         case apiToken = "api_token"
         case sharedSecret = "shared_secret"
+        case agentVersion = "agent_version"
         case lastSeen = "last_seen"
         case createdAt = "created_at"
     }

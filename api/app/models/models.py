@@ -34,6 +34,7 @@ class Device(Base):
     child_name = Column(String, nullable=False)
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
     shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)
+    agent_version = Column(String, nullable=True)  # e.g. "1.7"
     last_seen = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

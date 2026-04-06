@@ -68,7 +68,8 @@ class APIClient {
     }
 
     func fetchConfig(localDate: String) async throws -> ServerPolicy {
-        guard let url = URL(string: "\(serverURL)/api/v1/agent/config?date=\(localDate)") else {
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        guard let url = URL(string: "\(serverURL)/api/v1/agent/config?date=\(localDate)&version=\(appVersion)") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)

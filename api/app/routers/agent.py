@@ -57,6 +57,7 @@ async def get_config(
     device: Device = Depends(get_device_by_token),
     db: AsyncSession = Depends(get_db),
     date: Optional[str] = Query(None, description="Agent's local date YYYY-MM-DD"),
+    version: Optional[str] = Query(None, description="Agent version"),
 ):
     """Agent polls this to get current rules and usage.
 
@@ -74,8 +75,10 @@ async def get_config(
         today = now.strftime("%Y-%m-%d")
         agent_weekday = now.weekday()
 
-    # Update last_seen
+    # Update last_seen + agent version
     device.last_seen = now
+    if version:
+        device.agent_version = version
     await db.commit()
 
     # Get policy
