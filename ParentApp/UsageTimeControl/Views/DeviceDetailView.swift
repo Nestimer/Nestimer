@@ -235,6 +235,13 @@ struct DeviceDetailView: View {
                             .foregroundStyle(.secondary)
                             .padding(.leading, 44)
                         Spacer()
+                        if policy.downtimeWeekdayStart != nil || policy.downtimeWeekdayEnd != nil {
+                            Button("Reset") {
+                                Task { await vm.clearDowntimeWeekdayOverride() }
+                            }
+                            .font(.caption)
+                            .padding(.trailing, 16)
+                        }
                     }
                     .padding(.top, 4)
 
@@ -260,6 +267,13 @@ struct DeviceDetailView: View {
                             .foregroundStyle(.secondary)
                             .padding(.leading, 44)
                         Spacer()
+                        if policy.downtimeWeekendStart != nil || policy.downtimeWeekendEnd != nil {
+                            Button("Reset") {
+                                Task { await vm.clearDowntimeWeekendOverride() }
+                            }
+                            .font(.caption)
+                            .padding(.trailing, 16)
+                        }
                     }
                     .padding(.top, 4)
 
@@ -314,12 +328,24 @@ struct DeviceDetailView: View {
 
                     Divider().padding(.leading, 44)
 
-                    minutesPickerRow(
-                        label: "Weekends",
-                        minutes: policy.screenTimeWeekendLimitMinutes ?? policy.screenTimeLimitMinutes,
-                        placeholder: "Same as weekdays"
-                    ) { newMin in
-                        Task { await vm.setWeekendLimit(newMin) }
+                    HStack(spacing: 0) {
+                        minutesPickerRow(
+                            label: "Weekends",
+                            minutes: policy.screenTimeWeekendLimitMinutes ?? policy.screenTimeLimitMinutes,
+                            placeholder: "Same as weekdays"
+                        ) { newMin in
+                            Task { await vm.setWeekendLimit(newMin) }
+                        }
+                        if policy.screenTimeWeekendLimitMinutes != nil {
+                            Button {
+                                Task { await vm.clearWeekendLimit() }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 16)
+                        }
                     }
 
                     Divider().padding(.leading, 44)
@@ -363,6 +389,16 @@ struct DeviceDetailView: View {
                         .frame(width: 40, alignment: .leading)
                         .padding(.leading, 44)
                     Spacer()
+                    if day.value != nil {
+                        Button {
+                            Task { await vm.clearDayLimit(day: day.index) }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     Stepper(
                         value: Binding(
                             get: { current },

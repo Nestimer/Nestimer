@@ -158,6 +158,9 @@ struct PolicyUpdate: Encodable {
     var screenTimeSatMinutes: Int?
     var screenTimeSunMinutes: Int?
 
+    /// Fields to explicitly encode as JSON null (to clear overrides on the server).
+    var clearFields: Set<CodingKeys> = []
+
     enum CodingKeys: String, CodingKey {
         case downtimeEnabled = "downtime_enabled"
         case downtimeStart = "downtime_start"
@@ -176,6 +179,34 @@ struct PolicyUpdate: Encodable {
         case screenTimeFriMinutes = "screen_time_fri_minutes"
         case screenTimeSatMinutes = "screen_time_sat_minutes"
         case screenTimeSunMinutes = "screen_time_sun_minutes"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        // Encode fields that have values
+        try container.encodeIfPresent(downtimeEnabled, forKey: .downtimeEnabled)
+        try container.encodeIfPresent(downtimeStart, forKey: .downtimeStart)
+        try container.encodeIfPresent(downtimeEnd, forKey: .downtimeEnd)
+        try container.encodeIfPresent(downtimeWeekdayStart, forKey: .downtimeWeekdayStart)
+        try container.encodeIfPresent(downtimeWeekdayEnd, forKey: .downtimeWeekdayEnd)
+        try container.encodeIfPresent(downtimeWeekendStart, forKey: .downtimeWeekendStart)
+        try container.encodeIfPresent(downtimeWeekendEnd, forKey: .downtimeWeekendEnd)
+        try container.encodeIfPresent(screenTimeEnabled, forKey: .screenTimeEnabled)
+        try container.encodeIfPresent(screenTimeLimitMinutes, forKey: .screenTimeLimitMinutes)
+        try container.encodeIfPresent(screenTimeWeekendLimitMinutes, forKey: .screenTimeWeekendLimitMinutes)
+        try container.encodeIfPresent(screenTimeMonMinutes, forKey: .screenTimeMonMinutes)
+        try container.encodeIfPresent(screenTimeTueMinutes, forKey: .screenTimeTueMinutes)
+        try container.encodeIfPresent(screenTimeWedMinutes, forKey: .screenTimeWedMinutes)
+        try container.encodeIfPresent(screenTimeThuMinutes, forKey: .screenTimeThuMinutes)
+        try container.encodeIfPresent(screenTimeFriMinutes, forKey: .screenTimeFriMinutes)
+        try container.encodeIfPresent(screenTimeSatMinutes, forKey: .screenTimeSatMinutes)
+        try container.encodeIfPresent(screenTimeSunMinutes, forKey: .screenTimeSunMinutes)
+
+        // Encode explicit nulls for fields that should be cleared
+        for key in clearFields {
+            try container.encodeNil(forKey: key)
+        }
     }
 }
 

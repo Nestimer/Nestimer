@@ -230,31 +230,20 @@ async def update_policy(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
-    if data.downtime_enabled is not None:
-        policy.downtime_enabled = data.downtime_enabled
-    if data.downtime_start is not None:
-        policy.downtime_start = parse_time(data.downtime_start)
-    if data.downtime_end is not None:
-        policy.downtime_end = parse_time(data.downtime_end)
-    if data.downtime_weekday_start is not None:
-        policy.downtime_weekday_start = parse_time(data.downtime_weekday_start)
-    if data.downtime_weekday_end is not None:
-        policy.downtime_weekday_end = parse_time(data.downtime_weekday_end)
-    if data.downtime_weekend_start is not None:
-        policy.downtime_weekend_start = parse_time(data.downtime_weekend_start)
-    if data.downtime_weekend_end is not None:
-        policy.downtime_weekend_end = parse_time(data.downtime_weekend_end)
-    if data.screen_time_enabled is not None:
-        policy.screen_time_enabled = data.screen_time_enabled
-    if data.screen_time_limit_minutes is not None:
-        policy.screen_time_limit_minutes = data.screen_time_limit_minutes
-    if data.screen_time_weekend_limit_minutes is not None:
-        policy.screen_time_weekend_limit_minutes = data.screen_time_weekend_limit_minutes
-    for day in DAYS:
-        field = f"screen_time_{day}_minutes"
-        value = getattr(data, field)
-        if value is not None:
-            setattr(policy, field, value)
+    # Use model_fields_set to distinguish "not sent" from "sent as null".
+    # This allows clients to clear optional overrides by sending null.
+    supplied = data.model_fields_set
+    time_fields = {
+        "downtime_start", "downtime_end",
+        "downtime_weekday_start", "downtime_weekday_end",
+        "downtime_weekend_start", "downtime_weekend_end",
+    }
+
+    for field_name in supplied:
+        value = getattr(data, field_name)
+        if field_name in time_fields:
+            value = parse_time(value) if value is not None else None
+        setattr(policy, field_name, value)
 
     await db.commit()
     await db.refresh(policy)

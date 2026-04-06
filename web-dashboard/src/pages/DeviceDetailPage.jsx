@@ -213,14 +213,20 @@ export default function DeviceDetailPage() {
                 <input
                   type="time"
                   value={policy.downtime_weekday_start || ''}
-                  onChange={(e) => savePolicy({ downtime_weekday_start: e.target.value || policy.downtime_start })}
+                  onChange={(e) => savePolicy({ downtime_weekday_start: e.target.value || null })}
                 />
                 <span>to</span>
                 <input
                   type="time"
                   value={policy.downtime_weekday_end || ''}
-                  onChange={(e) => savePolicy({ downtime_weekday_end: e.target.value || policy.downtime_end })}
+                  onChange={(e) => savePolicy({ downtime_weekday_end: e.target.value || null })}
                 />
+                {(policy.downtime_weekday_start || policy.downtime_weekday_end) && (
+                  <button
+                    className="reset-btn"
+                    onClick={() => savePolicy({ downtime_weekday_start: null, downtime_weekday_end: null })}
+                  >Reset</button>
+                )}
               </div>
             </div>
 
@@ -233,14 +239,20 @@ export default function DeviceDetailPage() {
                 <input
                   type="time"
                   value={policy.downtime_weekend_start || ''}
-                  onChange={(e) => savePolicy({ downtime_weekend_start: e.target.value || policy.downtime_start })}
+                  onChange={(e) => savePolicy({ downtime_weekend_start: e.target.value || null })}
                 />
                 <span>to</span>
                 <input
                   type="time"
                   value={policy.downtime_weekend_end || ''}
-                  onChange={(e) => savePolicy({ downtime_weekend_end: e.target.value || policy.downtime_end })}
+                  onChange={(e) => savePolicy({ downtime_weekend_end: e.target.value || null })}
                 />
+                {(policy.downtime_weekend_start || policy.downtime_weekend_end) && (
+                  <button
+                    className="reset-btn"
+                    onClick={() => savePolicy({ downtime_weekend_start: null, downtime_weekend_end: null })}
+                  >Reset</button>
+                )}
               </div>
             </div>
           </>
@@ -296,6 +308,12 @@ export default function DeviceDetailPage() {
                   onChange={(e) => savePolicy({ screen_time_weekend_limit_minutes: parseInt(e.target.value) || null })}
                 />
                 <span className="unit">minutes</span>
+                {policy.screen_time_weekend_limit_minutes && (
+                  <button
+                    className="reset-btn"
+                    onClick={() => savePolicy({ screen_time_weekend_limit_minutes: null })}
+                  >Reset</button>
+                )}
               </div>
             </div>
 
@@ -329,6 +347,12 @@ export default function DeviceDetailPage() {
                         onChange={(e) => savePolicy({ [field]: parseInt(e.target.value) || null })}
                       />
                       <span style={{ fontSize: 12, color: '#86868b' }}>m</span>
+                      {policy[field] && (
+                        <button
+                          className="reset-btn"
+                          onClick={() => savePolicy({ [field]: null })}
+                        >&times;</button>
+                      )}
                     </div>
                   )
                 })}

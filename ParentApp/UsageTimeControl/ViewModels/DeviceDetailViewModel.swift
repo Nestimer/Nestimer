@@ -78,7 +78,7 @@ class DeviceDetailViewModel: ObservableObject {
 
     private func mergeUpdates(existing: PolicyUpdate?, new: PolicyUpdate) -> PolicyUpdate {
         guard let existing else { return new }
-        return PolicyUpdate(
+        var merged = PolicyUpdate(
             downtimeEnabled: new.downtimeEnabled ?? existing.downtimeEnabled,
             downtimeStart: new.downtimeStart ?? existing.downtimeStart,
             downtimeEnd: new.downtimeEnd ?? existing.downtimeEnd,
@@ -97,6 +97,8 @@ class DeviceDetailViewModel: ObservableObject {
             screenTimeSatMinutes: new.screenTimeSatMinutes ?? existing.screenTimeSatMinutes,
             screenTimeSunMinutes: new.screenTimeSunMinutes ?? existing.screenTimeSunMinutes
         )
+        merged.clearFields = existing.clearFields.union(new.clearFields)
+        return merged
     }
 
     func setDayLimit(day: Int, minutes: Int) async {
@@ -112,6 +114,41 @@ class DeviceDetailViewModel: ObservableObject {
         case 6: update.screenTimeSunMinutes = minutes
         default: return
         }
+        await updatePolicy(update)
+    }
+
+    func clearDayLimit(day: Int) async {
+        var update = PolicyUpdate()
+        let key: PolicyUpdate.CodingKeys
+        switch day {
+        case 0: key = .screenTimeMonMinutes
+        case 1: key = .screenTimeTueMinutes
+        case 2: key = .screenTimeWedMinutes
+        case 3: key = .screenTimeThuMinutes
+        case 4: key = .screenTimeFriMinutes
+        case 5: key = .screenTimeSatMinutes
+        case 6: key = .screenTimeSunMinutes
+        default: return
+        }
+        update.clearFields = [key]
+        await updatePolicy(update)
+    }
+
+    func clearWeekendLimit() async {
+        var update = PolicyUpdate()
+        update.clearFields = [.screenTimeWeekendLimitMinutes]
+        await updatePolicy(update)
+    }
+
+    func clearDowntimeWeekdayOverride() async {
+        var update = PolicyUpdate()
+        update.clearFields = [.downtimeWeekdayStart, .downtimeWeekdayEnd]
+        await updatePolicy(update)
+    }
+
+    func clearDowntimeWeekendOverride() async {
+        var update = PolicyUpdate()
+        update.clearFields = [.downtimeWeekendStart, .downtimeWeekendEnd]
         await updatePolicy(update)
     }
 
