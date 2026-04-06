@@ -237,3 +237,47 @@ async def test_effective_limit_per_day_over_weekend_over_default(client):
     )
     config = resp.json()
     assert config["screen_time_limit_minutes"] == 120
+
+
+async def test_clear_override_by_sending_null(client):
+    """Sending explicit null for an override field should clear it."""
+    token = await register_user(client, email="clear@test.com")
+    device = await create_device(client, token)
+
+    # Set overrides
+    resp = await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "downtime_weekday_start": "23:00",
+            "downtime_weekday_end": "07:00",
+            "screen_time_weekend_limit_minutes": 200,
+            "screen_time_mon_minutes": 30,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    policy = resp.json()
+    assert policy["downtime_weekday_start"] == "23:00"
+    assert policy["screen_time_weekend_limit_minutes"] == 200
+    assert policy["screen_time_mon_minutes"] == 30
+
+    # Clear overrides by sending null
+    resp = await client.put(
+        f"/api/v1/devices/{device['id']}/policy",
+        json={
+            "downtime_weekday_start": None,
+            "downtime_weekday_end": None,
+            "screen_time_weekend_limit_minutes": None,
+            "screen_time_mon_minutes": None,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    policy = resp.json()
+    assert policy["downtime_weekday_start"] is None
+    assert policy["downtime_weekday_end"] is None
+    assert policy["screen_time_weekend_limit_minutes"] is None
+    assert policy["screen_time_mon_minutes"] is None
+    # Other fields should be preserved
+    assert policy["downtime_start"] == "22:00"
+    assert policy["screen_time_limit_minutes"] == 120
