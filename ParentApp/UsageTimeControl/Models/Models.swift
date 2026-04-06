@@ -41,6 +41,16 @@ struct CreateDeviceRequest: Encodable {
     }
 }
 
+struct DeviceUpdateRequest: Encodable {
+    var name: String?
+    var childName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case childName = "child_name"
+    }
+}
+
 struct Device: Decodable, Identifiable {
     let id: String
     let name: String

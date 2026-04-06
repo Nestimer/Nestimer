@@ -21,6 +21,10 @@ export default function DeviceDetailPage() {
   const [totpRemaining, setTotpRemaining] = useState(0)
   const [activities, setActivities] = useState([])
   const [newActivity, setNewActivity] = useState(null)
+  const [editingName, setEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editChildName, setEditChildName] = useState('')
+  const [savingName, setSavingName] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -75,9 +79,43 @@ export default function DeviceDetailPage() {
       <Link to="/" className="back-link">&larr; All Devices</Link>
 
       <div className="header">
-        <div>
-          <h1>{device.name}</h1>
-          <p style={{ color: '#86868b' }}>{device.child_name}</p>
+        <div style={{ flex: 1 }}>
+          {editingName ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: 12 }}>Device Name</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} maxLength={100} autoFocus />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: 12 }}>Child Name</label>
+                <input type="text" value={editChildName} onChange={e => setEditChildName(e.target.value)} maxLength={100} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-small" disabled={savingName || !editName.trim() || !editChildName.trim()} onClick={async () => {
+                  setSavingName(true)
+                  try {
+                    const updated = await api.updateDevice(id, { name: editName.trim(), child_name: editChildName.trim() })
+                    setDevice(updated)
+                    setEditingName(false)
+                  } catch (e) { alert(e.message) }
+                  setSavingName(false)
+                }}>Save</button>
+                <button className="btn btn-secondary btn-small" onClick={() => setEditingName(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div>
+                <h1>{device.name}</h1>
+                <p style={{ color: '#86868b' }}>{device.child_name}</p>
+              </div>
+              <button className="btn btn-secondary btn-small" onClick={() => {
+                setEditName(device.name)
+                setEditChildName(device.child_name)
+                setEditingName(true)
+              }} style={{ alignSelf: 'flex-start', marginTop: 4 }}>Edit</button>
+            </div>
+          )}
         </div>
       </div>
 

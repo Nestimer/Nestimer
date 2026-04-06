@@ -9,6 +9,7 @@ struct DeviceDetailView: View {
     let deviceId: String
     @StateObject private var vm: DeviceDetailViewModel
     @State private var showAddActivity = false
+    @State private var showEditName = false
 
     init(deviceId: String) {
         self.deviceId = deviceId
@@ -57,6 +58,9 @@ struct DeviceDetailView: View {
         }
         .sheet(isPresented: $showAddActivity) {
             AddActivityView(vm: vm)
+        }
+        .sheet(isPresented: $showEditName) {
+            EditDeviceNameView(vm: vm)
         }
     }
 
@@ -478,7 +482,22 @@ struct DeviceDetailView: View {
 
             VStack(spacing: 0) {
                 if let device = vm.device {
-                    infoRow(label: "Name", value: device.name)
+                    HStack {
+                        Text("Name")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(device.name)
+                        Button {
+                            showEditName = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.callout)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                     Divider().padding(.leading, 16)
                     infoRow(label: "Child", value: device.childName)
                     Divider().padding(.leading, 16)
@@ -729,5 +748,56 @@ struct AddActivityView: View {
         let h = Calendar.current.component(.hour, from: date)
         let m = Calendar.current.component(.minute, from: date)
         return String(format: "%02d:%02d", h, m)
+    }
+}
+
+// MARK: - Edit device name sheet
+
+struct EditDeviceNameView: View {
+    @ObservedObject var vm: DeviceDetailViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String = ""
+    @State private var childName: String = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Device Name") {
+                    TextField("Device name", text: $name)
+                }
+                Section("Child Name") {
+                    TextField("Child name", text: $childName)
+                }
+            }
+            .navigationTitle("Edit Device")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            isSaving = true
+                            await vm.updateDeviceName(name: name, childName: childName)
+                            isSaving = false
+                            dismiss()
+                        }
+                    }
+                    .disabled(name.isEmpty || childName.isEmpty || isSaving)
+                }
+            }
+            .onAppear {
+                name = vm.device?.name ?? ""
+                childName = vm.device?.childName ?? ""
+            }
+        }
+        #if os(macOS)
+        .frame(width: 400, height: 250)
+        #endif
     }
 }
