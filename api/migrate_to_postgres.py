@@ -93,7 +93,8 @@ async def migrate(sqlite_path: str):
         placeholders = ", ".join(f":{c}" for c in columns)
 
         async with engine.begin() as conn:
-            await conn.execute(text(f"DELETE FROM {table}"))
+            # Truncate with CASCADE to avoid FK constraint issues
+            await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
             for row in rows:
                 values = {c: convert_value(c, row[c]) for c in columns}
                 await conn.execute(
