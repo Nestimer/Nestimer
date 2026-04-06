@@ -28,6 +28,9 @@ if [ -z "$VERSION" ]; then
     VERSION="$MAJOR.$((MINOR + 1))"
 fi
 
+# Strip quarantine so the app works on other Macs without Gatekeeper issues
+xattr -cr "$APP_PATH" 2>/dev/null
+
 echo "=== Push Agent Update ==="
 echo "App:     $APP_PATH"
 echo "Version: $VERSION"

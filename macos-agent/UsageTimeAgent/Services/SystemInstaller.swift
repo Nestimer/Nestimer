@@ -97,7 +97,14 @@ struct SystemInstaller {
     private static func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "Install failed"
-        alert.informativeText = message
+        alert.informativeText = """
+        \(message)
+
+        If macOS blocked the admin prompt, try:
+        1. Right-click the app → Open (first time only)
+        2. Or run from Terminal:
+           \(Bundle.main.bundlePath)/Contents/MacOS/UsageTimeAgent
+        """
         alert.alertStyle = .critical
         alert.addButton(withTitle: "OK")
         alert.runModal()
