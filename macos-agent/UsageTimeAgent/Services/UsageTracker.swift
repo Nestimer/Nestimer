@@ -65,6 +65,15 @@ class UsageTracker {
         return usedMinutesToday
     }
 
+    /// Force-set usage to server value (used on first sync to clear stale cache).
+    func forceSetUsedMinutes(_ minutes: Double, forDate date: String) {
+        if date == currentDateString() {
+            usedMinutesToday = minutes
+            trackingDate = date
+            saveLocalState()
+        }
+    }
+
     func setUsedMinutes(_ minutes: Double, forDate date: String) {
         if date == currentDateString() {
             // Server is the source of truth — accept its value.

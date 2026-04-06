@@ -13,6 +13,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var syncTimer: Timer?
     private var tickTimer: Timer?
+    /// True after the first successful server sync. Lock screen won't show before this.
+    private var initialSyncCompleted = false
     /// Cached TOTP shared secret (received from server, persisted in UserDefaults for offline use).
     private var sharedSecret: String? {
         get { UserDefaults.standard.string(forKey: "totp_shared_secret") }
@@ -123,6 +125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Core loop
 
     private func performTick() {
+        // Don't count or evaluate until first server sync completes
+        guard initialSyncCompleted else { return }
         // Pause counting during scheduled activity OR TOTP temporary unlock
         if policyEnforcer.activeActivity != nil || policyEnforcer.isTemporaryUnlockActive {
             let current = usageTracker.getUsedMinutesToday()
@@ -140,13 +144,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Fetch policy from server
             let policy = try await apiClient.fetchConfig(localDate: usageTracker.currentDateString())
 
-            // Sync usage with server state
-            usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+            // On first sync, trust server value completely (local cache may be stale)
+            if !initialSyncCompleted {
+                usageTracker.forceSetUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+                initialSyncCompleted = true
+                NSLog("[UsageTimeAgent] Initial sync — server says \(String(format: "%.1f", policy.usedMinutesToday))m used")
+            } else {
+                // Normal sync — reconcile local and server
+                usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+            }
 
-            // Report our usage back
+            // Report our usage back (use fresh value after sync)
+            let syncedMinutes = usageTracker.getUsedMinutesToday()
             try await apiClient.reportUsage(
                 date: usageTracker.currentDateString(),
-                totalMinutes: usedMinutes
+                totalMinutes: syncedMinutes
             )
 
             // Cache the shared secret for offline TOTP verification
@@ -155,8 +167,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Enforce policy (lock/unlock, warnings)
+            let currentUsed = usageTracker.getUsedMinutesToday()
             await MainActor.run {
-                policyEnforcer.evaluate(policy: policy, usedMinutesToday: usedMinutes)
+                policyEnforcer.evaluate(policy: policy, usedMinutesToday: currentUsed)
                 statusBar?.updatePolicy(policy: policy)
                 statusBar?.activeActivityName = policyEnforcer.activeActivity?.name
                 statusBar?.activeActivityEndsAt = policyEnforcer.activeActivityEndsAt
