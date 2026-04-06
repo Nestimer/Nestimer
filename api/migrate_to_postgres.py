@@ -20,6 +20,7 @@ TABLES = ["users", "devices", "policies", "usage_logs", "activities"]
 
 # Columns that store datetime values (as strings in SQLite)
 DATETIME_COLUMNS = {"created_at", "last_seen", "updated_at", "last_updated"}
+BOOLEAN_COLUMNS = {"downtime_enabled", "screen_time_enabled", "enabled"}
 TIME_COLUMNS = {
     "downtime_start", "downtime_end",
     "downtime_weekday_start", "downtime_weekday_end",
@@ -32,6 +33,9 @@ def convert_value(col_name: str, value):
     """Convert SQLite string values to proper Python types for PostgreSQL."""
     if value is None:
         return None
+
+    if col_name in BOOLEAN_COLUMNS and isinstance(value, int):
+        return bool(value)
 
     if col_name in DATETIME_COLUMNS and isinstance(value, str):
         # Try various datetime formats
