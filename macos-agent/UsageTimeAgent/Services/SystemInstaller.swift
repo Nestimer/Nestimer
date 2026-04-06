@@ -19,23 +19,17 @@ struct SystemInstaller {
 
     @discardableResult
     static func promptAndInstallIfNeeded() -> Bool {
-        if isInstalled && isRunningFromSystemLocation {
-            return true
-        }
+        if isInstalled && isRunningFromSystemLocation { return true }
 
         let isUpdate = isInstalled && !isRunningFromSystemLocation
-        let title = isUpdate ? "Update UsageTime agent?" : "Install UsageTime as a protected service?"
-        let message = isUpdate
-            ? "This will replace the installed agent with this new version and restart it.\n\nRequires admin password."
-            : "This will install the agent in /Applications and set it to auto-start on boot.\nThe child will not be able to disable or remove it without the administrator password.\n\nRequires admin password (one time)."
-
         let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
+        alert.messageText = isUpdate ? "Update UsageTime agent?" : "Install UsageTime as a protected service?"
+        alert.informativeText = isUpdate
+            ? "This will replace the installed agent and restart it.\nRequires admin password."
+            : "Installs to /Applications with auto-start on boot.\nChild cannot disable without admin password.\nRequires admin password (one time)."
         alert.alertStyle = .informational
         alert.addButton(withTitle: isUpdate ? "Update" : "Install")
         alert.addButton(withTitle: "Not now")
-
         guard alert.runModal() == .alertFirstButtonReturn else { return false }
         return performInstall(isUpdate: isUpdate)
     }
@@ -43,73 +37,43 @@ struct SystemInstaller {
     private static func performInstall(isUpdate: Bool) -> Bool {
         let currentAppPath = Bundle.main.bundlePath
 
-        // The full watchdog script with auto-update support
-        let watchdogScript = Self.watchdogScriptContent()
+        // 1. Write watchdog script and plist to temp files (no escaping issues)
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("usagetime-install-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
 
-        var script = "set -e\nmkdir -p /usr/local/libexec /var/log/usagetime\n"
+        let watchdogTmp = tmpDir.appendingPathComponent("watchdog.sh")
+        let plistTmp = tmpDir.appendingPathComponent("daemon.plist")
+
+        try? watchdogScriptContent().write(to: watchdogTmp, atomically: true, encoding: .utf8)
+        try? daemonPlistContent().write(to: plistTmp, atomically: true, encoding: .utf8)
+
+        // 2. Build a simple admin shell script that just copies files
+        var cmds = [String]()
+        cmds.append("mkdir -p /usr/local/libexec /var/log/usagetime")
 
         if isUpdate {
-            script += """
-            pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
-            sleep 1
-            pkill -9 -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
-            sleep 0.5
-            """
+            cmds.append("pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true")
+            cmds.append("sleep 1")
         }
 
-        // Escape the watchdog script for embedding in heredoc
-        let escapedWatchdog = watchdogScript
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "$", with: "\\$")
-            .replacingOccurrences(of: "`", with: "\\`")
+        cmds.append("rm -rf '\(installedAppPath)'")
+        cmds.append("cp -R '\(currentAppPath)' '\(installedAppPath)'")
+        cmds.append("chown -R root:wheel '\(installedAppPath)'")
+        cmds.append("cp '\(watchdogTmp.path)' '\(watchdogScriptPath)'")
+        cmds.append("chmod 755 '\(watchdogScriptPath)'")
+        cmds.append("chown root:wheel '\(watchdogScriptPath)'")
+        cmds.append("launchctl unload '\(daemonPlistPath)' 2>/dev/null || true")
+        cmds.append("cp '\(plistTmp.path)' '\(daemonPlistPath)'")
+        cmds.append("chown root:wheel '\(daemonPlistPath)'")
+        cmds.append("chmod 644 '\(daemonPlistPath)'")
+        cmds.append("launchctl load '\(daemonPlistPath)'")
+        cmds.append("rm -rf '\(tmpDir.path)'")
 
-        script += """
-        rm -rf "\(installedAppPath)"
-        cp -R "\(currentAppPath)" "\(installedAppPath)"
-        chown -R root:wheel "\(installedAppPath)"
-
-        printf '%s' "\(escapedWatchdog)" > \(watchdogScriptPath)
-        chmod 755 \(watchdogScriptPath)
-        chown root:wheel \(watchdogScriptPath)
-
-        launchctl unload \(daemonPlistPath) 2>/dev/null || true
-        cat > \(daemonPlistPath) <<'PLIST'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(daemonLabel)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>/bin/bash</string>
-                <string>\(watchdogScriptPath)</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>StartInterval</key>
-            <integer>15</integer>
-            <key>ThrottleInterval</key>
-            <integer>5</integer>
-            <key>StandardOutPath</key>
-            <string>/var/log/usagetime/watchdog.log</string>
-            <key>StandardErrorPath</key>
-            <string>/var/log/usagetime/watchdog-error.log</string>
-        </dict>
-        </plist>
-        PLIST
-        chown root:wheel \(daemonPlistPath)
-        chmod 644 \(daemonPlistPath)
-        launchctl load \(daemonPlistPath)
-        """
-
-        let escaped = script.replacingOccurrences(of: "\\", with: "\\\\")
-                             .replacingOccurrences(of: "\"", with: "\\\"")
-        let appleScript = "do shell script \"\(escaped)\" with administrator privileges"
+        let script = cmds.joined(separator: " && ")
+        let appleScript = "do shell script \"\(script)\" with administrator privileges"
 
         var error: NSDictionary?
-        let scriptObj = NSAppleScript(source: appleScript)
-        _ = scriptObj?.executeAndReturnError(&error)
+        NSAppleScript(source: appleScript)?.executeAndReturnError(&error)
 
         if let error {
             NSLog("[UsageTimeAgent] SystemInstaller failed: \(error)")
@@ -119,17 +83,17 @@ struct SystemInstaller {
             errAlert.alertStyle = .warning
             errAlert.addButton(withTitle: "OK")
             errAlert.runModal()
+            try? FileManager.default.removeItem(at: tmpDir)
             return false
         }
 
         NSLog("[UsageTimeAgent] SystemInstaller: \(isUpdate ? "updated" : "installed") ✓")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            NSApp.terminate(nil)
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
         return true
     }
 
-    /// Returns the full watchdog shell script content (with auto-update).
+    // MARK: - File contents
+
     private static func watchdogScriptContent() -> String {
         return """
         #!/bin/bash
@@ -153,7 +117,7 @@ struct SystemInstaller {
             fi
         fi
 
-        # 2. Auto-update (throttled to every 5 min)
+        # 2. Auto-update (throttled)
         CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null)
         [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ] && exit 0
 
@@ -206,7 +170,7 @@ struct SystemInstaller {
         pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
         sleep 1
         pkill -9 -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
-        sleep 0.5
+        sleep 1
 
         rm -rf "$APP_PATH"
         mv "$TMPDIR/UsageTimeAgent.app" "$APP_PATH"
@@ -218,6 +182,34 @@ struct SystemInstaller {
         log "Updated to $REMOTE_VERSION — restarting"
         CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null)
         [ -n "$CONSOLE_UID" ] && launchctl asuser "$CONSOLE_UID" open "$APP_PATH"
+        """
+    }
+
+    private static func daemonPlistContent() -> String {
+        return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>\(daemonLabel)</string>
+            <key>ProgramArguments</key>
+            <array>
+                <string>/bin/bash</string>
+                <string>\(watchdogScriptPath)</string>
+            </array>
+            <key>RunAtLoad</key>
+            <true/>
+            <key>StartInterval</key>
+            <integer>15</integer>
+            <key>ThrottleInterval</key>
+            <integer>5</integer>
+            <key>StandardOutPath</key>
+            <string>/var/log/usagetime/watchdog.log</string>
+            <key>StandardErrorPath</key>
+            <string>/var/log/usagetime/watchdog-error.log</string>
+        </dict>
+        </plist>
         """
     }
 }
