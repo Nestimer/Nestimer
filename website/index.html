@@ -3,54 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UsageTime Controller - Self-Hosted Parental Controls for macOS</title>
-  <meta name="description" content="Free, open-source parental controls for macOS. Set screen time limits, downtime schedules, and manage your child's Mac remotely. Self-hosted, private, no subscription.">
-  <meta name="keywords" content="parental controls, macOS, screen time, kids, children, self-hosted, open source, free, screen time limit, downtime, Family Link alternative, mac parental controls">
-  <meta name="author" content="UsageTime Controller">
-  <link rel="canonical" href="https://usagetime.app/">
+  <title>NesTimer — Screen Time Controls for Your Child's Mac</title>
+  <meta name="description" content="Free parental controls for macOS. Set screen time limits, downtime schedules, and manage your child's Mac from any browser. No software to install for parents — just sign up and connect.">
+  <meta name="keywords" content="parental controls, macOS, screen time, kids, children, screen time limit, downtime, Family Link alternative, mac parental controls, free">
+  <link rel="canonical" href="https://nestimer.com/">
   <link rel="icon" type="image/png" href="img/favicon.png">
 
-  <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="UsageTime Controller - Self-Hosted Parental Controls for macOS">
-  <meta property="og:description" content="Free, open-source screen time management for your child's Mac. Set limits, schedules, and unlock codes. Self-hosted and private.">
-  <meta property="og:image" content="https://usagetime.app/img/og-preview.png">
-  <meta property="og:url" content="https://usagetime.app/">
-  <meta property="og:site_name" content="UsageTime Controller">
+  <meta property="og:title" content="NesTimer — Screen Time Controls for Your Child's Mac">
+  <meta property="og:description" content="Free screen time management for macOS. Set limits, schedules, and unlock codes from any browser. Connect your child's Mac in minutes.">
+  <meta property="og:image" content="https://nestimer.com/img/og-preview.png">
+  <meta property="og:url" content="https://nestimer.com/">
 
-  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="UsageTime Controller - Self-Hosted Parental Controls for macOS">
-  <meta name="twitter:description" content="Free, open-source screen time management for your child's Mac. No subscription, no cloud dependency.">
-  <meta name="twitter:image" content="https://usagetime.app/img/og-preview.png">
+  <meta name="twitter:title" content="NesTimer — Screen Time Controls for Your Child's Mac">
+  <meta name="twitter:description" content="Free parental controls for macOS. No software to install for parents.">
+  <meta name="twitter:image" content="https://nestimer.com/img/og-preview.png">
 
-  <!-- Structured Data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "UsageTime Controller",
+    "name": "NesTimer",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS",
-    "description": "Self-hosted parental controls for macOS. Set screen time limits, downtime schedules, scheduled activities, and offline unlock codes. Manage everything from a web dashboard or native iOS/macOS app.",
+    "description": "Free parental controls for macOS. Set screen time limits, downtime schedules, scheduled activities, and offline unlock codes. Manage everything from any browser.",
     "offers": {
       "@type": "Offer",
       "price": "0",
       "priceCurrency": "USD"
     },
-    "featureList": [
-      "Daily screen time limits with per-day overrides",
-      "Downtime scheduling (weekday/weekend)",
-      "Scheduled activities that bypass limits",
-      "Offline TOTP unlock codes",
-      "Web dashboard for parents",
-      "Native iOS and macOS parent app",
-      "Tamper-protected macOS agent",
-      "Smart usage tracking (only counts active use)",
-      "Self-hosted and private"
-    ],
-    "softwareRequirements": "macOS 13+, Docker for server",
-    "license": "https://github.com/ruslan-splynx/UsageTimeController"
+    "url": "https://nestimer.com"
   }
   </script>
 
@@ -61,18 +44,18 @@
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "What is UsageTime Controller?",
+        "name": "Do I need to install anything on my phone or computer?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "UsageTime Controller is a free, open-source, self-hosted parental control system for macOS. It lets parents set screen time limits, downtime schedules, and manage their child's Mac remotely via a web dashboard or native app."
+          "text": "No. Parents use the web dashboard at my.nestimer.com from any browser. The only software needed is the small agent app on your child's Mac."
         }
       },
       {
         "@type": "Question",
-        "name": "Is UsageTime Controller free?",
+        "name": "Is NesTimer free?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes, completely free and open-source. You host the server yourself (on a VPS or home server), so there are no subscription fees or cloud costs beyond your own hosting."
+          "text": "Yes, completely free. No subscription, no credit card, no hidden fees."
         }
       },
       {
@@ -80,7 +63,7 @@
         "name": "Can my child bypass the screen time limits?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The macOS agent installs as a root-protected LaunchDaemon with a watchdog process. It cannot be quit via Cmd+Q, and if the process is killed, the watchdog restarts it within 15 seconds. The child would need admin (sudo) access to uninstall it."
+          "text": "The agent installs as a root-protected system service with a watchdog process. It restarts within 15 seconds if killed. If your child is a Standard User on macOS (not admin), they cannot remove it."
         }
       },
       {
@@ -88,23 +71,7 @@
         "name": "What if the internet goes down?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The agent enforces all policies locally, even without internet. Parents can generate offline unlock codes (TOTP) from the dashboard or app. The code changes every 5 minutes and grants a 30-minute temporary unlock."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How is this different from Apple Screen Time?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Apple Screen Time requires iCloud Family Sharing and is easily bypassed by children who know the device password. UsageTime Controller is root-protected, self-hosted (your data stays private), supports offline unlock codes, and offers more flexible scheduling with per-day limits and activity windows."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What do I need to run it?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "A server (any Linux VPS or home server) running Docker, and a Mac (macOS 13+) for the child. Parents manage everything from a web browser or the native iOS/macOS app."
+          "text": "All rules are enforced locally on the Mac. Parents can generate offline unlock codes from the dashboard. The code grants a 30-minute temporary unlock."
         }
       }
     ]
@@ -119,14 +86,14 @@
   <header class="header">
     <div class="container header-inner">
       <a href="/" class="logo">
-        <img src="img/icon-parent-128.png" alt="UsageTime Controller icon" width="40" height="40">
-        <span>UsageTime Controller</span>
+        <img src="img/icon-parent-128.png" alt="NesTimer" width="40" height="40">
+        <span>NesTimer</span>
       </a>
       <nav class="nav">
         <a href="#features">Features</a>
         <a href="#how-it-works">How It Works</a>
         <a href="#faq">FAQ</a>
-        <a href="https://github.com/ruslan-splynx/UsageTimeController" class="btn btn-sm" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://my.nestimer.com" class="btn btn-sm">Dashboard</a>
       </nav>
       <button class="nav-toggle" aria-label="Toggle navigation">
         <span></span><span></span><span></span>
@@ -137,23 +104,23 @@
   <!-- Hero -->
   <section class="hero">
     <div class="container">
-      <h1>Parental controls for macOS<br>that actually work</h1>
+      <h1>Screen time controls<br>for your child's Mac</h1>
       <p class="hero-sub">
-        Set screen time limits, downtime schedules, and activity windows for your child's Mac.
-        Self-hosted, open-source, and free. Your data never leaves your server.
+        Set daily limits, bedtime schedules, and class windows.
+        Manage everything from your browser. Free, no app to install for parents.
       </p>
       <div class="hero-actions">
-        <a href="https://github.com/ruslan-splynx/UsageTimeController#quick-start" class="btn btn-primary">Get Started</a>
-        <a href="#features" class="btn btn-ghost">Learn More</a>
+        <a href="https://my.nestimer.com" class="btn btn-primary">Start Free</a>
+        <a href="#how-it-works" class="btn btn-ghost">See How It Works</a>
       </div>
       <div class="hero-icons">
         <div class="hero-icon-card">
-          <img src="img/icon-parent-256.png" alt="Parent app" width="80" height="80">
-          <span>Parent App</span>
+          <img src="img/icon-parent-256.png" alt="Web Dashboard" width="80" height="80">
+          <span>Web Dashboard</span>
         </div>
         <div class="hero-icon-card">
           <img src="img/icon-agent-256.png" alt="macOS Agent" width="80" height="80">
-          <span>macOS Agent</span>
+          <span>Mac Agent</span>
         </div>
       </div>
     </div>
@@ -162,25 +129,25 @@
   <!-- Problem / Solution -->
   <section class="section section-alt" id="why">
     <div class="container">
-      <h2>Why UsageTime Controller?</h2>
+      <h2>Why NesTimer?</h2>
       <div class="grid-2">
         <div class="card">
           <h3>The problem</h3>
           <ul>
-            <li>Apple Screen Time is easy to bypass</li>
-            <li>Commercial solutions cost $5-15/month per child</li>
-            <li>Cloud services collect your family's data</li>
-            <li>Most tools don't offer flexible per-day limits</li>
-            <li>No offline fallback when the internet goes down</li>
+            <li>Apple Screen Time is easy for kids to bypass</li>
+            <li>Commercial tools cost $5-15/month per child</li>
+            <li>Most tools require installing apps on your devices too</li>
+            <li>No flexible per-day or per-class scheduling</li>
+            <li>No way to unlock remotely when internet is down</li>
           </ul>
         </div>
         <div class="card">
-          <h3>The solution</h3>
+          <h3>NesTimer</h3>
           <ul>
-            <li>Root-protected agent that can't be killed or quit</li>
-            <li>Completely free and open-source</li>
-            <li>Self-hosted &mdash; your data stays on your server</li>
-            <li>Per-day limits, weekday/weekend schedules</li>
+            <li>Root-protected agent that can't be killed or bypassed</li>
+            <li>Completely free &mdash; no subscription, ever</li>
+            <li>Nothing to install for parents &mdash; just use the browser</li>
+            <li>Per-day limits, weekday/weekend, class windows</li>
             <li>Offline unlock codes work without internet</li>
           </ul>
         </div>
@@ -191,61 +158,61 @@
   <!-- Features -->
   <section class="section" id="features">
     <div class="container">
-      <h2>Features</h2>
+      <h2>Everything you need</h2>
       <div class="grid-3">
 
         <div class="feature">
           <div class="feature-icon">&#9201;</div>
           <h3>Screen Time Limits</h3>
-          <p>Set a daily limit in minutes. Different limits for weekdays and weekends, or override each day individually. Only counts time when your child is actively using the Mac &mdash; sleep, lock screen, and idle time don't count.</p>
+          <p>Daily limits in minutes. Different for each day of the week, or separate weekday/weekend settings. Only counts active use &mdash; sleep and idle don't count.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#9790;</div>
-          <h3>Downtime Schedule</h3>
-          <p>Lock the computer on a schedule &mdash; for example, 10 PM to 8 AM on school nights, midnight to 9 AM on weekends. Separate weekday and weekend windows.</p>
+          <h3>Bedtime / Downtime</h3>
+          <p>Lock the computer on a schedule. 10 PM to 8 AM on school nights, later on weekends. Separate schedules for weekdays and weekends.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#128218;</div>
-          <h3>Scheduled Activities</h3>
-          <p>Create activity windows for classes, lessons, or practice. The computer unlocks automatically during these times, and the minutes don't count toward the daily limit. Configurable buffer time before and after.</p>
+          <h3>Class & Activity Windows</h3>
+          <p>Whitelist time for online classes, lessons, or homework. Computer unlocks automatically, minutes aren't counted. Configurable buffer before and after.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#128274;</div>
           <h3>Offline Unlock Codes</h3>
-          <p>6-digit codes that change every 5 minutes. Works without internet. Read the code from your phone or the web dashboard, and your child types it on the lock screen for a 30-minute temporary unlock.</p>
+          <p>6-digit codes that change every 5 minutes. Internet not needed. Read the code from your dashboard, child types it &mdash; 30 minutes of free time.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#128737;</div>
-          <h3>Tamper Protection</h3>
-          <p>The agent installs as a root-protected system daemon. A watchdog process checks every 15 seconds and restarts it if killed. Cmd+Q is intercepted. Requires admin access to uninstall.</p>
+          <h3>Can't Be Bypassed</h3>
+          <p>Installs as a system service with a watchdog. Restarts in 15 seconds if killed. Cmd+Q blocked. Requires admin password to remove.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#127760;</div>
-          <h3>Web Dashboard</h3>
-          <p>Manage everything from your browser. See today's usage, change limits, view history, and get unlock codes. Works on any device &mdash; phone, tablet, or computer.</p>
+          <h3>Manage from Any Browser</h3>
+          <p>No app needed for parents. Open the dashboard on your phone, tablet, or computer. See usage, change limits, get unlock codes &mdash; from anywhere.</p>
         </div>
 
         <div class="feature">
-          <div class="feature-icon">&#128241;</div>
-          <h3>Native Parent App</h3>
-          <p>SwiftUI app for iPhone, iPad, and Mac. Same controls as the web dashboard, optimized for Apple devices.</p>
+          <div class="feature-icon">&#128260;</div>
+          <h3>Auto-Updates</h3>
+          <p>The agent updates itself automatically. New features and fixes are delivered without touching your child's Mac.</p>
         </div>
 
         <div class="feature">
           <div class="feature-icon">&#128171;</div>
           <h3>Smart Tracking</h3>
-          <p>Usage time is only counted when the screen is on, unlocked, and the user is active. If your child walks away for 5+ minutes, the timer pauses automatically.</p>
+          <p>Only counts time when the screen is on, unlocked, and your child is active. Walk away for 5 minutes &mdash; timer pauses.</p>
         </div>
 
         <div class="feature">
-          <div class="feature-icon">&#128272;</div>
-          <h3>Private &amp; Self-Hosted</h3>
-          <p>Deploy on any Linux server with one command. Your family's data stays on your hardware. No accounts with third-party services, no tracking, no ads.</p>
+          <div class="feature-icon">&#128176;</div>
+          <h3>Free Forever</h3>
+          <p>No trial, no premium tier, no credit card. Unlimited devices, all features included. Open-source on GitHub.</p>
         </div>
 
       </div>
@@ -255,65 +222,32 @@
   <!-- How It Works -->
   <section class="section section-alt" id="how-it-works">
     <div class="container">
-      <h2>How It Works</h2>
+      <h2>Get started in 3 steps</h2>
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
-          <h3>Deploy the server</h3>
-          <p>Run <code>docker compose up -d</code> on any Linux VPS or home server. The API and web dashboard start automatically. Takes about 2 minutes.</p>
+          <h3>Create an account</h3>
+          <p>Open <a href="https://my.nestimer.com" style="color: var(--primary)">my.nestimer.com</a>, sign up in 10 seconds. No credit card, no app to install.</p>
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <h3>Add a device</h3>
-          <p>Open the web dashboard, create an account, and add your child's Mac. You'll get a setup string to paste into the agent.</p>
+          <h3>Connect your child's Mac</h3>
+          <p>Add a device in the dashboard. You'll get a one-line setup code. Download the small agent app on the child's Mac, paste the code &mdash; done.</p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
-          <h3>Install the agent</h3>
-          <p>Download the agent app on your child's Mac and paste the setup string. It will ask for the admin password once to install the system daemon.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">4</div>
-          <h3>Set limits</h3>
-          <p>From the web dashboard or parent app, configure daily limits, downtime schedules, and activity windows. Changes sync to the agent within seconds.</p>
+          <h3>Set the rules</h3>
+          <p>Configure daily limits, bedtime, and class windows. Changes apply within seconds. Monitor usage from anywhere.</p>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- Architecture -->
-  <section class="section" id="architecture">
-    <div class="container">
-      <h2>Architecture</h2>
-      <p class="section-sub">Four components working together. All open-source.</p>
-      <div class="arch-diagram">
-        <div class="arch-node arch-parent">
-          <strong>Parent App</strong>
-          <span>iOS / macOS</span>
-        </div>
-        <div class="arch-arrow">&harr;</div>
-        <div class="arch-node arch-server">
-          <strong>API Server</strong>
-          <span>FastAPI + SQLite</span>
-        </div>
-        <div class="arch-arrow">&harr;</div>
-        <div class="arch-node arch-agent">
-          <strong>macOS Agent</strong>
-          <span>Swift, runs as root</span>
-        </div>
-        <div class="arch-web">
-          <div class="arch-node arch-dashboard">
-            <strong>Web Dashboard</strong>
-            <span>React</span>
-          </div>
-          <div class="arch-arrow-up">&uarr;</div>
-        </div>
+      <div style="text-align: center; margin-top: 40px;">
+        <a href="https://my.nestimer.com" class="btn btn-primary btn-lg">Start Free</a>
       </div>
     </div>
   </section>
 
   <!-- Comparison -->
-  <section class="section section-alt" id="comparison">
+  <section class="section" id="comparison">
     <div class="container">
       <h2>How does it compare?</h2>
       <div class="table-wrap">
@@ -323,19 +257,18 @@
               <th>Feature</th>
               <th>Apple Screen Time</th>
               <th>Qustodio / Bark</th>
-              <th>UsageTime Controller</th>
+              <th>NesTimer</th>
             </tr>
           </thead>
           <tbody>
             <tr><td>Price</td><td>Free</td><td>$5-15/mo</td><td class="highlight">Free</td></tr>
-            <tr><td>Self-hosted</td><td>No</td><td>No</td><td class="highlight">Yes</td></tr>
-            <tr><td>Data privacy</td><td>Apple cloud</td><td>Third-party cloud</td><td class="highlight">Your server only</td></tr>
+            <tr><td>Parent needs app</td><td>Yes (iPhone)</td><td>Yes</td><td class="highlight">No (any browser)</td></tr>
             <tr><td>Bypass protection</td><td>Weak</td><td>Medium</td><td class="highlight">Strong (root daemon)</td></tr>
             <tr><td>Offline unlock</td><td>No</td><td>No</td><td class="highlight">Yes (TOTP codes)</td></tr>
-            <tr><td>Per-day limits</td><td>No</td><td>Yes</td><td class="highlight">Yes</td></tr>
-            <tr><td>Activity scheduling</td><td>No</td><td>Limited</td><td class="highlight">Yes, with buffer time</td></tr>
+            <tr><td>Per-day limits</td><td>No</td><td>Yes</td><td class="highlight">Yes (Mon-Sun)</td></tr>
+            <tr><td>Class/activity windows</td><td>No</td><td>Limited</td><td class="highlight">Yes, with buffer</td></tr>
+            <tr><td>Auto-updates</td><td>Yes</td><td>Yes</td><td class="highlight">Yes</td></tr>
             <tr><td>Open source</td><td>No</td><td>No</td><td class="highlight">Yes</td></tr>
-            <tr><td>Smart active tracking</td><td>Basic</td><td>Basic</td><td class="highlight">Yes (idle detection)</td></tr>
           </tbody>
         </table>
       </div>
@@ -343,85 +276,80 @@
   </section>
 
   <!-- Recommended Limits -->
-  <section class="section" id="recommended-limits">
+  <section class="section section-alt" id="recommended-limits">
     <div class="container">
-      <h2>Recommended Screen Time Limits</h2>
-      <p class="section-sub">Guidelines based on recommendations from pediatricians and the American Academy of Pediatrics.</p>
+      <h2>Recommended Screen Time by Age</h2>
+      <p class="section-sub">Based on pediatrician recommendations and the American Academy of Pediatrics.</p>
       <div class="grid-3">
         <div class="card card-age">
           <h3>Ages 6&ndash;9</h3>
           <div class="card-limit">60 min/day</div>
-          <p>Weekdays: 45&ndash;60 min<br>Weekends: 60&ndash;90 min<br>Downtime: 7:30 PM &ndash; 7:00 AM</p>
+          <p>Weekdays: 45&ndash;60 min<br>Weekends: 60&ndash;90 min<br>Bedtime: 7:30 PM</p>
         </div>
         <div class="card card-age">
           <h3>Ages 10&ndash;12</h3>
           <div class="card-limit">90 min/day</div>
-          <p>Weekdays: 60&ndash;90 min<br>Weekends: 90&ndash;120 min<br>Downtime: 8:30 PM &ndash; 7:00 AM</p>
+          <p>Weekdays: 60&ndash;90 min<br>Weekends: 90&ndash;120 min<br>Bedtime: 8:30 PM</p>
         </div>
         <div class="card card-age">
           <h3>Ages 13&ndash;17</h3>
           <div class="card-limit">120 min/day</div>
-          <p>Weekdays: 90&ndash;120 min<br>Weekends: 120&ndash;180 min<br>Downtime: 10:00 PM &ndash; 7:00 AM</p>
+          <p>Weekdays: 90&ndash;120 min<br>Weekends: 120&ndash;180 min<br>Bedtime: 10:00 PM</p>
         </div>
       </div>
-      <p class="tip">Use <strong>scheduled activities</strong> to exclude homework, online classes, and music lessons from the daily limit.</p>
+      <p class="tip">Use <strong>class windows</strong> to exclude homework and online lessons from the daily limit.</p>
     </div>
   </section>
 
   <!-- FAQ -->
-  <section class="section section-alt" id="faq">
+  <section class="section" id="faq">
     <div class="container">
       <h2>Frequently Asked Questions</h2>
       <div class="faq-list">
 
         <details>
-          <summary>What is UsageTime Controller?</summary>
-          <p>A free, open-source, self-hosted parental control system for macOS. It lets parents set screen time limits, downtime schedules, and manage their child's Mac remotely via a web dashboard or native app.</p>
+          <summary>Do I need to install anything on my phone?</summary>
+          <p>No. You manage everything from your browser at <a href="https://my.nestimer.com">my.nestimer.com</a>. Works on any phone, tablet, or computer. There's also an optional native app for iOS and macOS if you prefer.</p>
         </details>
 
         <details>
           <summary>Is it really free?</summary>
-          <p>Yes, completely free and open-source. You host the server yourself (on a VPS or home server), so there are no subscription fees. The only cost is your server hosting (a $5/month VPS is more than enough).</p>
+          <p>Yes. No subscription, no premium tier, no credit card required. All features are included for unlimited devices.</p>
         </details>
 
         <details>
           <summary>Can my child bypass the limits?</summary>
-          <p>The agent installs as a root-protected LaunchDaemon with a watchdog process. It cannot be quit via Cmd+Q, and if the process is killed, the watchdog restarts it within 15 seconds. The child would need admin (sudo) access to uninstall it. If you set up your child as a Standard User on macOS, they cannot remove it.</p>
+          <p>The agent installs as a root-protected system service. It cannot be quit, and if killed, a watchdog restarts it within 15 seconds. If your child is a Standard User (not admin) on macOS, they cannot remove it.</p>
         </details>
 
         <details>
           <summary>What if the internet goes down?</summary>
-          <p>All policies are enforced locally on the Mac, even without internet. Parents can generate offline unlock codes (TOTP) from the dashboard or app. The code changes every 5 minutes and grants a 30-minute temporary unlock.</p>
+          <p>All rules work offline. The agent enforces limits and downtime locally. You can generate offline unlock codes from the dashboard &mdash; the code changes every 5 minutes and gives 30 minutes of free time.</p>
         </details>
 
         <details>
           <summary>How is this different from Apple Screen Time?</summary>
-          <p>Apple Screen Time requires iCloud Family Sharing and is widely known to be easy for kids to bypass. UsageTime Controller is root-protected, self-hosted (your data stays private), supports offline unlock codes, and offers more flexible scheduling with per-day limits and activity windows.</p>
+          <p>Apple Screen Time is widely known to be easy for children to bypass. NesTimer is root-protected, offers per-day limits, class windows with buffer time, offline unlock codes, and doesn't require iCloud Family Sharing.</p>
         </details>
 
         <details>
-          <summary>What do I need to run it?</summary>
-          <p>A server (any Linux VPS or home server) running Docker, and a Mac (macOS 13 or newer) for the child. Parents manage everything from a web browser or the native iOS/macOS app.</p>
+          <summary>What Mac does my child need?</summary>
+          <p>Any Mac running macOS 13 (Ventura) or newer. Both Intel and Apple Silicon (M1/M2/M3/M4) are supported.</p>
         </details>
 
         <details>
-          <summary>Does it track what websites my child visits?</summary>
-          <p>No. UsageTime Controller only tracks total screen time (active use). It does not monitor browsing history, app usage, or any content. It's a time management tool, not a surveillance tool.</p>
+          <summary>Does it track what my child does online?</summary>
+          <p>No. NesTimer only tracks total screen time. It does not monitor browsing, apps, messages, or any content. It's a time management tool, not surveillance.</p>
         </details>
 
         <details>
           <summary>Can I use it for multiple children?</summary>
-          <p>Yes. Add multiple devices to your account, each with its own limits, schedules, and activity windows.</p>
+          <p>Yes. Add as many devices as you need, each with its own rules, schedules, and activity windows.</p>
         </details>
 
         <details>
-          <summary>How do I deploy the server?</summary>
-          <p>Clone the repository, run <code>docker compose up -d --build</code>, and you're done. The API runs on port 8000 and the web dashboard on port 3080. Put Caddy or nginx in front for HTTPS.</p>
-        </details>
-
-        <details>
-          <summary>Is it safe to run on my child's Mac?</summary>
-          <p>The agent is designed to be non-intrusive. It runs silently in the menu bar, only showing a lock screen when limits are reached. In Debug mode, there's an emergency hotkey (Ctrl+Opt+Cmd+U) and auto-unlock after 10 seconds for testing.</p>
+          <summary>I'm technical. Can I self-host it?</summary>
+          <p>Yes! NesTimer is fully open-source. Clone the <a href="https://github.com/ruslan-splynx/UsageTimeController">GitHub repo</a>, run <code>docker compose up</code>, and you have your own private instance. The cloud dashboard at my.nestimer.com is the same software.</p>
         </details>
 
       </div>
@@ -431,9 +359,12 @@
   <!-- CTA -->
   <section class="section cta">
     <div class="container">
-      <h2>Ready to set healthy screen time limits?</h2>
-      <p>Deploy in 2 minutes. No signup, no credit card, no tracking.</p>
-      <a href="https://github.com/ruslan-splynx/UsageTimeController#quick-start" class="btn btn-primary btn-lg">Get Started on GitHub</a>
+      <h2>Start managing screen time today</h2>
+      <p>Free forever. No credit card. Takes 2 minutes to set up.</p>
+      <div class="hero-actions">
+        <a href="https://my.nestimer.com" class="btn btn-primary btn-lg">Create Free Account</a>
+        <a href="https://github.com/ruslan-splynx/UsageTimeController" class="btn btn-ghost">View Source on GitHub</a>
+      </div>
     </div>
   </section>
 
@@ -441,22 +372,21 @@
   <footer class="footer">
     <div class="container footer-inner">
       <div class="footer-left">
-        <img src="img/icon-parent-64.png" alt="UsageTime Controller" width="24" height="24">
-        <span>UsageTime Controller</span>
+        <img src="img/icon-parent-64.png" alt="NesTimer" width="24" height="24">
+        <span>NesTimer</span>
       </div>
       <div class="footer-links">
-        <a href="https://github.com/ruslan-splynx/UsageTimeController">Source Code</a>
-        <a href="https://github.com/ruslan-splynx/UsageTimeController/issues">Report Issue</a>
-        <a href="https://github.com/ruslan-splynx/UsageTimeController/releases">Releases</a>
+        <a href="https://my.nestimer.com">Dashboard</a>
+        <a href="https://github.com/ruslan-splynx/UsageTimeController">GitHub</a>
+        <a href="https://github.com/ruslan-splynx/UsageTimeController/issues">Support</a>
       </div>
       <div class="footer-right">
-        <p>Open-source parental controls for macOS</p>
+        <p>Free screen time controls for macOS</p>
       </div>
     </div>
   </footer>
 
   <script>
-    // Mobile nav toggle
     document.querySelector('.nav-toggle').addEventListener('click', function() {
       document.querySelector('.nav').classList.toggle('open');
     });
