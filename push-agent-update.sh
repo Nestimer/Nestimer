@@ -28,6 +28,27 @@ if [ -z "$VERSION" ]; then
     VERSION="$MAJOR.$((MINOR + 1))"
 fi
 
+# Update MARKETING_VERSION in Xcode project to match push version
+PBXPROJ="$(dirname "$0")/macos-agent/UsageTimeAgent.xcodeproj/project.pbxproj"
+if [ -f "$PBXPROJ" ]; then
+    sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = $VERSION/" "$PBXPROJ"
+
+    # Rebuild with new version
+    echo "Building v$VERSION..."
+    xcodebuild -project "$(dirname "$0")/macos-agent/UsageTimeAgent.xcodeproj" \
+        -scheme UsageTimeAgent -configuration Release \
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
+        CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+        build 2>&1 | tail -1
+
+    # Copy fresh build to dist
+    DERIVED=$(find ~/Library/Developer/Xcode/DerivedData -path "*UsageTimeAgent*/Build/Products/Release/UsageTimeAgent.app" -maxdepth 5 2>/dev/null | head -1)
+    if [ -n "$DERIVED" ]; then
+        rm -rf "$APP_PATH"
+        cp -R "$DERIVED" "$APP_PATH"
+    fi
+fi
+
 # Strip quarantine so the app works on other Macs without Gatekeeper issues
 xattr -cr "$APP_PATH" 2>/dev/null
 
