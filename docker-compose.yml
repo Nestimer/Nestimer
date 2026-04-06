@@ -17,7 +17,7 @@ services:
   api:
     build: ./api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://usagetime:${DB_PASSWORD:-usagetime-secret}@db:5432/usagetime
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
@@ -31,7 +31,7 @@ services:
   web:
     build: ./web-dashboard
     ports:
-      - "3080:80"
+      - "127.0.0.1:3080:80"
     depends_on:
       - api
     restart: unless-stopped
