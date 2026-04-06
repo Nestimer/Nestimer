@@ -11,7 +11,7 @@ from ..auth import get_current_user, create_agent_token
 from ..database import get_db
 from ..models.models import User, Device, Policy, UsageLog, Activity
 from ..schemas import (
-    DeviceCreate, DeviceOut, DeviceListOut,
+    DeviceCreate, DeviceUpdate, DeviceOut, DeviceListOut,
     PolicyUpdate, PolicyOut,
     UsageOut,
     ActivityCreate, ActivityUpdate, ActivityOut,
@@ -127,6 +127,39 @@ async def get_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    return DeviceOut(
+        id=device.id,
+        name=device.name,
+        child_name=device.child_name,
+        api_token=device.api_token,
+        shared_secret=device.shared_secret,
+        agent_version=device.agent_version,
+        last_seen=device.last_seen,
+        created_at=device.created_at,
+    )
+
+
+@router.patch("/{device_id}", response_model=DeviceOut)
+async def update_device(
+    device_id: str,
+    data: DeviceUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Device).where(Device.id == device_id, Device.owner_id == user.id)
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if data.name is not None:
+        device.name = data.name
+    if data.child_name is not None:
+        device.child_name = data.child_name
+
+    await db.commit()
+    await db.refresh(device)
     return DeviceOut(
         id=device.id,
         name=device.name,

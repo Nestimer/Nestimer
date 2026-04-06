@@ -79,6 +79,68 @@ async def test_get_device_other_user(client):
     assert resp.status_code == 404
 
 
+async def test_update_device_name(client):
+    token = await register_user(client)
+    device = await create_device(client, token)
+
+    resp = await client.patch(
+        f"/api/v1/devices/{device['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "New MacBook", "child_name": "Petya"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "New MacBook"
+    assert data["child_name"] == "Petya"
+
+    # Verify persisted
+    resp = await client.get(
+        f"/api/v1/devices/{device['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.json()["name"] == "New MacBook"
+    assert resp.json()["child_name"] == "Petya"
+
+
+async def test_update_device_partial(client):
+    """Can update only name or only child_name."""
+    token = await register_user(client, email="partial@test.com")
+    device = await create_device(client, token)
+
+    resp = await client.patch(
+        f"/api/v1/devices/{device['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "iMac"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "iMac"
+    assert resp.json()["child_name"] == "Misha"  # unchanged
+
+
+async def test_update_device_not_found(client):
+    token = await register_user(client, email="notfound@test.com")
+    resp = await client.patch(
+        "/api/v1/devices/nonexistent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "X"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_update_device_other_user(client):
+    """Can't update another user's device."""
+    token1 = await register_user(client, email="owner-upd@test.com")
+    token2 = await register_user(client, email="other-upd@test.com")
+    device = await create_device(client, token1)
+
+    resp = await client.patch(
+        f"/api/v1/devices/{device['id']}",
+        headers={"Authorization": f"Bearer {token2}"},
+        json={"name": "Hacked"},
+    )
+    assert resp.status_code == 404
+
+
 async def test_delete_device(client):
     token = await register_user(client)
     device = await create_device(client, token)

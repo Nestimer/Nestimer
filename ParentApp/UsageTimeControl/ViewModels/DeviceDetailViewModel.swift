@@ -44,6 +44,16 @@ class DeviceDetailViewModel: ObservableObject {
         isLoading = false
     }
 
+    func updateDeviceName(name: String, childName: String) async {
+        isSaving = true
+        do {
+            device = try await api.updateDevice(deviceId, update: DeviceUpdateRequest(name: name, childName: childName))
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isSaving = false
+    }
+
     func updatePolicy(_ update: PolicyUpdate) async {
         // Merge with any pending update to avoid race conditions
         pendingUpdate = mergeUpdates(existing: pendingUpdate, new: update)

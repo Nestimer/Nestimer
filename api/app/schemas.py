@@ -50,6 +50,11 @@ class DeviceCreate(BaseModel):
     child_name: str = Field(min_length=1, max_length=100)
 
 
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    child_name: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
 class DeviceOut(BaseModel):
     id: str
     name: str

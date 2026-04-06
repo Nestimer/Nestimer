@@ -63,6 +63,10 @@ actor APIClient {
         return try await post("/api/v1/devices", body: body)
     }
 
+    func updateDevice(_ id: String, update: DeviceUpdateRequest) async throws -> Device {
+        try await request("PATCH", path: "/api/v1/devices/\(id)", body: update)
+    }
+
     func deleteDevice(_ id: String) async throws {
         let _: [String: Bool] = try await request("DELETE", path: "/api/v1/devices/\(id)")
     }
