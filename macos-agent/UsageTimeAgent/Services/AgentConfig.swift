@@ -42,7 +42,7 @@ struct AgentConfig {
                 serverURL: defaults.string(forKey: "ServerURL") ?? "http://localhost:8000",
                 apiToken: token,
                 pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 20,
-                devMode: defaults.bool(forKey: "DevMode") || isDebugBuild,
+                devMode: isDebugBuild,  // DevMode only via #if DEBUG, not UserDefaults (child could set it)
                 devAutoUnlockSeconds: defaults.double(forKey: "DevAutoUnlockSeconds").nonZero ?? 10
             )
         }

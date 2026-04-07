@@ -28,7 +28,6 @@ struct ServerPolicy: Codable {
     let screenTimeEnabled: Bool
     let screenTimeLimitMinutes: Int
     let usedMinutesToday: Double
-    let sharedSecret: String?
     let activities: [ScheduledActivity]?
 
     enum CodingKeys: String, CodingKey {
@@ -38,7 +37,6 @@ struct ServerPolicy: Codable {
         case screenTimeEnabled = "screen_time_enabled"
         case screenTimeLimitMinutes = "screen_time_limit_minutes"
         case usedMinutesToday = "used_minutes_today"
-        case sharedSecret = "shared_secret"
         case activities
     }
 }
@@ -98,6 +96,23 @@ class APIClient {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw APIError.badResponse
         }
+    }
+
+    func fetchTOTPSecret() async throws -> String? {
+        guard let url = URL(string: "\(serverURL)/api/v1/agent/totp-secret") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            return nil
+        }
+        struct SecretResponse: Codable { let sharedSecret: String
+            enum CodingKeys: String, CodingKey { case sharedSecret = "shared_secret" }
+        }
+        return try? JSONDecoder().decode(SecretResponse.self, from: data).sharedSecret
     }
 
     enum APIError: Error {

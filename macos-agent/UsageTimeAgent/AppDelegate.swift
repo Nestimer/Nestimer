@@ -15,10 +15,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var tickTimer: Timer?
     /// True after the first successful server sync. Lock screen won't show before this.
     private var initialSyncCompleted = false
-    /// Cached TOTP shared secret (received from server, persisted in UserDefaults for offline use).
+    /// Cached TOTP shared secret — stored in Keychain, not UserDefaults (child can't read).
     private var sharedSecret: String? {
-        get { UserDefaults.standard.string(forKey: "totp_shared_secret") }
-        set { UserDefaults.standard.set(newValue, forKey: "totp_shared_secret") }
+        get { KeychainStore.get(key: "totp_shared_secret") }
+        set {
+            if let v = newValue { KeychainStore.set(key: "totp_shared_secret", value: v) }
+            else { KeychainStore.delete(key: "totp_shared_secret") }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -149,6 +152,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 usageTracker.forceSetUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
                 initialSyncCompleted = true
                 NSLog("[UsageTimeAgent] Initial sync — server says \(String(format: "%.1f", policy.usedMinutesToday))m used")
+                // Fetch TOTP secret if not in Keychain yet
+                if sharedSecret == nil {
+                    if let secret = try? await apiClient.fetchTOTPSecret() {
+                        sharedSecret = secret
+                        NSLog("[UsageTimeAgent] TOTP secret stored in Keychain")
+                    }
+                }
             } else {
                 // Normal sync — reconcile local and server
                 usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
@@ -160,11 +170,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 date: usageTracker.currentDateString(),
                 totalMinutes: syncedMinutes
             )
-
-            // Cache the shared secret for offline TOTP verification
-            if let secret = policy.sharedSecret {
-                self.sharedSecret = secret
-            }
 
             // Enforce policy (lock/unlock, warnings)
             let currentUsed = usageTracker.getUsedMinutesToday()

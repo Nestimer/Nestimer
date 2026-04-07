@@ -176,7 +176,6 @@ class AgentConfig(BaseModel):
     screen_time_enabled: bool
     screen_time_limit_minutes: int
     used_minutes_today: float
-    shared_secret: Optional[str] = None
     activities: list["ActivityOut"] = Field(default_factory=list)
 
 

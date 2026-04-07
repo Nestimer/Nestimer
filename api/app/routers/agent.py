@@ -6,7 +6,7 @@ from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from ..database import get_db
 from ..models.models import Device, Policy, UsageLog, Activity
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import verify_totp
+from ..rate_limit import totp_limiter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -93,7 +94,6 @@ async def get_config(
             screen_time_enabled=False,
             screen_time_limit_minutes=999,
             used_minutes_today=0,
-            shared_secret=device.shared_secret,
         )
 
     # Get today's usage
@@ -131,7 +131,6 @@ async def get_config(
         screen_time_enabled=policy.screen_time_enabled,
         screen_time_limit_minutes=limit,
         used_minutes_today=used_today,
-        shared_secret=device.shared_secret,
         activities=activities,
     )
 
@@ -166,13 +165,26 @@ async def report_usage(
     return {"ok": True}
 
 
-@router.post("/verify-totp", response_model=TOTPVerifyResponse)
-async def verify_totp_endpoint(
-    body: TOTPVerifyRequest,
+@router.get("/totp-secret")
+async def get_totp_secret(
     device: Device = Depends(get_device_by_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Verify a TOTP code (optional online verification by the agent)."""
+    """One-time fetch of TOTP secret. Agent stores it in Keychain."""
+    if not device.shared_secret:
+        raise HTTPException(status_code=404, detail="No secret configured")
+    return {"shared_secret": device.shared_secret}
+
+
+@router.post("/verify-totp", response_model=TOTPVerifyResponse)
+async def verify_totp_endpoint(
+    body: TOTPVerifyRequest,
+    request: Request,
+    device: Device = Depends(get_device_by_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify a TOTP code — rate limited to prevent brute-force."""
+    totp_limiter.check(device.id)  # Rate limit per device, not IP
     if not device.shared_secret:
         raise HTTPException(status_code=400, detail="No shared secret configured")
     valid = verify_totp(device.shared_secret, body.code)
