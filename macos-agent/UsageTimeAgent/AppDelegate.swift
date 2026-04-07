@@ -15,6 +15,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var tickTimer: Timer?
     /// True after the first successful server sync. Lock screen won't show before this.
     private var initialSyncCompleted = false
+    /// Last fetched policy — used to calculate adaptive sync interval.
+    private var lastPolicy: ServerPolicy?
+    /// Timestamp of last successful sync.
+    private var lastSyncTime: Date = .distantPast
     /// Cached TOTP shared secret — stored in Keychain, not UserDefaults (child can't read).
     private var sharedSecret: String? {
         get { KeychainStore.get(key: "totp_shared_secret") }
@@ -97,16 +101,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Fire immediately
         performTick()
 
-        // Start server sync timer — runs every 5s so we can do fast sync when locked.
-        // When not locked, only every Nth tick does a real sync (to avoid hammering server).
-        var syncTickCount = 0
-        let normalTicksBetweenSync = max(1, Int(syncInterval / 5))
+        // Adaptive sync timer — checks every 5s, syncs based on current state:
+        //   Locked:              every 5s  (parent might change policy)
+        //   < 5 min remaining:   every 10s (approaching limit)
+        //   < 30 min remaining:  every 20s
+        //   > 30 min remaining:  every 60s (idle, save bandwidth)
+        //   Dev mode:            every 10s
         syncTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             guard let self else { return }
-            syncTickCount += 1
-            // When lock screen is active: sync every 5s. Otherwise sync every `normalTicksBetweenSync` ticks.
-            let shouldSync = self.policyEnforcer.isLocked || (syncTickCount % normalTicksBetweenSync == 0)
-            if shouldSync {
+            let elapsed = Date().timeIntervalSince(self.lastSyncTime)
+            let interval = self.adaptiveSyncInterval()
+            if elapsed >= interval {
                 Task { await self.performSync() }
             }
         }
@@ -180,10 +185,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 statusBar?.activeActivityEndsAt = policyEnforcer.activeActivityEndsAt
             }
 
-            NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", usedMinutes))m, limit: \(policy.screenTimeLimitMinutes)m")
+            lastPolicy = policy
+            lastSyncTime = Date()
+
+            let remaining = Double(policy.screenTimeLimitMinutes) - currentUsed
+            let nextIn = Int(adaptiveSyncInterval())
+            NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", currentUsed))m, limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
         } catch {
             NSLog("[UsageTimeAgent] Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Adaptive sync
+
+    private func adaptiveSyncInterval() -> TimeInterval {
+        if agentConfig.devMode { return 10 }
+        if policyEnforcer.isLocked { return 5 }
+        if policyEnforcer.activeActivity != nil { return 60 }
+        if policyEnforcer.isTemporaryUnlockActive { return 60 }
+
+        // Calculate remaining minutes from last policy
+        if let policy = lastPolicy, policy.screenTimeEnabled {
+            let remaining = Double(policy.screenTimeLimitMinutes) - usageTracker.getUsedMinutesToday()
+            if remaining < 5 { return 10 }
+            if remaining < 30 { return 20 }
+        }
+
+        return 60  // Everything is fine — sync once per minute
     }
 
     // MARK: - Duplicate instance handling

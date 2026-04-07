@@ -76,11 +76,10 @@ async def get_config(
         today = now.strftime("%Y-%m-%d")
         agent_weekday = now.weekday()
 
-    # Update last_seen + agent version
+    # Update last_seen + agent version (committed together with response, no extra round-trip)
     device.last_seen = now
     if version:
         device.agent_version = version
-    await db.commit()
 
     # Get policy
     result = await db.execute(select(Policy).where(Policy.device_id == device.id))
@@ -123,6 +122,9 @@ async def get_config(
         )
         for a in result.scalars().all()
     ]
+
+    # Single commit for last_seen + version update
+    await db.commit()
 
     return AgentConfig(
         downtime_enabled=policy.downtime_enabled,
