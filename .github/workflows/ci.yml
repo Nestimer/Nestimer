@@ -91,6 +91,17 @@ jobs:
             CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
             build
 
+      - name: Build Parent App (iOS Simulator)
+        run: |
+          xcodebuild -project ParentApp/UsageTimeControl.xcodeproj \
+            -scheme UsageTimeControl \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
   # ─── Docker build (API + Web) ───
   docker-build:
     runs-on: ubuntu-latest
