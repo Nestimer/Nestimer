@@ -518,6 +518,16 @@ details p {
   background: #f0f0ff;
 }
 
+.cta .btn-ghost {
+  color: var(--white);
+  border-color: rgba(255,255,255,0.5);
+}
+
+.cta .btn-ghost:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: var(--white);
+}
+
 /* ========= Footer ========= */
 .footer {
   border-top: 1px solid var(--border);
