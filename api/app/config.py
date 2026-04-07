@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://usagetime:usagetime-secret@localhost:5432/usagetime"
+    database_url: str = "postgresql+asyncpg://nestimer:REDACTED@localhost:5432/nestimer"
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 43200  # 30 days

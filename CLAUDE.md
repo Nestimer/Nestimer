@@ -19,12 +19,12 @@ All builds in this project need the `CODE_SIGN_*` overrides below to work locall
 ```bash
 # Agent (Debug — auto-enables dev mode)
 xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-  -scheme UsageTimeAgent -configuration Debug \
+  -scheme NesTimerAgent -configuration Debug \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES build
 
 # Agent (Release — production, root install, no dev safeguards)
 xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-  -scheme UsageTimeAgent -configuration Release \
+  -scheme NesTimerAgent -configuration Release \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
 

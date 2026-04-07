@@ -65,7 +65,7 @@ class StatusBarController {
         guard let button = statusItem.button else { return }
 
         // Use SF Symbol for the menu bar icon
-        if let image = NSImage(systemSymbolName: "clock.badge.checkmark", accessibilityDescription: "UsageTime") {
+        if let image = NSImage(systemSymbolName: "clock.badge.checkmark", accessibilityDescription: "NesTimer") {
             image.size = NSSize(width: 18, height: 18)
             button.image = image
             button.imagePosition = .imageLeading
@@ -78,7 +78,7 @@ class StatusBarController {
         menu.removeAllItems()
 
         // Header
-        let headerItem = NSMenuItem(title: "UsageTime Agent", action: nil, keyEquivalent: "")
+        let headerItem = NSMenuItem(title: "NesTimer Agent", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
         menu.addItem(headerItem)
 

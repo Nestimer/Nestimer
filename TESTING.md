@@ -1,4 +1,4 @@
-# Testing UsageTimeController
+# Testing NesTimer
 
 Guidance for running locally, testing safely, and the escape hatches that exist so you don't lock yourself out.
 
@@ -152,7 +152,7 @@ defaults delete com.usagetime.agent
 ```bash
 # Build once
 xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-  -scheme UsageTimeAgent -configuration Release build
+  -scheme NesTimerAgent -configuration Release build
 
 # Or use the pre-built binary in dist/
 open dist/UsageTimeAgent.app

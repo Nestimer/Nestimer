@@ -242,7 +242,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSetupRequiredAlert() {
         let alert = NSAlert()
-        alert.messageText = "UsageTime Setup"
+        alert.messageText = "NesTimer Setup"
         alert.informativeText = "Paste the setup string from the parent dashboard.\nFormat: http://server:8000|token"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Connect")

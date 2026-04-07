@@ -14,8 +14,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="UsageTimeController API",
-    description="Parental control API for managing screen time and downtime on macOS",
+    title="NesTimer API",
+    description="NesTimer parental controls API",
     version="1.0.0",
     lifespan=lifespan,
 )

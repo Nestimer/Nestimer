@@ -20,7 +20,7 @@ struct LoginView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(.blue)
 
-                    Text("UsageTime")
+                    Text("NesTimer")
                         .font(.largeTitle)
                         .fontWeight(.bold)
 

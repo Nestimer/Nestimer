@@ -23,7 +23,7 @@ struct SystemInstaller {
 
         let isUpdate = isInstalled && !isRunningFromSystemLocation
         let alert = NSAlert()
-        alert.messageText = isUpdate ? "Update UsageTime agent?" : "Install UsageTime as a protected service?"
+        alert.messageText = isUpdate ? "Update NesTimer agent?" : "Install NesTimer as a protected service?"
         alert.informativeText = isUpdate
             ? "Replaces the installed agent and restarts.\nRequires admin password."
             : "Installs to /Applications with auto-start on boot.\nChild cannot disable without admin password.\nRequires admin password (one time)."

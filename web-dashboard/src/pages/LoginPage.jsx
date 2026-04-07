@@ -38,7 +38,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="card login-card">
-        <h1>UsageTime</h1>
+        <h1>NesTimer</h1>
         <p className="subtitle">Parental controls for macOS</p>
 
         <div className="tab-switch">

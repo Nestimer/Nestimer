@@ -1,4 +1,4 @@
-# UsageTimeController
+# NesTimer
 
 Self-hosted parental controls for macOS — a Family Link alternative. Remotely manage screen time, downtime, and scheduled activities on your child's Mac from a web dashboard or native iOS/macOS app.
 
@@ -34,8 +34,8 @@ Self-hosted parental controls for macOS — a Family Link alternative. Remotely 
 
 ```bash
 # On your VPS/server with Docker installed
-git clone https://github.com/<you>/UsageTimeController.git
-cd UsageTimeController
+git clone https://github.com/<you>/NesTimer.git
+cd NesTimer
 
 export SECRET_KEY=$(openssl rand -hex 32)
 docker compose up -d --build

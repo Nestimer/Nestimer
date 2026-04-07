@@ -11,7 +11,7 @@
     <key>CFBundleName</key>
     <string>UsageTimeAgent</string>
     <key>CFBundleDisplayName</key>
-    <string>UsageTime</string>
+    <string>NesTimer</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

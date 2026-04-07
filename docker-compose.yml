@@ -2,14 +2,14 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: usagetime
-      POSTGRES_USER: usagetime
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-usagetime-secret}
+      POSTGRES_DB: nestimer
+      POSTGRES_USER: nestimer
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-REDACTED}
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U usagetime"]
+      test: ["CMD-SHELL", "pg_isready -U nestimer"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -19,7 +19,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://usagetime:${DB_PASSWORD:-usagetime-secret}@db:5432/usagetime
+      - DATABASE_URL=postgresql+asyncpg://nestimer:${DB_PASSWORD:-REDACTED}@db:5432/nestimer
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     volumes:
       - ./data:/app/data
