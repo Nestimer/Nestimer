@@ -294,7 +294,7 @@ async def test_agent_config_no_policy_defaults(client):
     )
     config = resp.json()
     assert config["activities"] == []
-    assert config["shared_secret"] is not None
+    assert "shared_secret" not in config  # secret not exposed in config
 
 
 # ---------------------------------------------------------------------------

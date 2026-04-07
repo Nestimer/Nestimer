@@ -1,7 +1,11 @@
 """Simple in-memory rate limiter for auth endpoints."""
+import os
 import time
 from collections import defaultdict
 from fastapi import HTTPException, Request
+
+# Disable rate limiting in tests
+_DISABLED = os.getenv("TESTING", "").lower() in ("1", "true")
 
 
 class RateLimiter:
@@ -13,6 +17,8 @@ class RateLimiter:
         self._attempts: dict[str, list[float]] = defaultdict(list)
 
     def check(self, key: str):
+        if _DISABLED:
+            return
         now = time.time()
         # Remove old attempts
         self._attempts[key] = [t for t in self._attempts[key] if now - t < self.window]

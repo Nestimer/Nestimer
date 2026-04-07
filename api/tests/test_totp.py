@@ -80,7 +80,8 @@ async def test_get_device_includes_shared_secret(client):
     assert resp.json()["shared_secret"] == device["shared_secret"]
 
 
-async def test_agent_config_includes_shared_secret(client):
+async def test_agent_config_does_not_expose_shared_secret(client):
+    """shared_secret must NOT be in agent config (child could read it)."""
     token = await register_user(client)
     device = await create_device(client, token)
 
@@ -89,7 +90,7 @@ async def test_agent_config_includes_shared_secret(client):
         headers={"Authorization": f"Bearer {device['api_token']}"},
     )
     assert resp.status_code == 200
-    assert resp.json()["shared_secret"] == device["shared_secret"]
+    assert "shared_secret" not in resp.json()
 
 
 async def test_regenerate_secret(client):
@@ -171,21 +172,18 @@ async def test_verify_totp_invalid_format(client):
 
 # --- Additional TOTP tests ---
 
-async def test_shared_secret_in_agent_config(client):
-    """Agent config must include shared_secret so the agent can verify TOTP offline."""
+async def test_totp_secret_via_dedicated_endpoint(client):
+    """Agent fetches TOTP secret via /agent/totp-secret, not from config."""
     token = await register_user(client, email="totp-config@test.com")
     device = await create_device(client, token)
     agent_token = device["api_token"]
 
     resp = await client.get(
-        "/api/v1/agent/config",
+        "/api/v1/agent/totp-secret",
         headers={"Authorization": f"Bearer {agent_token}"},
     )
     assert resp.status_code == 200
-    config = resp.json()
-    assert "shared_secret" in config
-    assert config["shared_secret"] == device["shared_secret"]
-    assert len(config["shared_secret"]) == 40
+    assert resp.json()["shared_secret"] == device["shared_secret"]
 
 
 async def test_regenerate_secret_returns_different_secret(client):
