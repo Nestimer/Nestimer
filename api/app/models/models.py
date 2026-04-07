@@ -30,7 +30,7 @@ class Device(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
-    name = Column(String, nullable=False)  # e.g. "Misha's MacBook"
+    name = Column(String, nullable=False)  # e.g. "Alex's MacBook"
     child_name = Column(String, nullable=False)
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
     shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)

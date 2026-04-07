@@ -65,11 +65,11 @@ export default function DevicesPage() {
             <form onSubmit={addDevice}>
               <div className="form-group">
                 <label>Device Name</label>
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Misha's MacBook" required />
+                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Alex's MacBook" required />
               </div>
               <div className="form-group">
                 <label>Child's Name</label>
-                <input type="text" value={childName} onChange={(e) => setChildName(e.target.value)} placeholder="Misha" required />
+                <input type="text" value={childName} onChange={(e) => setChildName(e.target.value)} placeholder="Alex" required />
               </div>
               <button className="btn btn-primary" type="submit">Create</button>
             </form>

@@ -9,15 +9,15 @@ async def test_create_device(client):
     device = await create_device(client, token)
 
     assert device["name"] == "MacBook Test"
-    assert device["child_name"] == "Misha"
+    assert device["child_name"] == "Alex"
     assert "api_token" in device
     assert device["api_token"]  # not empty
 
 
 async def test_list_devices(client):
     token = await register_user(client)
-    await create_device(client, token, name="Mac 1", child_name="Misha")
-    await create_device(client, token, name="Mac 2", child_name="Petya")
+    await create_device(client, token, name="Mac 1", child_name="Alex")
+    await create_device(client, token, name="Mac 2", child_name="Sam")
 
     resp = await client.get("/api/v1/devices", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
@@ -86,12 +86,12 @@ async def test_update_device_name(client):
     resp = await client.patch(
         f"/api/v1/devices/{device['id']}",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "New MacBook", "child_name": "Petya"},
+        json={"name": "New MacBook", "child_name": "Sam"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["name"] == "New MacBook"
-    assert data["child_name"] == "Petya"
+    assert data["child_name"] == "Sam"
 
     # Verify persisted
     resp = await client.get(
@@ -99,7 +99,7 @@ async def test_update_device_name(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.json()["name"] == "New MacBook"
-    assert resp.json()["child_name"] == "Petya"
+    assert resp.json()["child_name"] == "Sam"
 
 
 async def test_update_device_partial(client):
@@ -114,7 +114,7 @@ async def test_update_device_partial(client):
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "iMac"
-    assert resp.json()["child_name"] == "Misha"  # unchanged
+    assert resp.json()["child_name"] == "Alex"  # unchanged
 
 
 async def test_update_device_not_found(client):

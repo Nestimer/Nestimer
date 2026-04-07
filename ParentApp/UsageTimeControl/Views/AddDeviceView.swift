@@ -62,9 +62,9 @@ struct AddDeviceView: View {
                 } else {
                     // Creation form
                     Section {
-                        TextField("Misha's MacBook", text: $deviceName)
+                        TextField("Alex's MacBook", text: $deviceName)
 
-                        TextField("Misha", text: $childName)
+                        TextField("Alex", text: $childName)
                     } header: {
                         Text("New Device")
                     } footer: {
