@@ -78,7 +78,7 @@ export default function DevicesPage() {
               <p style={{ marginBottom: 8, fontWeight: 500 }}>Device created! Paste this into the agent app on the child's Mac:</p>
               <div className="token-display" style={{ fontSize: 13, userSelect: 'all', cursor: 'pointer' }}
                 onClick={(e) => { navigator.clipboard.writeText(e.target.textContent) }}>
-                {`http://${window.location.hostname}:8000|${newToken}`}
+                {`${window.location.origin}|${newToken}`}
               </div>
               <p style={{ marginTop: 8, fontSize: 12, color: '#86868b' }}>
                 Click to copy. Paste this single line when the agent asks for setup string.

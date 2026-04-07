@@ -479,7 +479,7 @@ export default function DeviceDetailPage() {
         {showToken && (
           <div className="token-display" style={{ cursor: 'pointer', userSelect: 'all' }}
             onClick={(e) => { navigator.clipboard.writeText(e.target.textContent) }}>
-            {`http://${window.location.hostname}:8000|${device.api_token}`}
+            {`${window.location.origin}|${device.api_token}`}
           </div>
         )}
         {showToken && <p style={{ fontSize: 12, color: '#86868b', marginTop: 6 }}>Click to copy</p>}
