@@ -1,76 +1,40 @@
 import Foundation
-import UserNotifications
+import AppKit
 
-/// Manages native macOS notifications for the agent.
-class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
-    private let center = UNUserNotificationCenter.current()
-
-    override init() {
-        super.init()
-        center.delegate = self
-    }
+/// Manages notifications for the agent.
+/// Uses AppleScript `display notification` as a fallback for unsigned apps
+/// where UNUserNotificationCenter silently fails.
+class NotificationManager {
 
     func requestPermission() {
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error {
-                NSLog("[UsageTimeAgent] Notification permission error: \(error)")
-            }
-            NSLog("[UsageTimeAgent] Notifications \(granted ? "granted" : "denied")")
-        }
+        // AppleScript notifications don't need permission
+        NSLog("[NesTimer] Notifications: using AppleScript (no permission needed)")
     }
 
-    /// Show a time warning notification.
     func showTimeWarning(remainingMinutes: Int) {
-        let content = UNMutableNotificationContent()
-        content.title = "Screen Time"
-        content.body = "\(remainingMinutes) minutes remaining"
-        content.sound = .default
-        content.interruptionLevel = .timeSensitive
-
-        let request = UNNotificationRequest(
-            identifier: "time-warning-\(remainingMinutes)",
-            content: content,
-            trigger: nil // immediate
-        )
-        center.add(request)
+        notify(title: "Screen Time", body: "\(remainingMinutes) minutes remaining", sound: true)
     }
 
-    /// Show notification when time is up.
     func showTimeExpired() {
-        let content = UNMutableNotificationContent()
-        content.title = "Time's Up"
-        content.body = "Screen time for today has ended"
-        content.sound = .defaultCritical
-        content.interruptionLevel = .critical
-
-        let request = UNNotificationRequest(
-            identifier: "time-expired",
-            content: content,
-            trigger: nil
-        )
-        center.add(request)
+        notify(title: "Time's Up", body: "Screen time for today has ended", sound: true)
     }
 
-    /// Show notification about upcoming downtime.
     func showDowntimeStarting(inMinutes minutes: Int) {
-        let content = UNMutableNotificationContent()
-        content.title = "Downtime"
-        content.body = "Downtime starts in \(minutes) minutes"
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: "downtime-warning",
-            content: content,
-            trigger: nil
-        )
-        center.add(request)
+        notify(title: "Downtime", body: "Downtime starts in \(minutes) minutes", sound: true)
     }
 
-    // Show notifications even when app is in foreground
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+    private func notify(title: String, body: String, sound: Bool) {
+        let soundClause = sound ? " sound name \"Blow\"" : ""
+        let escaped = body.replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "display notification \"\(escaped)\" with title \"\(escapedTitle)\"\(soundClause)"
+
+        DispatchQueue.global(qos: .utility).async {
+            var error: NSDictionary?
+            NSAppleScript(source: script)?.executeAndReturnError(&error)
+            if let error {
+                NSLog("[NesTimer] Notification failed: \(error)")
+            }
+        }
     }
 }
