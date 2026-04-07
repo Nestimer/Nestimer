@@ -22,12 +22,24 @@ struct AgentConfig {
         #endif
     }
 
+    /// Migrate old IP-based URLs to the HTTPS domain.
+    static func migrateServerURL(_ url: String) -> String {
+        // http://134.209.8.62:8000 → https://my.nestimer.com
+        if url.contains("134.209.8.62") {
+            let migrated = "https://my.nestimer.com"
+            UserDefaults.standard.set(migrated, forKey: "ServerURL")
+            NSLog("[NesTimer] Migrated server URL: \(url) → \(migrated)")
+            return migrated
+        }
+        return url
+    }
+
     static func load() -> AgentConfig {
         // Try plist first
         if let data = FileManager.default.contents(atPath: configPath),
            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
             return AgentConfig(
-                serverURL: plist["ServerURL"] as? String ?? "http://localhost:8000",
+                serverURL: migrateServerURL(plist["ServerURL"] as? String ?? "https://my.nestimer.com"),
                 apiToken: plist["APIToken"] as? String ?? "",
                 pollInterval: plist["PollInterval"] as? TimeInterval ?? 20,
                 devMode: (plist["DevMode"] as? Bool ?? false) || isDebugBuild,
@@ -39,7 +51,7 @@ struct AgentConfig {
         let defaults = UserDefaults.standard
         if let token = defaults.string(forKey: "APIToken"), !token.isEmpty {
             return AgentConfig(
-                serverURL: defaults.string(forKey: "ServerURL") ?? "http://localhost:8000",
+                serverURL: migrateServerURL(defaults.string(forKey: "ServerURL") ?? "https://my.nestimer.com"),
                 apiToken: token,
                 pollInterval: defaults.double(forKey: "PollInterval").nonZero ?? 20,
                 devMode: isDebugBuild,  // DevMode only via #if DEBUG, not UserDefaults (child could set it)
@@ -50,7 +62,7 @@ struct AgentConfig {
         // Fallback: environment
         let env = ProcessInfo.processInfo.environment
         return AgentConfig(
-            serverURL: env["UTC_SERVER_URL"] ?? "http://localhost:8000",
+            serverURL: migrateServerURL(env["UTC_SERVER_URL"] ?? "https://my.nestimer.com"),
             apiToken: env["UTC_API_TOKEN"] ?? "",
             pollInterval: TimeInterval(env["UTC_POLL_INTERVAL"] ?? "20") ?? 20,
             devMode: env["UTC_DEV_MODE"] == "1" || isDebugBuild,

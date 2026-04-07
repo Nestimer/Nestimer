@@ -108,7 +108,7 @@ struct LoginView: View {
                             .foregroundStyle(.secondary)
 
                         HStack {
-                            TextField("http://localhost:8000", text: $authVM.serverURL)
+                            TextField("https://my.nestimer.com", text: $authVM.serverURL)
                                 .textFieldStyle(.roundedBorder)
                                 #if os(iOS)
                                 .keyboardType(.URL)

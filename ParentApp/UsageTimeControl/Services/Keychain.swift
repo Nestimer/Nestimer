@@ -24,7 +24,7 @@ enum KeychainHelper {
     }
 
     static func getServerURL() -> String {
-        get(key: serverKey) ?? "http://localhost:8000"
+        get(key: serverKey) ?? "https://my.nestimer.com"
     }
 
     // MARK: - Private
