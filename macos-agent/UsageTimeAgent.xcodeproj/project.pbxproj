@@ -23,6 +23,7 @@
 		AA0014 /* watchdog.sh in Resources */ = {isa = PBXBuildFile; fileRef = BB0014; };
 		AA0015 /* watchdog.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0015; };
 		AA0016 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0016; };
+		AA0017 /* MediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0017; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		BB0014 /* watchdog.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = watchdog.sh; sourceTree = "<group>"; };
 		BB0015 /* watchdog.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = watchdog.plist; sourceTree = "<group>"; };
 		BB0016 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		BB0017 /* MediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaController.swift; sourceTree = "<group>"; };
 		CC0001 /* UsageTimeAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageTimeAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC0002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CC0003 /* UsageTimeAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UsageTimeAgent.entitlements; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 				BB0012,
 				BB0013,
 				BB0016,
+				BB0017,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -171,6 +174,7 @@
 				AA0012,
 				AA0013,
 				AA0016,
+				AA0017,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

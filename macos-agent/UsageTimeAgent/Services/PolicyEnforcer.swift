@@ -5,6 +5,7 @@ import AppKit
 class PolicyEnforcer {
     private let lockScreen = LockScreenWindow()
     private let notifications: NotificationManager
+    private let mediaController = MediaController()
     private var lastPolicyLimitMinutes: Int?
     /// Tracks which warning thresholds have been crossed (remaining went below this value).
     private var warningThresholdsCrossed: Set<Int> = []
@@ -33,8 +34,22 @@ class PolicyEnforcer {
     func grantTemporaryAccess(minutes: Int = 30) {
         temporaryUnlockUntil = Date().addingTimeInterval(TimeInterval(minutes * 60))
         lockScreen.hide()
-        isLocked = false
+        transitionToUnlocked()
         NSLog("[UsageTimeAgent] Temporary access granted for \(minutes) minutes (until \(temporaryUnlockUntil!))")
+    }
+
+    // MARK: - Lock state transitions (media control)
+
+    private func transitionToLocked() {
+        guard !isLocked else { return }
+        isLocked = true
+        mediaController.onLock()
+    }
+
+    private func transitionToUnlocked() {
+        guard isLocked else { return }
+        isLocked = false
+        mediaController.onUnlock()
     }
 
     /// Enable dev mode on the lock screen (auto-unlock, emergency hotkey, lower window level).
@@ -59,7 +74,7 @@ class PolicyEnforcer {
         activeActivityEndsAt = endsAt
         if active != nil {
             lockScreen.hide()
-            isLocked = false
+            transitionToUnlocked()
             return
         }
 
@@ -67,7 +82,7 @@ class PolicyEnforcer {
         if let unlockUntil = temporaryUnlockUntil {
             if Date() < unlockUntil {
                 lockScreen.hide()
-                isLocked = false
+                transitionToUnlocked()
                 return  // Temporary override active
             } else {
                 temporaryUnlockUntil = nil  // Expired
@@ -84,7 +99,7 @@ class PolicyEnforcer {
         // 1. Check downtime
         if policy.downtimeEnabled && isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd) {
             lockScreen.show(reason: .downtime(until: policy.downtimeEnd))
-            isLocked = true
+            transitionToLocked()
             return
         }
 
@@ -98,7 +113,7 @@ class PolicyEnforcer {
                 notifications.showTimeExpired()
                 lockScreen.show(reason: .timeExpired)
                 previousRemaining = remaining
-                isLocked = true
+                transitionToLocked()
                 return
             }
 
@@ -121,7 +136,7 @@ class PolicyEnforcer {
 
         // No restrictions active — unlock
         lockScreen.hide()
-        isLocked = false
+        transitionToUnlocked()
     }
 
     // MARK: - Downtime check
