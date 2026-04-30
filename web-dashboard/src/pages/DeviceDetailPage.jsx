@@ -21,6 +21,9 @@ export default function DeviceDetailPage() {
   const [totpRemaining, setTotpRemaining] = useState(0)
   const [activities, setActivities] = useState([])
   const [newActivity, setNewActivity] = useState(null)
+  const [bonusUntil, setBonusUntil] = useState(null)
+  const [bonusRemaining, setBonusRemaining] = useState(0)
+  const [grantingBonus, setGrantingBonus] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [editName, setEditName] = useState('')
   const [editChildName, setEditChildName] = useState('')
@@ -38,10 +41,33 @@ export default function DeviceDetailPage() {
       setPolicy(pol)
       setUsage(usg)
       setActivities(acts)
+      setBonusUntil(dev.bonus_until ? new Date(dev.bonus_until) : null)
     } catch (e) { console.error(e) }
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Bonus remaining countdown
+  useEffect(() => {
+    if (!bonusUntil) { setBonusRemaining(0); return }
+    const tick = () => {
+      const s = Math.max(0, Math.floor((bonusUntil.getTime() - Date.now()) / 1000))
+      setBonusRemaining(s)
+      if (s === 0) setBonusUntil(null)
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [bonusUntil])
+
+  const grantBonus = async (minutes) => {
+    setGrantingBonus(true)
+    try {
+      const resp = await api.grantBonus(id, minutes)
+      setBonusUntil(new Date(resp.bonus_until))
+    } catch (e) { alert(e.message) }
+    setGrantingBonus(false)
+  }
 
   // TOTP code generation
   useEffect(() => {
@@ -135,7 +161,7 @@ export default function DeviceDetailPage() {
       <h2 className="section-title">Unlock Code</h2>
       <div className="card">
         <p style={{ color: '#86868b', marginBottom: 12, fontSize: 14 }}>
-          Tell this code to your child — unlocks for 30 minutes
+          Tell this code to your child — unlocks for 5 minutes
         </p>
         {totpCode ? (
           <>
@@ -164,6 +190,30 @@ export default function DeviceDetailPage() {
               } catch (e) { alert(e.message) }
             }}>Generate Secret</button>
           </div>
+        )}
+      </div>
+
+      {/* Give bonus time */}
+      <h2 className="section-title">Give Bonus Time</h2>
+      <div className="card">
+        <p style={{ color: '#86868b', marginBottom: 12, fontSize: 14 }}>
+          Temporarily unlock without changing the daily limit. Bonus time does not count toward used time.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[5, 10, 15].map(mins => (
+            <button
+              key={mins}
+              className="btn btn-primary"
+              style={{ flex: 1 }}
+              disabled={grantingBonus}
+              onClick={() => grantBonus(mins)}
+            >+{mins} min</button>
+          ))}
+        </div>
+        {bonusRemaining > 0 && (
+          <p style={{ color: '#34c759', textAlign: 'center', marginTop: 12, fontSize: 13 }}>
+            Bonus active — {Math.floor(bonusRemaining / 60)}:{String(bonusRemaining % 60).padStart(2, '0')} remaining
+          </p>
         )}
       </div>
 

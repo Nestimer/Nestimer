@@ -137,7 +137,7 @@ async def test_verify_totp_endpoint(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["valid"] is True
-    assert data["granted_minutes"] == 30
+    assert data["granted_minutes"] == 5
 
 
 async def test_verify_totp_wrong_code(client):

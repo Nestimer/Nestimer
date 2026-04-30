@@ -1,5 +1,5 @@
 import secrets
-from datetime import time
+from datetime import time, datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +15,7 @@ from ..schemas import (
     PolicyUpdate, PolicyOut,
     UsageOut,
     ActivityCreate, ActivityUpdate, ActivityOut,
+    GrantBonusRequest, GrantBonusResponse,
 )
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -95,6 +96,7 @@ async def create_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
+        bonus_until=device.bonus_until,
     )
 
 
@@ -136,6 +138,7 @@ async def get_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
+        bonus_until=device.bonus_until,
     )
 
 
@@ -169,6 +172,7 @@ async def update_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
+        bonus_until=device.bonus_until,
     )
 
 
@@ -275,6 +279,26 @@ async def get_usage(
     return [UsageOut(date=l.date, total_minutes=l.total_minutes) for l in logs]
 
 
+@router.post("/{device_id}/grant-bonus", response_model=GrantBonusResponse)
+async def grant_bonus(
+    device_id: str,
+    data: GrantBonusRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grant temporary unlock without changing daily limit.
+
+    The bonus window starts now and lasts `minutes` minutes. During this window
+    the agent unlocks the screen and pauses usage counting.
+    Calling again replaces the previous window (does not stack).
+    """
+    device = await _verify_device_owner(db, device_id, user.id)
+    device.bonus_until = datetime.now(timezone.utc) + timedelta(minutes=data.minutes)
+    await db.commit()
+    await db.refresh(device)
+    return GrantBonusResponse(bonus_until=device.bonus_until)
+
+
 @router.post("/{device_id}/regenerate-secret", response_model=DeviceOut)
 async def regenerate_secret(
     device_id: str,
@@ -302,6 +326,7 @@ async def regenerate_secret(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
+        bonus_until=device.bonus_until,
     )
 
 

@@ -64,8 +64,9 @@ class DeviceOut(BaseModel):
     agent_version: Optional[str] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
+    bonus_until: Optional[datetime] = None
 
-    @field_serializer("last_seen", "created_at")
+    @field_serializer("last_seen", "created_at", "bonus_until")
     def _serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         dt = _ensure_utc(dt)
         return dt.isoformat() if dt else None
@@ -177,6 +178,24 @@ class AgentConfig(BaseModel):
     screen_time_limit_minutes: int
     used_minutes_today: float
     activities: list["ActivityOut"] = Field(default_factory=list)
+    bonus_until: Optional[datetime] = None  # parent-granted temporary unlock window
+
+    @field_serializer("bonus_until")
+    def _serialize_bonus_until(self, v: Optional[datetime]) -> Optional[str]:
+        v = _ensure_utc(v)
+        return v.isoformat() if v else None
+
+
+class GrantBonusRequest(BaseModel):
+    minutes: int = Field(ge=1, le=120)
+
+
+class GrantBonusResponse(BaseModel):
+    bonus_until: datetime
+
+    @field_serializer("bonus_until")
+    def _serialize(self, v: datetime) -> str:
+        return _ensure_utc(v).isoformat()
 
 
 class ActivityCreate(BaseModel):

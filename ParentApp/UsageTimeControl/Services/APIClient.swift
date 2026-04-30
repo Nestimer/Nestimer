@@ -81,6 +81,13 @@ actor APIClient {
         try await request("PUT", path: "/api/v1/devices/\(deviceId)/policy", body: update)
     }
 
+    // MARK: - Bonus
+
+    @discardableResult
+    func grantBonus(deviceId: String, minutes: Int) async throws -> GrantBonusResponse {
+        try await post("/api/v1/devices/\(deviceId)/grant-bonus", body: GrantBonusRequest(minutes: minutes))
+    }
+
     // MARK: - Usage
 
     func getUsage(deviceId: String, days: Int = 7) async throws -> [UsageEntry] {

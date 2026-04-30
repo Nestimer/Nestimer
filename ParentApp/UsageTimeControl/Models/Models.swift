@@ -60,6 +60,7 @@ struct Device: Decodable, Identifiable {
     let agentVersion: String?
     let lastSeen: String?
     let createdAt: String?
+    let bonusUntil: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -69,6 +70,7 @@ struct Device: Decodable, Identifiable {
         case agentVersion = "agent_version"
         case lastSeen = "last_seen"
         case createdAt = "created_at"
+        case bonusUntil = "bonus_until"
     }
 
     private var lastSeenDate: Date? {
@@ -282,6 +284,20 @@ struct ActivityCreate: Encodable {
         case endTime = "end_time"
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
+    }
+}
+
+// MARK: - Bonus
+
+struct GrantBonusRequest: Encodable {
+    let minutes: Int
+}
+
+struct GrantBonusResponse: Decodable {
+    let bonusUntil: String
+
+    enum CodingKeys: String, CodingKey {
+        case bonusUntil = "bonus_until"
     }
 }
 

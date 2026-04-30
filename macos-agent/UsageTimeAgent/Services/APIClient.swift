@@ -29,6 +29,28 @@ struct ServerPolicy: Codable {
     let screenTimeLimitMinutes: Int
     let usedMinutesToday: Double
     let activities: [ScheduledActivity]?
+    /// Parent-granted bonus window (ISO8601 UTC). Decoded into `bonusUntilDate`.
+    let bonusUntil: String?
+
+    init(
+        downtimeEnabled: Bool,
+        downtimeStart: String,
+        downtimeEnd: String,
+        screenTimeEnabled: Bool,
+        screenTimeLimitMinutes: Int,
+        usedMinutesToday: Double,
+        activities: [ScheduledActivity]? = nil,
+        bonusUntil: String? = nil
+    ) {
+        self.downtimeEnabled = downtimeEnabled
+        self.downtimeStart = downtimeStart
+        self.downtimeEnd = downtimeEnd
+        self.screenTimeEnabled = screenTimeEnabled
+        self.screenTimeLimitMinutes = screenTimeLimitMinutes
+        self.usedMinutesToday = usedMinutesToday
+        self.activities = activities
+        self.bonusUntil = bonusUntil
+    }
 
     enum CodingKeys: String, CodingKey {
         case downtimeEnabled = "downtime_enabled"
@@ -38,6 +60,16 @@ struct ServerPolicy: Codable {
         case screenTimeLimitMinutes = "screen_time_limit_minutes"
         case usedMinutesToday = "used_minutes_today"
         case activities
+        case bonusUntil = "bonus_until"
+    }
+
+    var bonusUntilDate: Date? {
+        guard let s = bonusUntil else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: s) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: s)
     }
 }
 

@@ -85,7 +85,14 @@ async def get_config(
     result = await db.execute(select(Policy).where(Policy.device_id == device.id))
     policy = result.scalar_one_or_none()
 
+    # SQLite returns naive datetimes even for tz-aware columns — coerce to UTC.
+    bu = device.bonus_until
+    if bu is not None and bu.tzinfo is None:
+        bu = bu.replace(tzinfo=timezone.utc)
+    bonus_until = bu if bu and bu > now else None
+
     if not policy:
+        await db.commit()
         return AgentConfig(
             downtime_enabled=False,
             downtime_start="22:00",
@@ -93,6 +100,7 @@ async def get_config(
             screen_time_enabled=False,
             screen_time_limit_minutes=999,
             used_minutes_today=0,
+            bonus_until=bonus_until,
         )
 
     # Get today's usage
@@ -134,6 +142,7 @@ async def get_config(
         screen_time_limit_minutes=limit,
         used_minutes_today=used_today,
         activities=activities,
+        bonus_until=bonus_until,
     )
 
 
@@ -190,7 +199,7 @@ async def verify_totp_endpoint(
     if not device.shared_secret:
         raise HTTPException(status_code=400, detail="No shared secret configured")
     valid = verify_totp(device.shared_secret, body.code)
-    return TOTPVerifyResponse(valid=valid, granted_minutes=30 if valid else 0)
+    return TOTPVerifyResponse(valid=valid, granted_minutes=5 if valid else 0)
 
 
 # --- Agent auto-update ---

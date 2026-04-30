@@ -12,12 +12,20 @@ class PolicyEnforcer {
     private var previousRemaining: Double?
     /// Temporary unlock granted via TOTP code.
     private var temporaryUnlockUntil: Date?
+    /// Parent-granted bonus window from the server. Refreshed on each evaluate().
+    private var bonusUntil: Date?
     /// Whether the lock screen is currently visible (used to drive fast sync).
     private(set) var isLocked: Bool = false
 
     /// True while a TOTP-granted temporary unlock window is active.
     var isTemporaryUnlockActive: Bool {
         guard let until = temporaryUnlockUntil else { return false }
+        return Date() < until
+    }
+
+    /// True while a parent-granted bonus window is active.
+    var isBonusActive: Bool {
+        guard let until = bonusUntil else { return false }
         return Date() < until
     }
 
@@ -87,6 +95,14 @@ class PolicyEnforcer {
             } else {
                 temporaryUnlockUntil = nil  // Expired
             }
+        }
+
+        // Check parent-granted bonus window (server-driven)
+        bonusUntil = policy.bonusUntilDate
+        if let until = bonusUntil, Date() < until {
+            lockScreen.hide()
+            transitionToUnlocked()
+            return
         }
 
         // Reset warnings if policy limit changed (parent granted more time)

@@ -13,6 +13,8 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var error: String?
     @Published var currentTOTPCode: String?
     @Published var totpSecondsRemaining: Int = 0
+    @Published var bonusUntil: Date?
+    @Published var isGrantingBonus = false
     private var totpTimer: Timer?
 
     private let api = APIClient.shared
@@ -38,6 +40,7 @@ class DeviceDetailViewModel: ObservableObject {
             policy = p
             usage = u
             activities = a
+            bonusUntil = parseISODate(d.bonusUntil)
         } catch {
             self.error = error.localizedDescription
         }
@@ -212,6 +215,35 @@ class DeviceDetailViewModel: ObservableObject {
     var usagePercent: Double {
         guard limitMinutes > 0 else { return 0 }
         return min(1.0, usedToday / Double(limitMinutes))
+    }
+
+    // MARK: - Bonus
+
+    func grantBonus(minutes: Int) async {
+        isGrantingBonus = true
+        do {
+            let resp = try await api.grantBonus(deviceId: deviceId, minutes: minutes)
+            bonusUntil = parseISODate(resp.bonusUntil)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isGrantingBonus = false
+    }
+
+    private func parseISODate(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: s) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: s)
+    }
+
+    var bonusRemainingSeconds: Int? {
+        guard let until = bonusUntil else { return nil }
+        let s = Int(until.timeIntervalSinceNow)
+        return s > 0 ? s : nil
     }
 
     // MARK: - Activities

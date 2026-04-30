@@ -23,6 +23,7 @@ struct DeviceDetailView: View {
                     VStack(spacing: 20) {
                         todayCard
                         unlockCodeSection
+                        bonusSection
                         downtimeSection(policy: policy)
                         screenTimeSection(policy: policy)
                         activitiesSection
@@ -128,7 +129,7 @@ struct DeviceDetailView: View {
                 .fontWeight(.semibold)
 
             VStack(spacing: 16) {
-                Text("Tell this code to your child — unlocks for 30 minutes")
+                Text("Tell this code to your child — unlocks for 5 minutes")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -180,6 +181,53 @@ struct DeviceDetailView: View {
         }
         .onAppear { vm.startTOTPGeneration() }
         .onDisappear { vm.stopTOTPGeneration() }
+    }
+
+    // MARK: - Bonus
+
+    private var bonusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Give Bonus Time")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 12) {
+                Text("Temporarily unlock without changing the daily limit. The bonus does not count toward used time.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 8) {
+                    ForEach([5, 10, 15], id: \.self) { mins in
+                        Button {
+                            Task { await vm.grantBonus(minutes: mins) }
+                        } label: {
+                            Text("+\(mins) min")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(vm.isGrantingBonus)
+                    }
+                }
+
+                if let remaining = vm.bonusRemainingSeconds {
+                    let m = remaining / 60
+                    let s = remaining % 60
+                    HStack {
+                        Image(systemName: "clock.badge.checkmark")
+                            .foregroundStyle(.green)
+                        Text("Bonus active — \(m):\(String(format: "%02d", s)) remaining")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(16)
+        }
     }
 
     // MARK: - Downtime

@@ -43,6 +43,7 @@ async def init_db():
         dev_cols = await _get_columns(conn, "devices")
         await _add_column_if_missing(conn, "devices", "shared_secret", "TEXT", dev_cols)
         await _add_column_if_missing(conn, "devices", "agent_version", "TEXT", dev_cols)
+        await _add_column_if_missing(conn, "devices", "bonus_until", "TIMESTAMP WITH TIME ZONE", dev_cols)
 
         # policies table — per-day screen time limits
         pol_cols = await _get_columns(conn, "policies")

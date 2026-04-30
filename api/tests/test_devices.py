@@ -230,3 +230,58 @@ async def test_shared_secret_not_in_list_endpoint(client):
     assert resp.status_code == 200
     device_list_item = resp.json()[0]
     assert "shared_secret" not in device_list_item
+
+
+async def test_grant_bonus_sets_bonus_until(client):
+    """grant-bonus returns bonus_until timestamp and exposes it via /agent/config."""
+    from datetime import datetime, timezone
+    token = await register_user(client, email="bonus@test.com")
+    device = await create_device(client, token)
+    agent_token = device["api_token"]
+
+    resp = await client.post(
+        f"/api/v1/devices/{device['id']}/grant-bonus",
+        json={"minutes": 5},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    bonus_until_str = resp.json()["bonus_until"]
+    bonus_until = datetime.fromisoformat(bonus_until_str)
+    delta = (bonus_until - datetime.now(timezone.utc)).total_seconds()
+    assert 240 < delta <= 300  # ~5 min from now
+
+    # Agent config should now expose bonus_until
+    cfg = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {agent_token}"},
+    )
+    assert cfg.status_code == 200
+    assert cfg.json()["bonus_until"] is not None
+
+
+async def test_grant_bonus_validation(client):
+    """Minutes must be in [1, 120]."""
+    token = await register_user(client, email="bonus-val@test.com")
+    device = await create_device(client, token)
+
+    for bad in [0, -5, 121, 1000]:
+        resp = await client.post(
+            f"/api/v1/devices/{device['id']}/grant-bonus",
+            json={"minutes": bad},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+
+async def test_grant_bonus_requires_owner(client):
+    """Other users cannot grant bonus on someone else's device."""
+    owner = await register_user(client, email="bonus-owner@test.com")
+    intruder = await register_user(client, email="bonus-intruder@test.com")
+    device = await create_device(client, owner)
+
+    resp = await client.post(
+        f"/api/v1/devices/{device['id']}/grant-bonus",
+        json={"minutes": 5},
+        headers={"Authorization": f"Bearer {intruder}"},
+    )
+    assert resp.status_code == 404

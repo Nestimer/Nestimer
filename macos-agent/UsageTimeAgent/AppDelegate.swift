@@ -135,8 +135,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func performTick() {
         // Don't count or evaluate until first server sync completes
         guard initialSyncCompleted else { return }
-        // Pause counting during scheduled activity OR TOTP temporary unlock
-        if policyEnforcer.activeActivity != nil || policyEnforcer.isTemporaryUnlockActive {
+        // Pause counting during scheduled activity, TOTP temp unlock, or parent-granted bonus
+        if policyEnforcer.activeActivity != nil || policyEnforcer.isTemporaryUnlockActive || policyEnforcer.isBonusActive {
             let current = usageTracker.getUsedMinutesToday()
             statusBar?.updateDisplay(usedMinutes: current)
             return
@@ -203,6 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if policyEnforcer.isLocked { return 5 }
         if policyEnforcer.activeActivity != nil { return 60 }
         if policyEnforcer.isTemporaryUnlockActive { return 60 }
+        if policyEnforcer.isBonusActive { return 30 }
 
         // Calculate remaining minutes from last policy
         if let policy = lastPolicy, policy.screenTimeEnabled {
@@ -264,8 +265,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if TOTPGenerator.verifyCode(secretHex: secret, code: code) {
-            NSLog("[UsageTimeAgent] TOTP: Code accepted — granting 30 minutes")
-            policyEnforcer.grantTemporaryAccess(minutes: 30)
+            NSLog("[UsageTimeAgent] TOTP: Code accepted — granting 5 minutes")
+            policyEnforcer.grantTemporaryAccess(minutes: 5)
         } else {
             NSLog("[UsageTimeAgent] TOTP: Code rejected")
         }

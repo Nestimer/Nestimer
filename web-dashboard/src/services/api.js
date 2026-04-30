@@ -67,6 +67,9 @@ export const api = {
   // TOTP
   regenerateSecret: (deviceId) => request(`/devices/${deviceId}/regenerate-secret`, { method: 'POST' }),
 
+  // Bonus time (parent-granted temporary unlock, does not affect daily limit)
+  grantBonus: (deviceId, minutes) => request(`/devices/${deviceId}/grant-bonus`, { method: 'POST', body: JSON.stringify({ minutes }) }),
+
   // Activities
   listActivities: (deviceId) => request(`/devices/${deviceId}/activities`),
   createActivity: (deviceId, data) => request(`/devices/${deviceId}/activities`, { method: 'POST', body: JSON.stringify(data) }),
