@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.usagetime.agent-watchdog</string>
+    <string>com.nestimer.agent-watchdog</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/usr/local/libexec/usagetime-watchdog.sh</string>
+        <string>/usr/local/libexec/nestimer-watchdog.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -18,10 +18,10 @@
     <integer>15</integer>
 
     <key>StandardOutPath</key>
-    <string>/var/log/usagetime/watchdog.log</string>
+    <string>/var/log/nestimer/watchdog.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/var/log/usagetime/watchdog-error.log</string>
+    <string>/var/log/nestimer/watchdog-error.log</string>
 
     <key>ThrottleInterval</key>
     <integer>5</integer>

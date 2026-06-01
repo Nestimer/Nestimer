@@ -11,7 +11,7 @@ struct AgentConfig {
     /// In dev mode, lock screen auto-dismisses after this many seconds (default 10).
     let devAutoUnlockSeconds: TimeInterval
 
-    static let configPath = "/etc/usagetime/config.plist"
+    static let configPath = "/etc/nestimer/config.plist"
 
     /// True when running a Debug build (from Xcode or DerivedData).
     static var isDebugBuild: Bool {
@@ -47,7 +47,7 @@ struct AgentConfig {
             )
         }
 
-        // Fallback: UserDefaults (set via `defaults write com.usagetime.agent`)
+        // Fallback: UserDefaults (set via `defaults write com.nestimer.agent`)
         let defaults = UserDefaults.standard
         if let token = defaults.string(forKey: "APIToken"), !token.isEmpty {
             return AgentConfig(

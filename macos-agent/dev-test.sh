@@ -53,7 +53,7 @@ API_TOKEN="${UTC_API_TOKEN:-}"
 if [ -z "$API_TOKEN" ]; then
     echo -e "${YELLOW}[2/4] Setting up test user and device...${NC}"
 
-    TEST_EMAIL="dev-test@usagetime.local"
+    TEST_EMAIL="dev-test@nestimer.local"
     TEST_PASS="devtest123"
 
     # Register (ignore 400 = already exists)

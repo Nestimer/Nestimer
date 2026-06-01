@@ -5,9 +5,9 @@ import AppKit
 /// Uses bundled watchdog.sh and watchdog.plist from the app's Resources.
 struct SystemInstaller {
 
-    static let daemonPlistPath = "/Library/LaunchDaemons/com.usagetime.agent-watchdog.plist"
+    static let daemonPlistPath = "/Library/LaunchDaemons/com.nestimer.agent-watchdog.plist"
     static let installedAppPath = "/Applications/UsageTimeAgent.app"
-    static let watchdogDst = "/usr/local/libexec/usagetime-watchdog.sh"
+    static let watchdogDst = "/usr/local/libexec/nestimer-watchdog.sh"
 
     static var isInstalled: Bool {
         FileManager.default.fileExists(atPath: daemonPlistPath)
@@ -46,7 +46,7 @@ struct SystemInstaller {
 
         // Build shell commands — all single-quoted paths, no escaping needed
         var cmds = [
-            "mkdir -p /usr/local/libexec /var/log/usagetime",
+            "mkdir -p /usr/local/libexec /var/log/nestimer",
         ]
 
         if isUpdate {

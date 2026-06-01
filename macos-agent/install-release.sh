@@ -44,7 +44,7 @@ chmod -R 755 "$APP_DST"
 
 # 2. Copy setup string from user defaults if already configured
 echo "[2/3] Checking agent config..."
-USER_DEFAULTS=$(launchctl asuser "$CONSOLE_UID" defaults read com.usagetime.agent 2>/dev/null || echo "")
+USER_DEFAULTS=$(launchctl asuser "$CONSOLE_UID" defaults read com.nestimer.agent 2>/dev/null || echo "")
 if [ -z "$USER_DEFAULTS" ] || ! echo "$USER_DEFAULTS" | grep -q "APIToken"; then
     echo ""
     echo "    No config found in UserDefaults. The agent will show a setup dialog"
@@ -56,13 +56,13 @@ fi
 
 # 3. Install watchdog
 echo "[3/3] Installing watchdog daemon..."
-mkdir -p /usr/local/lib/usagetime /var/log/usagetime
-cp "$SCRIPT_DIR/Watchdog/watchdog.sh" /usr/local/lib/usagetime/watchdog.sh
-chmod 755 /usr/local/lib/usagetime/watchdog.sh
+mkdir -p /usr/local/lib/nestimer /var/log/nestimer
+cp "$SCRIPT_DIR/Watchdog/watchdog.sh" /usr/local/lib/nestimer/watchdog.sh
+chmod 755 /usr/local/lib/nestimer/watchdog.sh
 
-WATCHDOG_PLIST_DST="/Library/LaunchDaemons/com.usagetime.watchdog.plist"
+WATCHDOG_PLIST_DST="/Library/LaunchDaemons/com.nestimer.watchdog.plist"
 launchctl unload "$WATCHDOG_PLIST_DST" 2>/dev/null || true
-cp "$SCRIPT_DIR/Watchdog/com.usagetime.watchdog.plist" "$WATCHDOG_PLIST_DST"
+cp "$SCRIPT_DIR/Watchdog/com.nestimer.watchdog.plist" "$WATCHDOG_PLIST_DST"
 chown root:wheel "$WATCHDOG_PLIST_DST"
 chmod 644 "$WATCHDOG_PLIST_DST"
 launchctl load "$WATCHDOG_PLIST_DST"
@@ -75,13 +75,13 @@ echo "=== Installation complete! ==="
 echo ""
 echo "Agent installed at:  $APP_DST"
 echo "Watchdog installed:  $WATCHDOG_PLIST_DST"
-echo "Watchdog logs:       /var/log/usagetime/"
+echo "Watchdog logs:       /var/log/nestimer/"
 echo ""
 echo "The agent starts automatically on boot and restarts within 15s if killed."
 echo ""
 echo "To UNINSTALL:"
-echo "  sudo launchctl unload /Library/LaunchDaemons/com.usagetime.watchdog.plist"
-echo "  sudo rm /Library/LaunchDaemons/com.usagetime.watchdog.plist"
+echo "  sudo launchctl unload /Library/LaunchDaemons/com.nestimer.watchdog.plist"
+echo "  sudo rm /Library/LaunchDaemons/com.nestimer.watchdog.plist"
 echo "  sudo rm -rf /Applications/UsageTimeAgent.app"
-echo "  sudo rm -rf /usr/local/lib/usagetime /var/log/usagetime"
-echo "  defaults delete com.usagetime.agent"
+echo "  sudo rm -rf /usr/local/lib/nestimer /var/log/nestimer"
+echo "  defaults delete com.nestimer.agent"

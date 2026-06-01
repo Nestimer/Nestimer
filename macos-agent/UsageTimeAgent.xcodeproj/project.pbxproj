@@ -250,7 +250,7 @@
 				);
 				LSUIElement = YES;
 				MARKETING_VERSION = 2.7;
-				PRODUCT_BUNDLE_IDENTIFIER = com.usagetime.agent;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.agent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -272,7 +272,7 @@
 				);
 				LSUIElement = YES;
 				MARKETING_VERSION = 2.7;
-				PRODUCT_BUNDLE_IDENTIFIER = com.usagetime.agent;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.agent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

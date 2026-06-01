@@ -6,8 +6,8 @@
 
 APP_PATH="/Applications/UsageTimeAgent.app"
 APP_BINARY="$APP_PATH/Contents/MacOS/UsageTimeAgent"
-VERSION_FILE="/usr/local/libexec/usagetime-agent-version.txt"
-UPDATE_CHECK_MARKER="/tmp/usagetime-last-update-check"
+VERSION_FILE="/usr/local/libexec/nestimer-agent-version.txt"
+UPDATE_CHECK_MARKER="/tmp/nestimer-last-update-check"
 UPDATE_CHECK_INTERVAL=300  # seconds between update checks
 
 log() {
@@ -45,7 +45,7 @@ fi
 touch "$UPDATE_CHECK_MARKER"
 
 # Get server URL from agent's UserDefaults
-SERVER_URL=$(sudo -u "$CONSOLE_USER" defaults read com.usagetime.agent ServerURL 2>/dev/null)
+SERVER_URL=$(sudo -u "$CONSOLE_USER" defaults read com.nestimer.agent ServerURL 2>/dev/null)
 if [ -z "$SERVER_URL" ]; then
     exit 0
 fi
@@ -76,7 +76,7 @@ fi
 log "Update available: $LOCAL_VERSION -> $REMOTE_VERSION"
 
 # Retry limit: don't attempt same version more than 3 times
-FAIL_COUNT_FILE="/tmp/usagetime-update-fails-$REMOTE_VERSION"
+FAIL_COUNT_FILE="/tmp/nestimer-update-fails-$REMOTE_VERSION"
 FAIL_COUNT=0
 if [ -f "$FAIL_COUNT_FILE" ]; then
     FAIL_COUNT=$(cat "$FAIL_COUNT_FILE")
