@@ -10,3 +10,12 @@ dist/
 .build/
 .swiftpm/
 data/
+
+# Xcode user-specific / generated
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcarchive
+
+# Tooling cruft (not part of the project)
+entities.json
+mempalace.yaml
