@@ -112,13 +112,34 @@ def make_icon(size: int, variant: str = "app") -> Image.Image:
     return img
 
 
+def flatten_ios(icon: Image.Image) -> Image.Image:
+    """iOS app icons must be a full opaque square (no alpha) — App Store rejects
+    transparency (error 90717). Composite the rounded icon over a full gradient
+    so the transparent corners are filled seamlessly; iOS masks corners itself."""
+    size = icon.width
+    bg = Image.new("RGB", (size, size))
+    px = bg.load()
+    for y in range(size):
+        t = y / size
+        r = int(BG_START[0] * (1 - t) + BG_END[0] * t)
+        g = int(BG_START[1] * (1 - t) + BG_END[1] * t)
+        b = int(BG_START[2] * (1 - t) + BG_END[2] * t)
+        for x in range(size):
+            px[x, y] = (r, g, b)
+    bg.paste(icon, (0, 0), icon)
+    return bg  # RGB => no alpha channel
+
+
 def make_iconset(output_dir: str, variant: str):
     os.makedirs(output_dir, exist_ok=True)
-    # macOS sizes
+    # macOS sizes (alpha allowed — rounded corners + shadow look)
     sizes = [16, 32, 64, 128, 256, 512, 1024]
     for s in sizes:
         icon = make_icon(s, variant)
         icon.save(os.path.join(output_dir, f"icon_{s}.png"))
+    # iOS marketing icon: 1024 flattened, no alpha (App Store requirement)
+    flatten_ios(make_icon(1024, variant)).save(
+        os.path.join(output_dir, "icon_1024_ios.png"))
     print(f"✓ Generated {variant} icons in {output_dir}")
 
 
