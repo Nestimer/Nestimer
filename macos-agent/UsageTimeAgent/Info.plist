@@ -9,7 +9,7 @@
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key>
-    <string>UsageTimeAgent</string>
+    <string>NesTimer</string>
     <key>CFBundleDisplayName</key>
     <string>NesTimer</string>
     <key>CFBundlePackageType</key>

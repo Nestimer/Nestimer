@@ -112,7 +112,7 @@ Timer fires every 5s, checks `adaptiveSyncInterval()` vs `lastSyncTime`.
 
 ## Project conventions
 
-- **Brand name**: NesTimer (internal identifiers still use `com.usagetime.*` — will rename with Apple Developer Account)
+- **Brand name**: NesTimer. Bundle IDs are `com.nestimer.*` (renamed from `com.usagetime.*` on 2026-06-02; Keychain wrappers keep a read-only fallback to the old service for migration)
 - **No Russian text** anywhere. All English.
 - **Commit style**: conventional commits (`feat:`, `fix:`, `perf:`, `security:`, `ci:`, `chore:`)
 - **CI**: GitHub Actions — API tests, web build, macOS agent build, iOS simulator build, Docker build
