@@ -49,10 +49,10 @@ enum KeychainHelper {
             addQuery[kSecValueData as String] = data
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             if addStatus != errSecSuccess {
-                NSLog("[UsageTimeControl] Keychain save failed: \(addStatus)")
+                NSLog("[NesTimer] Keychain save failed: \(addStatus)")
             }
         } else if updateStatus != errSecSuccess {
-            NSLog("[UsageTimeControl] Keychain update failed: \(updateStatus)")
+            NSLog("[NesTimer] Keychain update failed: \(updateStatus)")
         }
     }
 

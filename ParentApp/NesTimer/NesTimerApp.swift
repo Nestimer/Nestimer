@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct UsageTimeControlApp: App {
+struct NesTimerApp: App {
     @StateObject private var authVM = AuthViewModel()
 
     var body: some Scene {

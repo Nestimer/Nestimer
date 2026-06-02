@@ -7,25 +7,25 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10001 /* UsageTimeControlApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10001; };
-		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10002; };
-		A10003 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10003; };
-		A10004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10004; };
-		A10005 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10005; };
-		A10006 /* DevicesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10006; };
-		A10007 /* DeviceDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10007; };
-		A10008 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10008; };
-		A10009 /* DevicesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10009; };
-		A10010 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10010; };
-		A10011 /* AddDeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10011; };
-		A10012 /* UsageChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10012; };
-		A10013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10013; };
-		A10014 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10014; };
-		A10015 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015; };
+		A10001 /* NesTimerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10001 /* NesTimerApp.swift */; };
+		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10002 /* ContentView.swift */; };
+		A10003 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10003 /* APIClient.swift */; };
+		A10004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10004 /* Models.swift */; };
+		A10005 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10005 /* AuthViewModel.swift */; };
+		A10006 /* DevicesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10006 /* DevicesViewModel.swift */; };
+		A10007 /* DeviceDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10007 /* DeviceDetailViewModel.swift */; };
+		A10008 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10008 /* LoginView.swift */; };
+		A10009 /* DevicesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10009 /* DevicesListView.swift */; };
+		A10010 /* DeviceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10010 /* DeviceDetailView.swift */; };
+		A10011 /* AddDeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10011 /* AddDeviceView.swift */; };
+		A10012 /* UsageChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10012 /* UsageChartView.swift */; };
+		A10013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10013 /* Assets.xcassets */; };
+		A10014 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10014 /* Keychain.swift */; };
+		A10015 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015 /* TOTPGenerator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		B10001 /* UsageTimeControlApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTimeControlApp.swift; sourceTree = "<group>"; };
+		B10001 /* NesTimerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NesTimerApp.swift; sourceTree = "<group>"; };
 		B10002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B10003 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		B10004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -40,36 +40,36 @@
 		B10013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10014 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		B10015 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
-		C10001 /* UsageTimeControl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageTimeControl.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10001 /* NesTimer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		D10001 = {
 			isa = PBXGroup;
 			children = (
-				D10002 /* UsageTimeControl */,
+				D10002 /* NesTimer */,
 				D10007 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		D10002 /* UsageTimeControl */ = {
+		D10002 /* NesTimer */ = {
 			isa = PBXGroup;
 			children = (
-				B10001,
-				B10002,
+				B10001 /* NesTimerApp.swift */,
+				B10002 /* ContentView.swift */,
 				D10003 /* Models */,
 				D10004 /* Services */,
 				D10005 /* ViewModels */,
 				D10006 /* Views */,
-				B10013,
+				B10013 /* Assets.xcassets */,
 			);
-			path = UsageTimeControl;
+			path = NesTimer;
 			sourceTree = "<group>";
 		};
 		D10003 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				B10004,
+				B10004 /* Models.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -77,9 +77,9 @@
 		D10004 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				B10003,
-				B10014,
-				B10015,
+				B10003 /* APIClient.swift */,
+				B10014 /* Keychain.swift */,
+				B10015 /* TOTPGenerator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -87,9 +87,9 @@
 		D10005 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				B10005,
-				B10006,
-				B10007,
+				B10005 /* AuthViewModel.swift */,
+				B10006 /* DevicesViewModel.swift */,
+				B10007 /* DeviceDetailViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -97,11 +97,11 @@
 		D10006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				B10008,
-				B10009,
-				B10010,
-				B10011,
-				B10012,
+				B10008 /* LoginView.swift */,
+				B10009 /* DevicesListView.swift */,
+				B10010 /* DeviceDetailView.swift */,
+				B10011 /* AddDeviceView.swift */,
+				B10012 /* UsageChartView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -109,7 +109,7 @@
 		D10007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C10001,
+				C10001 /* NesTimer.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -117,9 +117,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E10001 /* UsageTimeControl */ = {
+		E10001 /* NesTimer */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F10003;
+			buildConfigurationList = F10003 /* Build configuration list for PBXNativeTarget "NesTimer" */;
 			buildPhases = (
 				E10002 /* Sources */,
 				E10003 /* Resources */,
@@ -128,9 +128,9 @@
 			);
 			dependencies = (
 			);
-			name = UsageTimeControl;
-			productName = UsageTimeControl;
-			productReference = C10001;
+			name = NesTimer;
+			productName = NesTimer;
+			productReference = C10001 /* NesTimer.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -143,7 +143,7 @@
 				LastSwiftUpdateCheck = 1540;
 				LastUpgradeCheck = 1540;
 			};
-			buildConfigurationList = F10001;
+			buildConfigurationList = F10001 /* Build configuration list for PBXProject "NesTimer" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -153,49 +153,49 @@
 				ru,
 			);
 			mainGroup = D10001;
-			productRefGroup = D10007;
+			productRefGroup = D10007 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				E10001,
+				E10001 /* NesTimer */,
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXSourcesBuildPhase section */
-		E10002 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A10001,
-				A10002,
-				A10003,
-				A10004,
-				A10005,
-				A10006,
-				A10007,
-				A10008,
-				A10009,
-				A10010,
-				A10011,
-				A10012,
-				A10014,
-				A10015,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		E10003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10013,
+				A10013 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E10002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10001 /* NesTimerApp.swift in Sources */,
+				A10002 /* ContentView.swift in Sources */,
+				A10003 /* APIClient.swift in Sources */,
+				A10004 /* Models.swift in Sources */,
+				A10005 /* AuthViewModel.swift in Sources */,
+				A10006 /* DevicesViewModel.swift in Sources */,
+				A10007 /* DeviceDetailViewModel.swift in Sources */,
+				A10008 /* LoginView.swift in Sources */,
+				A10009 /* DevicesListView.swift in Sources */,
+				A10010 /* DeviceDetailView.swift in Sources */,
+				A10011 /* AddDeviceView.swift in Sources */,
+				A10012 /* UsageChartView.swift in Sources */,
+				A10014 /* Keychain.swift in Sources */,
+				A10015 /* TOTPGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		F10004 /* Debug */ = {
@@ -245,11 +245,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CBBC6T33XY;
 				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = CBBC6T33XY;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = UsageTimeControl/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NesTimer";
+				INFOPLIST_FILE = NesTimer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = NesTimer;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -270,11 +270,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CBBC6T33XY;
 				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = CBBC6T33XY;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = UsageTimeControl/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NesTimer";
+				INFOPLIST_FILE = NesTimer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = NesTimer;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -293,20 +293,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F10001 /* Build configuration list for PBXProject "UsageTimeControl" */ = {
+		F10001 /* Build configuration list for PBXProject "NesTimer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				F10004,
-				F10005,
+				F10004 /* Debug */,
+				F10005 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F10003 /* Build configuration list for PBXNativeTarget "UsageTimeControl" */ = {
+		F10003 /* Build configuration list for PBXNativeTarget "NesTimer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				F10006,
-				F10007,
+				F10006 /* Debug */,
+				F10007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

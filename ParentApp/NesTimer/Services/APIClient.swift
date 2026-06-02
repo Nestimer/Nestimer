@@ -1,6 +1,6 @@
 import Foundation
 
-/// API client for communicating with the UsageTimeController server.
+/// API client for communicating with the NesTimer server.
 actor APIClient {
     static let shared = APIClient()
 
