@@ -56,9 +56,17 @@ struct SystemInstaller {
             ]
         }
 
+        // If we're already running from the install target (user dragged the app
+        // into /Applications from the DMG, then opened it), copying it onto itself
+        // would delete the source via the rm -rf. Skip the copy and set up in place.
+        if appSrc != installedAppPath {
+            cmds += [
+                "rm -rf '\(installedAppPath)'",
+                "cp -R '\(appSrc)' '\(installedAppPath)'",
+            ]
+        }
+
         cmds += [
-            "rm -rf '\(installedAppPath)'",
-            "cp -R '\(appSrc)' '\(installedAppPath)'",
             "chown -R root:wheel '\(installedAppPath)'",
             "cp '\(watchdogSrc)' '\(watchdogDst)'",
             "chmod 755 '\(watchdogDst)'",
