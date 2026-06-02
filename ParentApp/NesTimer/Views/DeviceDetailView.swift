@@ -46,7 +46,9 @@ struct DeviceDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 500, minHeight: 600)
+        #endif
         .navigationTitle(vm.device?.name ?? "Device")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.large)
