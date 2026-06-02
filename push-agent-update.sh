@@ -52,6 +52,7 @@ if [ -f "$PBXPROJ" ]; then
         DEVELOPMENT_TEAM="$DEV_TEAM" \
         PROVISIONING_PROFILE_SPECIFIER="" \
         ENABLE_HARDENED_RUNTIME=YES \
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
         OTHER_CODE_SIGN_FLAGS="--timestamp" \
         build 2>&1 | tail -1
 
