@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate app icons for UsageTimeController — clock with lock/shield accent."""
+"""Generate app icons for NesTimer — clock with lock/shield accent."""
 import os
 from PIL import Image, ImageDraw, ImageFont
 

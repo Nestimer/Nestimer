@@ -17,19 +17,19 @@ Deployed via Docker Compose (PostgreSQL + API + nginx) on a 2 vCPU / 8 GB server
 
 ```bash
 # Agent (Debug — auto-enables dev mode)
-xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-  -scheme UsageTimeAgent -configuration Debug \
+xcodebuild -project macos-agent/NesTimerAgent.xcodeproj \
+  -scheme NesTimerAgent -configuration Debug \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES build
 
 # Agent (Release — production, root install, no dev safeguards)
-xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-  -scheme UsageTimeAgent -configuration Release \
+xcodebuild -project macos-agent/NesTimerAgent.xcodeproj \
+  -scheme NesTimerAgent -configuration Release \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
 
 # Parent app (macOS)
-xcodebuild -project ParentApp/UsageTimeControl.xcodeproj \
-  -scheme UsageTimeControl -configuration Debug \
+xcodebuild -project ParentApp/NesTimer.xcodeproj \
+  -scheme NesTimer -configuration Debug \
   -destination 'platform=macOS' \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES build
 ```
@@ -43,7 +43,7 @@ Release builds go to `dist/`. Push updates via:
 ## Key architectural decisions
 
 ### Agent lifecycle (Release)
-1. User double-clicks `UsageTimeAgent.app`
+1. User double-clicks `NesTimerAgent.app`
 2. Setup dialog asks for `https://my.nestimer.com|TOKEN` → saves in UserDefaults
 3. `SystemInstaller` asks for admin password → copies app to `/Applications/` (root), installs bundled `watchdog.sh` + `watchdog.plist` as LaunchDaemon
 4. Watchdog runs every 15s as root, restarts agent if killed, checks for auto-updates every 5 min
@@ -112,7 +112,7 @@ Timer fires every 5s, checks `adaptiveSyncInterval()` vs `lastSyncTime`.
 
 ## Project conventions
 
-- **Brand name**: NesTimer (internal identifiers still use `com.usagetime.*` — will rename with Apple Developer Account)
+- **Brand name**: NesTimer. Bundle IDs are `com.nestimer.*` (renamed from `com.usagetime.*` on 2026-06-02; Keychain wrappers keep a read-only fallback to the old service for migration)
 - **No Russian text** anywhere. All English.
 - **Commit style**: conventional commits (`feat:`, `fix:`, `perf:`, `security:`, `ci:`, `chore:`)
 - **CI**: GitHub Actions — API tests, web build, macOS agent build, iOS simulator build, Docker build
@@ -122,15 +122,15 @@ Timer fires every 5s, checks `adaptiveSyncInterval()` vs `lastSyncTime`.
 
 | Task | File |
 |------|------|
-| Policy rules / lock logic | `macos-agent/UsageTimeAgent/Services/PolicyEnforcer.swift` |
-| Lock screen UI | `macos-agent/UsageTimeAgent/Views/LockScreenWindow.swift` |
-| Sync loop / startup | `macos-agent/UsageTimeAgent/AppDelegate.swift` |
+| Policy rules / lock logic | `macos-agent/NesTimerAgent/Services/PolicyEnforcer.swift` |
+| Lock screen UI | `macos-agent/NesTimerAgent/Views/LockScreenWindow.swift` |
+| Sync loop / startup | `macos-agent/NesTimerAgent/AppDelegate.swift` |
 | Adaptive sync | `AppDelegate.swift` → `adaptiveSyncInterval()` |
-| System installer | `macos-agent/UsageTimeAgent/Services/SystemInstaller.swift` |
-| Agent config loading | `macos-agent/UsageTimeAgent/Services/AgentConfig.swift` |
+| System installer | `macos-agent/NesTimerAgent/Services/SystemInstaller.swift` |
+| Agent config loading | `macos-agent/NesTimerAgent/Services/AgentConfig.swift` |
 | API routes | `api/app/routers/devices.py`, `api/app/routers/agent.py` |
 | Schemas | `api/app/schemas.py` (`AgentConfig.model_rebuild()` for forward refs) |
-| Parent app device page | `ParentApp/UsageTimeControl/Views/DeviceDetailView.swift` |
+| Parent app device page | `ParentApp/NesTimer/Views/DeviceDetailView.swift` |
 | Web device page | `web-dashboard/src/pages/DeviceDetailPage.jsx` |
 | Marketing site | `website/index.html`, `website/style.css` |
 
@@ -139,13 +139,13 @@ Timer fires every 5s, checks `adaptiveSyncInterval()` vs `lastSyncTime`.
 ```bash
 # Server (API + web)
 ssh root@134.209.8.62
-cd ~/UsageTimeController && git pull && docker compose up -d --build
+cd ~/Nestimer && git pull && docker compose up -d --build
 
 # Agent update (from dev Mac)
 ./push-agent-update.sh 134.209.8.62 <version>
 
 # Marketing site update
-ssh root@134.209.8.62 "cd ~/UsageTimeController && git pull && cp -R website/* /var/www/nestimer/"
+ssh root@134.209.8.62 "cd ~/Nestimer && git pull && cp -R website/* /var/www/nestimer/"
 ```
 
 HTTPS via nginx + certbot (Let's Encrypt, auto-renew). Certs at `/etc/letsencrypt/live/nestimer.com/`.
@@ -159,5 +159,5 @@ Nginx config: `/etc/nginx/sites-available/nestimer.com`.
 4. **Web Crypto API** — `totp.js` uses pure JS SHA-1 (no `crypto.subtle`). Don't change unless HTTPS is guaranteed.
 5. **FastAPI 422** — `detail` is an array, not string. `api.js` has a formatter.
 6. **Rate limiter** — disabled when `TESTING=1` env is set. CI sets this automatically.
-7. **Watchdog script** — bundled inside `.app/Contents/Resources/`. `SystemInstaller` copies it to `/usr/local/libexec/`. If you change `watchdog.sh`, update BOTH `macos-agent/Watchdog/watchdog.sh` AND `macos-agent/UsageTimeAgent/watchdog.sh`.
+7. **Watchdog script** — bundled inside `.app/Contents/Resources/`. `SystemInstaller` copies it to `/usr/local/libexec/`. If you change `watchdog.sh`, update BOTH `macos-agent/Watchdog/watchdog.sh` AND `macos-agent/NesTimerAgent/watchdog.sh`.
 8. **Agent URL migration** — `AgentConfig.migrateServerURL()` auto-converts `134.209.8.62:8000` to `my.nestimer.com`. Add new migrations there if server URL changes.

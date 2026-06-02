@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# UsageTimeAgent — Dev/Test Runner
+# NesTimerAgent — Dev/Test Runner
 # Safely runs the agent on YOUR computer without risk of being locked out.
 #
 # What dev mode does:
@@ -27,7 +27,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}=== UsageTimeAgent Dev Test Runner ===${NC}"
+echo -e "${BLUE}=== NesTimerAgent Dev Test Runner ===${NC}"
 echo ""
 
 # --- 1. Check/start API server ---
@@ -53,7 +53,7 @@ API_TOKEN="${UTC_API_TOKEN:-}"
 if [ -z "$API_TOKEN" ]; then
     echo -e "${YELLOW}[2/4] Setting up test user and device...${NC}"
 
-    TEST_EMAIL="dev-test@usagetime.local"
+    TEST_EMAIL="dev-test@nestimer.local"
     TEST_PASS="devtest123"
 
     # Register (ignore 400 = already exists)
@@ -110,26 +110,26 @@ else
 fi
 
 # --- 3. Build the app ---
-echo -e "${YELLOW}[3/4] Building UsageTimeAgent (Debug)...${NC}"
+echo -e "${YELLOW}[3/4] Building NesTimerAgent (Debug)...${NC}"
 
 BUILD_DIR="$PROJECT_DIR/build/dev"
 mkdir -p "$BUILD_DIR"
 
-if [ -d "$PROJECT_DIR/UsageTimeAgent.xcodeproj" ]; then
-    xcodebuild -project "$PROJECT_DIR/UsageTimeAgent.xcodeproj" \
-        -scheme "UsageTimeAgent" \
+if [ -d "$PROJECT_DIR/NesTimerAgent.xcodeproj" ]; then
+    xcodebuild -project "$PROJECT_DIR/NesTimerAgent.xcodeproj" \
+        -scheme "NesTimerAgent" \
         -configuration Debug \
         -derivedDataPath "$BUILD_DIR" \
         build 2>&1 | tail -3
 
-    APP_PATH=$(find "$BUILD_DIR" -name "UsageTimeAgent.app" -type d | head -1)
+    APP_PATH=$(find "$BUILD_DIR" -name "NesTimerAgent.app" -type d | head -1)
     if [ -z "$APP_PATH" ]; then
         echo -e "  ${RED}Build failed — .app not found.${NC}"
         exit 1
     fi
     echo -e "  ${GREEN}Built: $APP_PATH${NC}"
 else
-    echo -e "  ${RED}Xcode project not found at $PROJECT_DIR/UsageTimeAgent.xcodeproj${NC}"
+    echo -e "  ${RED}Xcode project not found at $PROJECT_DIR/NesTimerAgent.xcodeproj${NC}"
     echo "  If running from a non-Mac environment, the build step won't work."
     echo "  On Mac, run this script from the macos-agent/ directory."
     exit 1
@@ -146,7 +146,7 @@ echo "    - Quit via menu bar or Cmd+Q"
 echo "    - Fast timers: 5s tick, 10s sync"
 echo ""
 echo -e "${YELLOW}  To stop: Cmd+Q, menu Quit, or kill from Terminal:${NC}"
-echo "    pkill -f UsageTimeAgent"
+echo "    pkill -f NesTimerAgent"
 echo ""
 
 export UTC_SERVER_URL="$API_URL"
@@ -156,4 +156,4 @@ export UTC_DEV_AUTO_UNLOCK="10"
 export UTC_POLL_INTERVAL="10"
 
 # Launch the app (foreground so you see logs)
-exec "$APP_PATH/Contents/MacOS/UsageTimeAgent"
+exec "$APP_PATH/Contents/MacOS/NesTimerAgent"

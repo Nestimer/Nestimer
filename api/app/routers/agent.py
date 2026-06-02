@@ -203,7 +203,7 @@ async def verify_totp_endpoint(
 
 
 # --- Agent auto-update ---
-# Parent uploads UsageTimeAgent.zip to data/agent-update/ on the server.
+# Parent uploads NesTimerAgent.zip to data/agent-update/ on the server.
 # Agent (watchdog) checks this endpoint and downloads if version differs.
 
 UPDATE_DIR = Path("/app/data/agent-update")
@@ -213,7 +213,7 @@ UPDATE_DIR = Path("/app/data/agent-update")
 async def check_update():
     """Returns current agent version and sha256. No auth required (public)."""
     version_file = UPDATE_DIR / "version.txt"
-    zip_file = UPDATE_DIR / "UsageTimeAgent.zip"
+    zip_file = UPDATE_DIR / "NesTimerAgent.zip"
     if not version_file.exists() or not zip_file.exists():
         return {"version": None, "sha256": None}
     version = version_file.read_text().strip()
@@ -224,7 +224,7 @@ async def check_update():
 @router.get("/update/download")
 async def download_update():
     """Download the agent zip. No auth (watchdog runs as root, no token)."""
-    zip_file = UPDATE_DIR / "UsageTimeAgent.zip"
+    zip_file = UPDATE_DIR / "NesTimerAgent.zip"
     if not zip_file.exists():
         raise HTTPException(status_code=404, detail="No update available")
-    return FileResponse(str(zip_file), filename="UsageTimeAgent.zip", media_type="application/zip")
+    return FileResponse(str(zip_file), filename="NesTimerAgent.zip", media_type="application/zip")

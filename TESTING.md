@@ -29,7 +29,7 @@ python -m pytest tests/ -v
 
 ### 3. Run the macOS agent in DEV MODE
 
-Open `macos-agent/UsageTimeAgent.xcodeproj` in Xcode → Cmd+R.
+Open `macos-agent/NesTimerAgent.xcodeproj` in Xcode → Cmd+R.
 
 **Debug builds automatically enable Dev Mode** via `#if DEBUG`. No env vars needed. On first launch, paste the setup string from the dashboard into the dialog.
 
@@ -71,7 +71,7 @@ When the agent is a Debug build (or `UTC_DEV_MODE=1`), these protections are act
 # Via menu bar → Quit (Dev Mode)
 # or Cmd+Q
 # or from terminal:
-pkill -f UsageTimeAgent
+pkill -f NesTimerAgent
 ```
 
 ### Configure
@@ -121,7 +121,7 @@ UTC_POLL_INTERVAL=20
 - Mac unlocks for 30 min; during that window, time is not counted
 
 ### 7. Parent App
-- Open `ParentApp/UsageTimeControl.xcodeproj` → Cmd+R (macOS target)
+- Open `ParentApp/NesTimer.xcodeproj` → Cmd+R (macOS target)
 - Login, edit policy, watch the agent pick up changes on next sync
 - Clicking the TOTP code copies it to clipboard
 
@@ -140,7 +140,7 @@ Release builds have **no dev safeguards**. Ways to recover:
 ```bash
 sudo launchctl unload /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
 sudo rm /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
-sudo rm -rf /Applications/UsageTimeAgent.app
+sudo rm -rf /Applications/NesTimerAgent.app
 sudo rm -rf /usr/local/libexec/usagetime-watchdog.sh /var/log/usagetime
 defaults delete com.usagetime.agent
 ```
@@ -151,11 +151,11 @@ defaults delete com.usagetime.agent
 
 ```bash
 # Build once
-xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
+xcodebuild -project macos-agent/NesTimerAgent.xcodeproj \
   -scheme NesTimerAgent -configuration Release build
 
 # Or use the pre-built binary in dist/
-open dist/UsageTimeAgent.app
+open dist/NesTimerAgent.app
 ```
 
 On first launch the agent:

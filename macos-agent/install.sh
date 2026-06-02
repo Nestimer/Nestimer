@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# UsageTimeAgent installer for macOS
+# NesTimerAgent installer for macOS
 # Installs the app + watchdog daemon
 # Must be run as root (sudo)
 
@@ -11,11 +11,11 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_NAME="UsageTimeAgent"
+APP_NAME="NesTimerAgent"
 APP_SRC="$SCRIPT_DIR/build/${APP_NAME}.app"
 APP_DST="/Applications/${APP_NAME}.app"
 
-echo "=== UsageTimeAgent Installer ==="
+echo "=== NesTimerAgent Installer ==="
 echo ""
 
 # 1. Build the app
@@ -46,12 +46,12 @@ chmod -R 755 "$APP_DST"
 
 # 3. Create directories
 echo "[3/6] Creating directories..."
-mkdir -p /etc/usagetime
-mkdir -p /var/log/usagetime
-mkdir -p /usr/local/lib/usagetime
+mkdir -p /etc/nestimer
+mkdir -p /var/log/nestimer
+mkdir -p /usr/local/lib/nestimer
 
 # 4. Config file
-CONFIG_FILE="/etc/usagetime/config.plist"
+CONFIG_FILE="/etc/nestimer/config.plist"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[4/6] Creating config file..."
 
@@ -82,20 +82,20 @@ fi
 echo "[5/6] Installing watchdog daemon..."
 
 # Copy watchdog script
-cp "$SCRIPT_DIR/Watchdog/watchdog.sh" /usr/local/lib/usagetime/watchdog.sh
-chmod 755 /usr/local/lib/usagetime/watchdog.sh
+cp "$SCRIPT_DIR/Watchdog/watchdog.sh" /usr/local/lib/nestimer/watchdog.sh
+chmod 755 /usr/local/lib/nestimer/watchdog.sh
 
 # Install LaunchDaemon
-WATCHDOG_PLIST_DST="/Library/LaunchDaemons/com.usagetime.watchdog.plist"
+WATCHDOG_PLIST_DST="/Library/LaunchDaemons/com.nestimer.watchdog.plist"
 launchctl unload "$WATCHDOG_PLIST_DST" 2>/dev/null || true
 
-cp "$SCRIPT_DIR/Watchdog/com.usagetime.watchdog.plist" "$WATCHDOG_PLIST_DST"
+cp "$SCRIPT_DIR/Watchdog/com.nestimer.watchdog.plist" "$WATCHDOG_PLIST_DST"
 chown root:wheel "$WATCHDOG_PLIST_DST"
 chmod 644 "$WATCHDOG_PLIST_DST"
 launchctl load "$WATCHDOG_PLIST_DST"
 
 # 6. Start the app
-echo "[6/6] Starting UsageTimeAgent..."
+echo "[6/6] Starting NesTimerAgent..."
 CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null || echo "")
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
     CONSOLE_UID=$(id -u "$CONSOLE_USER")
@@ -111,11 +111,11 @@ echo ""
 echo "The agent is running as a menu bar app (clock icon in menu bar)."
 echo "The watchdog daemon ensures it restarts if killed."
 echo ""
-echo "Logs: /var/log/usagetime/"
-echo "Config: /etc/usagetime/config.plist"
+echo "Logs: /var/log/nestimer/"
+echo "Config: /etc/nestimer/config.plist"
 echo ""
 echo "To uninstall:"
-echo "  sudo launchctl unload /Library/LaunchDaemons/com.usagetime.watchdog.plist"
-echo "  sudo rm -rf /Applications/UsageTimeAgent.app"
-echo "  sudo rm /Library/LaunchDaemons/com.usagetime.watchdog.plist"
-echo "  sudo rm -rf /etc/usagetime /usr/local/lib/usagetime /var/log/usagetime"
+echo "  sudo launchctl unload /Library/LaunchDaemons/com.nestimer.watchdog.plist"
+echo "  sudo rm -rf /Applications/NesTimerAgent.app"
+echo "  sudo rm /Library/LaunchDaemons/com.nestimer.watchdog.plist"
+echo "  sudo rm -rf /etc/nestimer /usr/local/lib/nestimer /var/log/nestimer"
