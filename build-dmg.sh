@@ -1,29 +1,39 @@
 #!/bin/bash
-# Build a pretty, signed + notarized DMG installer for the macOS agent.
+# Build a pretty, signed + notarized DMG installer.
 #
-# Expects dist/NesTimerAgent.app to already be a Developer ID-signed, hardened,
-# notarized + stapled build (produce it with ./push-agent-update.sh first, or a
-# Release build with the same signing flags). This script wraps it in a branded
-# DMG, signs the DMG, notarizes and staples it.
+# Usage:
+#   ./build-dmg.sh agent    -> dist/NesTimer.dmg          (from dist/NesTimerAgent.app)
+#   ./build-dmg.sh parent   -> dist/NesTimer-Parent.dmg   (from dist/NesTimer.app)
+#   ./build-dmg.sh          -> defaults to agent
 #
-# Usage: ./build-dmg.sh            -> dist/NesTimer.dmg
-# Deps:  create-dmg, python3+Pillow, Xcode CLT (iconutil/notarytool/stapler).
+# The app in dist/ must already be Developer ID-signed, hardened, notarized +
+# stapled (agent: via ./push-agent-update.sh; parent: Release build + notarize).
+# Deps: create-dmg, python3+Pillow, Xcode CLT (iconutil/notarytool/stapler).
 set -euo pipefail
-
 cd "$(dirname "$0")"
 
+MODE="${1:-agent}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-nestimer-notary}"
-APP="dist/NesTimerAgent.app"
-OUT="dist/NesTimer.dmg"
-VOLNAME="NesTimer"
-ICONSET_SRC="macos-agent/NesTimerAgent/Assets.xcassets/AppIcon.appiconset"
 
-[ -d "$APP" ] || { echo "ERROR: $APP not found. Build/notarize the agent first (./push-agent-update.sh)."; exit 1; }
+case "$MODE" in
+  agent)
+    APP="dist/NesTimerAgent.app"; OUT="dist/NesTimer.dmg"; VOLNAME="NesTimer"
+    ICONSET_SRC="macos-agent/NesTimerAgent/Assets.xcassets/AppIcon.appiconset"
+    TITLE="NesTimer"; SUB1="Double-click to install"; SUB2="Enter your admin password once when asked"
+    LAYOUT="install" ;;
+  parent)
+    APP="dist/NesTimer.app"; OUT="dist/NesTimer-Parent.dmg"; VOLNAME="NesTimer for Mac"
+    ICONSET_SRC="ParentApp/NesTimer/Assets.xcassets/AppIcon.appiconset"
+    TITLE="NesTimer for Mac"; SUB1="Drag NesTimer to the Applications folder"; SUB2=""
+    LAYOUT="drag" ;;
+  *) echo "ERROR: unknown mode '$MODE' (use: agent | parent)"; exit 1 ;;
+esac
+
+[ -d "$APP" ] || { echo "ERROR: $APP not found. Build/notarize it first."; exit 1; }
 command -v create-dmg >/dev/null || { echo "ERROR: create-dmg missing. brew install create-dmg"; exit 1; }
 
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 echo "[1/5] Volume icon (.icns)..."
 ISET="$TMP/vol.iconset"; mkdir -p "$ISET"
@@ -39,17 +49,18 @@ cp "$ICONSET_SRC/icon_512.png"  "$ISET/icon_512x512.png"
 cp "$ICONSET_SRC/icon_1024.png" "$ISET/icon_512x512@2x.png"
 iconutil -c icns "$ISET" -o "$TMP/vol.icns"
 
-echo "[2/5] Branded background..."
-python3 - "$TMP/dmg-bg.png" <<'PY'
-import sys
+echo "[2/5] Branded background ($LAYOUT)..."
+LAYOUT="$LAYOUT" TITLE="$TITLE" SUB1="$SUB1" SUB2="$SUB2" python3 - "$TMP/dmg-bg.png" <<'PY'
+import os, sys
 from PIL import Image, ImageDraw, ImageFont
-W, H = 500, 360
+layout = os.environ["LAYOUT"]
+W, H = (500, 360) if layout == "install" else (600, 420)
 BG_START, BG_END = (88, 101, 242), (168, 85, 247)
 img = Image.new("RGB", (W, H)); px = img.load()
 for y in range(H):
     t = y / H
-    row = (int(BG_START[0]*(1-t)+BG_END[0]*t), int(BG_START[1]*(1-t)+BG_END[1]*t), int(BG_START[2]*(1-t)+BG_END[2]*t))
-    for x in range(W): px[x, y] = row
+    px_row = (int(BG_START[0]*(1-t)+BG_END[0]*t), int(BG_START[1]*(1-t)+BG_END[1]*t), int(BG_START[2]*(1-t)+BG_END[2]*t))
+    for x in range(W): px[x, y] = px_row
 d = ImageDraw.Draw(img, "RGBA")
 def font(sz):
     for p in ["/System/Library/Fonts/SFNSRounded.ttf", "/System/Library/Fonts/SFNS.ttf", "/Library/Fonts/Arial.ttf"]:
@@ -57,35 +68,34 @@ def font(sz):
         except Exception: pass
     return ImageFont.load_default()
 def ctext(y, txt, f, fill):
+    if not txt: return
     w = d.textlength(txt, font=f); d.text(((W - w) / 2, y), txt, font=f, fill=fill)
-ctext(34, "NesTimer", font(40), (255, 255, 255, 255))
-# App icon sits centered at ~ (250, 165); instructions below it.
-ctext(248, "Double-click to install", font(22), (255, 255, 255, 255))
-ctext(286, "Enter your admin password once when asked", font(15), (255, 255, 255, 200))
+ctext(34, os.environ["TITLE"], font(40), (255, 255, 255, 255))
+if layout == "install":
+    ctext(248, os.environ["SUB1"], font(22), (255, 255, 255, 255))
+    ctext(286, os.environ["SUB2"], font(15), (255, 255, 255, 200))
+else:
+    ctext(86, os.environ["SUB1"], font(20), (255, 255, 255, 210))
+    ay = 200
+    d.line([(232, ay), (372, ay)], fill=(255, 255, 255, 230), width=6)
+    d.polygon([(372, ay-14), (372, ay+14), (398, ay)], fill=(255, 255, 255, 230))
 img.save(sys.argv[1])
 PY
 
 echo "[3/5] Building DMG..."
-# Stage the app under a friendly name "NesTimer.app". SystemInstaller always
-# copies Bundle.main to /Applications/NesTimerAgent.app regardless of the wrapper
-# name, so the rename is purely cosmetic for the DMG label. No Applications
-# symlink: users double-click the app to install (avoids the drag-onto-itself
-# mistake), and SystemInstaller copies itself from the DMG into /Applications.
-STAGE="$TMP/src"; mkdir -p "$STAGE"
-cp -R "$APP" "$STAGE/NesTimer.app"
+STAGE="$TMP/src"; mkdir -p "$STAGE"; cp -R "$APP" "$STAGE/NesTimer.app"
 rm -f "$OUT"
-create-dmg \
-  --volname "$VOLNAME" \
-  --volicon "$TMP/vol.icns" \
-  --background "$TMP/dmg-bg.png" \
-  --window-pos 200 120 \
-  --window-size 500 360 \
-  --icon-size 120 \
-  --icon "NesTimer.app" 250 165 \
-  --hide-extension "NesTimer.app" \
-  --no-internet-enable \
-  --codesign "$SIGN_IDENTITY" \
-  "$OUT" "$STAGE"
+if [ "$LAYOUT" = "install" ]; then
+  create-dmg --volname "$VOLNAME" --volicon "$TMP/vol.icns" --background "$TMP/dmg-bg.png" \
+    --window-pos 200 120 --window-size 500 360 --icon-size 120 \
+    --icon "NesTimer.app" 250 165 --hide-extension "NesTimer.app" \
+    --no-internet-enable --codesign "$SIGN_IDENTITY" "$OUT" "$STAGE"
+else
+  create-dmg --volname "$VOLNAME" --volicon "$TMP/vol.icns" --background "$TMP/dmg-bg.png" \
+    --window-pos 200 120 --window-size 600 420 --icon-size 120 \
+    --icon "NesTimer.app" 150 200 --app-drop-link 450 200 --hide-extension "NesTimer.app" \
+    --no-internet-enable --codesign "$SIGN_IDENTITY" "$OUT" "$STAGE"
+fi
 
 echo "[4/5] Notarizing DMG via '$NOTARY_PROFILE'..."
 if ! xcrun notarytool submit "$OUT" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1 | tee "$TMP/notary.log"; then
