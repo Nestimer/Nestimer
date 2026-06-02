@@ -536,6 +536,35 @@ details p {
   color: var(--text-muted);
 }
 
+.footer-downloads {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.footer-downloads-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.footer-downloads a {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.footer-downloads a:hover { color: var(--primary); }
+
+.footer-downloads a em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-weight: 400;
+}
+
 .footer-inner {
   display: flex;
   align-items: center;
@@ -611,6 +640,12 @@ details p {
   .footer-inner {
     flex-direction: column;
     text-align: center;
+  }
+
+  .footer-downloads {
+    flex-direction: column;
+    text-align: center;
+    gap: 14px;
   }
 
   .hero-icons { gap: 24px; }
