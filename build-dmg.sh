@@ -43,7 +43,7 @@ echo "[2/5] Branded background..."
 python3 - "$TMP/dmg-bg.png" <<'PY'
 import sys
 from PIL import Image, ImageDraw, ImageFont
-W, H = 600, 420
+W, H = 500, 360
 BG_START, BG_END = (88, 101, 242), (168, 85, 247)
 img = Image.new("RGB", (W, H)); px = img.load()
 for y in range(H):
@@ -59,26 +59,30 @@ def font(sz):
 def ctext(y, txt, f, fill):
     w = d.textlength(txt, font=f); d.text(((W - w) / 2, y), txt, font=f, fill=fill)
 ctext(34, "NesTimer", font(40), (255, 255, 255, 255))
-ctext(86, "Drag the app onto the Applications folder", font(20), (255, 255, 255, 210))
-ay = 200
-d.line([(232, ay), (372, ay)], fill=(255, 255, 255, 230), width=6)
-d.polygon([(372, ay-14), (372, ay+14), (398, ay)], fill=(255, 255, 255, 230))
+# App icon sits centered at ~ (250, 165); instructions below it.
+ctext(248, "Double-click to install", font(22), (255, 255, 255, 255))
+ctext(286, "Enter your admin password once when asked", font(15), (255, 255, 255, 200))
 img.save(sys.argv[1])
 PY
 
 echo "[3/5] Building DMG..."
-STAGE="$TMP/src"; mkdir -p "$STAGE"; cp -R "$APP" "$STAGE/"
+# Stage the app under a friendly name "NesTimer.app". SystemInstaller always
+# copies Bundle.main to /Applications/NesTimerAgent.app regardless of the wrapper
+# name, so the rename is purely cosmetic for the DMG label. No Applications
+# symlink: users double-click the app to install (avoids the drag-onto-itself
+# mistake), and SystemInstaller copies itself from the DMG into /Applications.
+STAGE="$TMP/src"; mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/NesTimer.app"
 rm -f "$OUT"
 create-dmg \
   --volname "$VOLNAME" \
   --volicon "$TMP/vol.icns" \
   --background "$TMP/dmg-bg.png" \
   --window-pos 200 120 \
-  --window-size 600 420 \
+  --window-size 500 360 \
   --icon-size 120 \
-  --icon "NesTimerAgent.app" 150 200 \
-  --app-drop-link 450 200 \
-  --hide-extension "NesTimerAgent.app" \
+  --icon "NesTimer.app" 250 165 \
+  --hide-extension "NesTimer.app" \
   --no-internet-enable \
   --codesign "$SIGN_IDENTITY" \
   "$OUT" "$STAGE"
