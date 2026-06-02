@@ -536,33 +536,78 @@ details p {
   color: var(--text-muted);
 }
 
+.footer-downloads-label {
+  margin: 0 0 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .footer-downloads {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 24px;
-  padding-bottom: 24px;
-  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding-bottom: 28px;
+  margin-bottom: 28px;
   border-bottom: 1px solid var(--border);
 }
 
-.footer-downloads-label {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.footer-downloads a {
-  color: var(--text);
+.download-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   text-decoration: none;
-  font-weight: 500;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
-.footer-downloads a:hover { color: var(--primary); }
+.download-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 14px rgba(88, 101, 242, 0.12);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
 
-.footer-downloads a em {
+.download-card-soon {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.download-card-soon:hover {
+  border-color: var(--border);
+  box-shadow: none;
+  transform: none;
+}
+
+.download-card-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.download-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.download-card-text strong {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.download-card-text small {
   color: var(--text-muted);
-  font-style: normal;
-  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 980px) {
+  .footer-downloads { grid-template-columns: repeat(2, 1fr); }
 }
 
 .footer-inner {
@@ -643,9 +688,7 @@ details p {
   }
 
   .footer-downloads {
-    flex-direction: column;
-    text-align: center;
-    gap: 14px;
+    grid-template-columns: 1fr;
   }
 
   .hero-icons { gap: 24px; }
