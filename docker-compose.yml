@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: nestimer
       POSTGRES_USER: nestimer
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-REDACTED}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -19,8 +19,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://nestimer:${DB_PASSWORD:-REDACTED}@db:5432/nestimer
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=postgresql+asyncpg://nestimer:${DB_PASSWORD:?set DB_PASSWORD in .env}@db:5432/nestimer
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
     volumes:
       - ./data:/app/data
     depends_on:
