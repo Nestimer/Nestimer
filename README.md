@@ -25,7 +25,7 @@ Self-hosted parental controls for macOS — a Family Link alternative. Remotely 
 │  Web Dashboard    │────▶       ▲
 │  (React, browser) │            │
 └───────────────────┘            │
-                         SQLite + DB volume
+                       PostgreSQL (Docker volume)
 ```
 
 ## Quick Start
@@ -34,10 +34,14 @@ Self-hosted parental controls for macOS — a Family Link alternative. Remotely 
 
 ```bash
 # On your VPS/server with Docker installed
-git clone https://github.com/<you>/NesTimer.git
-cd NesTimer
+git clone https://github.com/Nestimer/Nestimer.git
+cd Nestimer
 
-export SECRET_KEY=$(openssl rand -hex 32)
+# Required secrets (compose fails fast if unset) — see .env.example
+cat > .env <<EOF
+SECRET_KEY=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 24)
+EOF
 docker compose up -d --build
 ```
 
@@ -53,19 +57,15 @@ docker compose up -d --build
 
 ### 3. Install the agent on the child's Mac
 
-Build from source (one-time):
+Download the signed, notarized installer: **https://nestimer.com/download/NesTimer.dmg**
 
-```bash
-open macos-agent/NesTimerAgent.xcodeproj
-# Product → Scheme → Release → Cmd+B
-```
+1. Open the DMG → **double-click NesTimer** to install
+2. Paste the **setup string** into the dialog → Connect
+3. The agent installs as a **protected system service** → enter admin password once
+4. App is copied to `/Applications/`, a root LaunchDaemon is installed as watchdog
+5. From now on the agent auto-starts on boot, restarts if killed, auto-updates, and can't be removed without admin password
 
-Or use the pre-built binary from `dist/NesTimerAgent.app`. Double-click it:
-
-1. Paste the **setup string** into the dialog → Connect
-2. The agent asks to install as a **protected system service** → enter admin password once
-3. App is copied to `/Applications/`, a root LaunchDaemon is installed as watchdog
-4. From now on the agent auto-starts on boot, restarts if killed, can't be removed without admin password
+> Building from source instead: `open macos-agent/NesTimerAgent.xcodeproj`, then produce a Release build (or `./push-agent-update.sh` / `./build-dmg.sh`).
 
 ### 4. Configure rules
 
@@ -97,7 +97,7 @@ Algorithm: HMAC-SHA1 with a shared secret, 300-second step (5 min), ±1 step tol
 
 With the child running as a **Standard User** (not admin):
 - `/Applications/NesTimerAgent.app` is owned by root → can't be deleted
-- `/Library/LaunchDaemons/com.usagetime.agent-watchdog.plist` owned by root → can't be unloaded
+- `/Library/LaunchDaemons/com.nestimer.agent-watchdog.plist` owned by root → can't be unloaded
 - Killing the agent → watchdog restarts it within 15s
 - Cmd+Q intercepted by `SelfProtection`
 - Lock screen at max window level — covers everything
@@ -107,11 +107,11 @@ If the child has admin rights, they can still `sudo` everything. **Make the chil
 ## Uninstall
 
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
-sudo rm /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
+sudo launchctl bootout system /Library/LaunchDaemons/com.nestimer.agent-watchdog.plist
+sudo rm /Library/LaunchDaemons/com.nestimer.agent-watchdog.plist
 sudo rm -rf /Applications/NesTimerAgent.app
-sudo rm -rf /usr/local/libexec/usagetime-watchdog.sh /var/log/usagetime
-defaults delete com.usagetime.agent
+sudo rm -rf /usr/local/libexec/nestimer-watchdog.sh /var/log/nestimer
+defaults delete com.nestimer.agent
 ```
 
 ## API Endpoints
@@ -162,13 +162,14 @@ open macos-agent/NesTimerAgent.xcodeproj     # macOS 13+
 - Passwords hashed with bcrypt
 - TOTP secrets: 160-bit hex, stored per-device
 - Keychain for token storage in parent app
-- CORS currently allows `*` — restrict in production
-- Run API behind Caddy/nginx with HTTPS for production
+- CORS restricted to `my.nestimer.com` + localhost (not wildcard)
+- `SECRET_KEY` and `DB_PASSWORD` are required via env (compose fails fast if unset)
+- API port bound to localhost only; all external traffic via nginx HTTPS (certbot)
 
 ## Stack
 
-- **API**: Python 3.12, FastAPI, SQLAlchemy async, SQLite, bcrypt, custom mini-JWT
-- **Agent**: Swift 5, AppKit + SwiftUI, IOKit, ServiceManagement, `NSAppleScript` for privileged install
-- **Parent App**: SwiftUI (iOS 17+, macOS 14+), async/await
+- **API**: Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL 16, bcrypt, custom mini-JWT
+- **Agent**: Swift 5, AppKit + SwiftUI, IOKit, ServiceManagement, `NSAppleScript` for privileged install. Distributed as a Developer ID-signed, notarized DMG.
+- **Parent App**: SwiftUI (iOS 17+, macOS 14+), async/await. iOS via App Store / TestFlight.
 - **Web**: React 18, React Router 6, Vite, vanilla CSS
-- **Deploy**: Docker Compose (api + nginx web)
+- **Deploy**: Docker Compose (PostgreSQL + api + web) behind nginx + certbot HTTPS
