@@ -7,27 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0001 /* UsageTimeAgentApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001; };
-		AA0002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002; };
-		AA0003 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0003; };
-		AA0004 /* LockScreenWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0004; };
-		AA0005 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0005; };
-		AA0006 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0006; };
-		AA0007 /* PolicyEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0007; };
-		AA0008 /* AgentConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0008; };
-		AA0009 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0009; };
-		AA0010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0010; };
-		AA0011 /* SelfProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0011; };
-		AA0012 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0012; };
-		AA0013 /* SystemInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0013; };
-		AA0014 /* watchdog.sh in Resources */ = {isa = PBXBuildFile; fileRef = BB0014; };
-		AA0015 /* watchdog.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0015; };
-		AA0016 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0016; };
-		AA0017 /* MediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0017; };
+		AA0001 /* NesTimerAgentApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001 /* NesTimerAgentApp.swift */; };
+		AA0002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002 /* AppDelegate.swift */; };
+		AA0003 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0003 /* StatusBarController.swift */; };
+		AA0004 /* LockScreenWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0004 /* LockScreenWindow.swift */; };
+		AA0005 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0005 /* APIClient.swift */; };
+		AA0006 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0006 /* UsageTracker.swift */; };
+		AA0007 /* PolicyEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0007 /* PolicyEnforcer.swift */; };
+		AA0008 /* AgentConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0008 /* AgentConfig.swift */; };
+		AA0009 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0009 /* NotificationManager.swift */; };
+		AA0010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0010 /* Assets.xcassets */; };
+		AA0011 /* SelfProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0011 /* SelfProtection.swift */; };
+		AA0012 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0012 /* TOTPGenerator.swift */; };
+		AA0013 /* SystemInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0013 /* SystemInstaller.swift */; };
+		AA0014 /* watchdog.sh in Resources */ = {isa = PBXBuildFile; fileRef = BB0014 /* watchdog.sh */; };
+		AA0015 /* watchdog.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0015 /* watchdog.plist */; };
+		AA0016 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0016 /* KeychainStore.swift */; };
+		AA0017 /* MediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0017 /* MediaController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		BB0001 /* UsageTimeAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTimeAgentApp.swift; sourceTree = "<group>"; };
+		BB0001 /* NesTimerAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NesTimerAgentApp.swift; sourceTree = "<group>"; };
 		BB0002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		BB0003 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		BB0004 /* LockScreenWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenWindow.swift; sourceTree = "<group>"; };
@@ -44,49 +44,49 @@
 		BB0015 /* watchdog.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = watchdog.plist; sourceTree = "<group>"; };
 		BB0016 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		BB0017 /* MediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaController.swift; sourceTree = "<group>"; };
-		CC0001 /* UsageTimeAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UsageTimeAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0001 /* NesTimerAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimerAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC0002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		CC0003 /* UsageTimeAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UsageTimeAgent.entitlements; sourceTree = "<group>"; };
+		CC0003 /* NesTimerAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerAgent.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		DD0001 = {
 			isa = PBXGroup;
 			children = (
-				DD0002 /* UsageTimeAgent */,
+				DD0002 /* NesTimerAgent */,
 				DD0005 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		DD0002 /* UsageTimeAgent */ = {
+		DD0002 /* NesTimerAgent */ = {
 			isa = PBXGroup;
 			children = (
-				BB0001,
-				BB0002,
-				CC0002,
-				CC0003,
+				BB0001 /* NesTimerAgentApp.swift */,
+				BB0002 /* AppDelegate.swift */,
+				CC0002 /* Info.plist */,
+				CC0003 /* NesTimerAgent.entitlements */,
 				DD0003 /* Services */,
 				DD0004 /* Views */,
-				BB0010,
-				BB0014,
-				BB0015,
+				BB0010 /* Assets.xcassets */,
+				BB0014 /* watchdog.sh */,
+				BB0015 /* watchdog.plist */,
 			);
-			path = UsageTimeAgent;
+			path = NesTimerAgent;
 			sourceTree = "<group>";
 		};
 		DD0003 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				BB0005,
-				BB0006,
-				BB0007,
-				BB0008,
-				BB0009,
-				BB0011,
-				BB0012,
-				BB0013,
-				BB0016,
-				BB0017,
+				BB0005 /* APIClient.swift */,
+				BB0006 /* UsageTracker.swift */,
+				BB0007 /* PolicyEnforcer.swift */,
+				BB0008 /* AgentConfig.swift */,
+				BB0009 /* NotificationManager.swift */,
+				BB0011 /* SelfProtection.swift */,
+				BB0012 /* TOTPGenerator.swift */,
+				BB0013 /* SystemInstaller.swift */,
+				BB0016 /* KeychainStore.swift */,
+				BB0017 /* MediaController.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -94,8 +94,8 @@
 		DD0004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				BB0003,
-				BB0004,
+				BB0003 /* StatusBarController.swift */,
+				BB0004 /* LockScreenWindow.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -103,7 +103,7 @@
 		DD0005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				CC0001,
+				CC0001 /* NesTimerAgent.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -111,9 +111,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		EE0001 /* UsageTimeAgent */ = {
+		EE0001 /* NesTimerAgent */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = FF0003;
+			buildConfigurationList = FF0003 /* Build configuration list for PBXNativeTarget "NesTimerAgent" */;
 			buildPhases = (
 				EE0002 /* Sources */,
 				EE0003 /* Resources */,
@@ -122,9 +122,9 @@
 			);
 			dependencies = (
 			);
-			name = UsageTimeAgent;
-			productName = UsageTimeAgent;
-			productReference = CC0001;
+			name = NesTimerAgent;
+			productName = NesTimerAgent;
+			productReference = CC0001 /* NesTimerAgent.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -137,7 +137,7 @@
 				LastSwiftUpdateCheck = 1540;
 				LastUpgradeCheck = 1540;
 			};
-			buildConfigurationList = FF0001;
+			buildConfigurationList = FF0001 /* Build configuration list for PBXProject "NesTimerAgent" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -147,51 +147,51 @@
 				ru,
 			);
 			mainGroup = DD0001;
-			productRefGroup = DD0005;
+			productRefGroup = DD0005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				EE0001,
+				EE0001 /* NesTimerAgent */,
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXSourcesBuildPhase section */
-		EE0002 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				AA0001,
-				AA0002,
-				AA0003,
-				AA0004,
-				AA0005,
-				AA0006,
-				AA0007,
-				AA0008,
-				AA0009,
-				AA0011,
-				AA0012,
-				AA0013,
-				AA0016,
-				AA0017,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		EE0003 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0010,
-				AA0014,
-				AA0015,
+				AA0010 /* Assets.xcassets in Resources */,
+				AA0014 /* watchdog.sh in Resources */,
+				AA0015 /* watchdog.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EE0002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0001 /* NesTimerAgentApp.swift in Sources */,
+				AA0002 /* AppDelegate.swift in Sources */,
+				AA0003 /* StatusBarController.swift in Sources */,
+				AA0004 /* LockScreenWindow.swift in Sources */,
+				AA0005 /* APIClient.swift in Sources */,
+				AA0006 /* UsageTracker.swift in Sources */,
+				AA0007 /* PolicyEnforcer.swift in Sources */,
+				AA0008 /* AgentConfig.swift in Sources */,
+				AA0009 /* NotificationManager.swift in Sources */,
+				AA0011 /* SelfProtection.swift in Sources */,
+				AA0012 /* TOTPGenerator.swift in Sources */,
+				AA0013 /* SystemInstaller.swift in Sources */,
+				AA0016 /* KeychainStore.swift in Sources */,
+				AA0017 /* MediaController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		FF0004 /* Debug */ = {
@@ -239,11 +239,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = UsageTimeAgent/UsageTimeAgent.entitlements;
+				CODE_SIGN_ENTITLEMENTS = NesTimerAgent/NesTimerAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CBBC6T33XY;
 				CURRENT_PROJECT_VERSION = 1;
-				INFOPLIST_FILE = UsageTimeAgent/Info.plist;
+				DEVELOPMENT_TEAM = CBBC6T33XY;
+				INFOPLIST_FILE = NesTimerAgent/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -261,11 +261,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = UsageTimeAgent/UsageTimeAgent.entitlements;
+				CODE_SIGN_ENTITLEMENTS = NesTimerAgent/NesTimerAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CBBC6T33XY;
 				CURRENT_PROJECT_VERSION = 1;
-				INFOPLIST_FILE = UsageTimeAgent/Info.plist;
+				DEVELOPMENT_TEAM = CBBC6T33XY;
+				INFOPLIST_FILE = NesTimerAgent/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -282,20 +282,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		FF0001 /* Build configuration list for PBXProject */ = {
+		FF0001 /* Build configuration list for PBXProject "NesTimerAgent" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				FF0004,
-				FF0005,
+				FF0004 /* Debug */,
+				FF0005 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		FF0003 /* Build configuration list for PBXNativeTarget */ = {
+		FF0003 /* Build configuration list for PBXNativeTarget "NesTimerAgent" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				FF0006,
-				FF0007,
+				FF0006 /* Debug */,
+				FF0007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
