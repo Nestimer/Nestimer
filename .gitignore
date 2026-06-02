@@ -19,3 +19,7 @@ xcuserdata/
 # Tooling cruft (not part of the project)
 entities.json
 mempalace.yaml
+
+# Python virtualenv
+.venv/
+api/.venv/
