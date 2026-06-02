@@ -1,5 +1,5 @@
 import XCTest
-@testable import UsageTimeAgent
+@testable import NesTimerAgent
 
 /// Tests for UsageTracker logic — time accumulation, day rollover, persistence.
 /// Note: These test the pure logic. Screen state detection (IOKit) cannot be

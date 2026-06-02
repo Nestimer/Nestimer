@@ -22,7 +22,7 @@ class SelfProtection {
             if event.modifierFlags.contains(.command),
                let chars = event.charactersIgnoringModifiers?.lowercased(),
                chars == "q" {
-                NSLog("[UsageTimeAgent] Cmd+Q blocked")
+                NSLog("[NesTimerAgent] Cmd+Q blocked")
                 return nil // swallow the event
             }
             return event
@@ -31,12 +31,12 @@ class SelfProtection {
         // 3. Prevent termination via NSProcessInfo
         // On macOS 13+, we can disable sudden termination
         ProcessInfo.processInfo.disableSuddenTermination()
-        ProcessInfo.processInfo.disableAutomaticTermination("UsageTimeAgent must keep running")
+        ProcessInfo.processInfo.disableAutomaticTermination("NesTimerAgent must keep running")
 
-        NSLog("[UsageTimeAgent] Self-protection enabled")
+        NSLog("[NesTimerAgent] Self-protection enabled")
     }
 
     @objc private func appWillTerminate(_ notification: Notification) {
-        NSLog("[UsageTimeAgent] WARNING: App is being terminated! Watchdog should restart us.")
+        NSLog("[NesTimerAgent] WARNING: App is being terminated! Watchdog should restart us.")
     }
 }

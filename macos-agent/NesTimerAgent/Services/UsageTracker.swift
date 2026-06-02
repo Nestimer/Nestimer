@@ -25,7 +25,7 @@ class UsageTracker {
         ].compactMap { $0 }
 
         for base in candidates {
-            let dir = base.appendingPathComponent("UsageTimeAgent")
+            let dir = base.appendingPathComponent("NesTimerAgent")
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return dir.appendingPathComponent("usage.json").path
@@ -34,7 +34,7 @@ class UsageTracker {
             }
         }
         // Last resort
-        return "/tmp/UsageTimeAgent-usage.json"
+        return "/tmp/NesTimerAgent-usage.json"
     }()
 
     init() {
@@ -85,7 +85,7 @@ class UsageTracker {
             // If server reports LESS than local (parent manually reset),
             // respect the reset on next sync.
             if minutes < usedMinutesToday - 5 {
-                NSLog("[UsageTimeAgent] Server reset detected: server=\(String(format: "%.1f", minutes))m, local=\(String(format: "%.1f", usedMinutesToday))m — accepting server value")
+                NSLog("[NesTimerAgent] Server reset detected: server=\(String(format: "%.1f", minutes))m, local=\(String(format: "%.1f", usedMinutesToday))m — accepting server value")
                 usedMinutesToday = minutes
             }
         }
@@ -204,7 +204,7 @@ class UsageTracker {
     private func saveLocalState() {
         let state = LocalState(date: trackingDate, usedMinutes: usedMinutesToday)
         guard let data = try? JSONEncoder().encode(state) else {
-            NSLog("[UsageTimeAgent] Failed to encode usage state")
+            NSLog("[NesTimerAgent] Failed to encode usage state")
             return
         }
         // Atomic write: write to temp file, then rename

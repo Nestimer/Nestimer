@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# UsageTimeAgent installer for macOS
+# NesTimerAgent installer for macOS
 # Installs the app + watchdog daemon
 # Must be run as root (sudo)
 
@@ -11,11 +11,11 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_NAME="UsageTimeAgent"
+APP_NAME="NesTimerAgent"
 APP_SRC="$SCRIPT_DIR/build/${APP_NAME}.app"
 APP_DST="/Applications/${APP_NAME}.app"
 
-echo "=== UsageTimeAgent Installer ==="
+echo "=== NesTimerAgent Installer ==="
 echo ""
 
 # 1. Build the app
@@ -95,7 +95,7 @@ chmod 644 "$WATCHDOG_PLIST_DST"
 launchctl load "$WATCHDOG_PLIST_DST"
 
 # 6. Start the app
-echo "[6/6] Starting UsageTimeAgent..."
+echo "[6/6] Starting NesTimerAgent..."
 CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null || echo "")
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
     CONSOLE_UID=$(id -u "$CONSOLE_USER")
@@ -116,6 +116,6 @@ echo "Config: /etc/nestimer/config.plist"
 echo ""
 echo "To uninstall:"
 echo "  sudo launchctl unload /Library/LaunchDaemons/com.nestimer.watchdog.plist"
-echo "  sudo rm -rf /Applications/UsageTimeAgent.app"
+echo "  sudo rm -rf /Applications/NesTimerAgent.app"
 echo "  sudo rm /Library/LaunchDaemons/com.nestimer.watchdog.plist"
 echo "  sudo rm -rf /etc/nestimer /usr/local/lib/nestimer /var/log/nestimer"

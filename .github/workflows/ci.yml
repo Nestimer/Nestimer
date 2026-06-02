@@ -62,8 +62,8 @@ jobs:
 
       - name: Build Agent (Release)
         run: |
-          xcodebuild -project macos-agent/UsageTimeAgent.xcodeproj \
-            -scheme UsageTimeAgent \
+          xcodebuild -project macos-agent/NesTimerAgent.xcodeproj \
+            -scheme NesTimerAgent \
             -configuration Release \
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
@@ -81,8 +81,8 @@ jobs:
 
       - name: Build Parent App (macOS)
         run: |
-          xcodebuild -project ParentApp/UsageTimeControl.xcodeproj \
-            -scheme UsageTimeControl \
+          xcodebuild -project ParentApp/NesTimer.xcodeproj \
+            -scheme NesTimer \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
@@ -93,8 +93,8 @@ jobs:
 
       - name: Build Parent App (iOS Simulator)
         run: |
-          xcodebuild -project ParentApp/UsageTimeControl.xcodeproj \
-            -scheme UsageTimeControl \
+          xcodebuild -project ParentApp/NesTimer.xcodeproj \
+            -scheme NesTimer \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             CODE_SIGN_IDENTITY="-" \

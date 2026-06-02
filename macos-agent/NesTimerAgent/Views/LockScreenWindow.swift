@@ -94,10 +94,10 @@ class LockScreenWindow {
         if devMode {
             devAutoUnlockTimer?.invalidate()
             devAutoUnlockTimer = Timer.scheduledTimer(withTimeInterval: devAutoUnlockSeconds, repeats: false) { [weak self] _ in
-                NSLog("[UsageTimeAgent] DEV: Auto-unlock after \(self?.devAutoUnlockSeconds ?? 0)s")
+                NSLog("[NesTimerAgent] DEV: Auto-unlock after \(self?.devAutoUnlockSeconds ?? 0)s")
                 self?.hide()
             }
-            NSLog("[UsageTimeAgent] DEV: Lock shown (auto-unlock in \(Int(devAutoUnlockSeconds))s, Ctrl+Opt+Cmd+U to unlock now)")
+            NSLog("[NesTimerAgent] DEV: Lock shown (auto-unlock in \(Int(devAutoUnlockSeconds))s, Ctrl+Opt+Cmd+U to unlock now)")
         }
 
         // Dev mode: register hotkey Ctrl+Opt+Cmd+U to unlock
@@ -107,7 +107,7 @@ class LockScreenWindow {
                 let requiredFlags: NSEvent.ModifierFlags = [.control, .option, .command]
                 if event.modifierFlags.contains(requiredFlags),
                    event.charactersIgnoringModifiers?.lowercased() == "u" {
-                    NSLog("[UsageTimeAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U")
+                    NSLog("[NesTimerAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U")
                     DispatchQueue.main.async { self?.hide() }
                 }
             }
@@ -116,7 +116,7 @@ class LockScreenWindow {
                 let requiredFlags: NSEvent.ModifierFlags = [.control, .option, .command]
                 if event.modifierFlags.contains(requiredFlags),
                    event.charactersIgnoringModifiers?.lowercased() == "u" {
-                    NSLog("[UsageTimeAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U (local)")
+                    NSLog("[NesTimerAgent] DEV: Emergency unlock via Ctrl+Opt+Cmd+U (local)")
                     DispatchQueue.main.async { [weak self] in self?.hide() }
                     return nil  // swallow the event
                 }
@@ -124,7 +124,7 @@ class LockScreenWindow {
             }
         }
 
-        NSLog("[UsageTimeAgent] Lock screen shown: \(reason.title)")
+        NSLog("[NesTimerAgent] Lock screen shown: \(reason.title)")
     }
 
     func hide() {
@@ -150,7 +150,7 @@ class LockScreenWindow {
         }
         windows.removeAll()
 
-        NSLog("[UsageTimeAgent] Lock screen hidden")
+        NSLog("[NesTimerAgent] Lock screen hidden")
     }
 
     /// Recursively search for an NSTextField in a view hierarchy.

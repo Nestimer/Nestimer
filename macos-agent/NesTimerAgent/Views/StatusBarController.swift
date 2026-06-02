@@ -173,7 +173,7 @@ class StatusBarController {
     }
 
     @objc private func quitApp() {
-        NSLog("[UsageTimeAgent] DEV: Quit via menu")
+        NSLog("[NesTimerAgent] DEV: Quit via menu")
         NSApp.terminate(nil)
     }
 

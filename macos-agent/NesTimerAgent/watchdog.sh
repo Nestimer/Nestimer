@@ -1,11 +1,11 @@
 #!/bin/bash
-# UsageTimeAgent Watchdog
+# NesTimerAgent Watchdog
 # Runs as LaunchDaemon (root) every 15s. Two jobs:
 #   1. Ensure the agent app is running (restart if killed)
 #   2. Check for updates every ~5 min (download, replace, restart)
 
-APP_PATH="/Applications/UsageTimeAgent.app"
-APP_BINARY="$APP_PATH/Contents/MacOS/UsageTimeAgent"
+APP_PATH="/Applications/NesTimerAgent.app"
+APP_BINARY="$APP_PATH/Contents/MacOS/NesTimerAgent"
 VERSION_FILE="/usr/local/libexec/nestimer-agent-version.txt"
 UPDATE_CHECK_MARKER="/tmp/nestimer-last-update-check"
 UPDATE_CHECK_INTERVAL=300  # seconds between update checks
@@ -15,7 +15,7 @@ log() {
 }
 
 # --- 1. Ensure agent is running ---
-if ! pgrep -f "UsageTimeAgent" > /dev/null 2>&1; then
+if ! pgrep -f "NesTimerAgent" > /dev/null 2>&1; then
     CONSOLE_USER=$(stat -f '%Su' /dev/console 2>/dev/null)
     if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
         CONSOLE_UID=$(id -u "$CONSOLE_USER" 2>/dev/null)
@@ -88,7 +88,7 @@ fi
 
 # Download
 TMPDIR=$(mktemp -d)
-ZIPFILE="$TMPDIR/UsageTimeAgent.zip"
+ZIPFILE="$TMPDIR/NesTimerAgent.zip"
 curl -s --connect-timeout 10 --max-time 120 -o "$ZIPFILE" "$SERVER_URL/api/v1/agent/update/download"
 
 if [ ! -f "$ZIPFILE" ] || [ ! -s "$ZIPFILE" ]; then
@@ -111,22 +111,22 @@ fi
 cd "$TMPDIR"
 unzip -qo "$ZIPFILE" -d "$TMPDIR"
 
-if [ ! -d "$TMPDIR/UsageTimeAgent.app" ]; then
-    log "Invalid zip — no UsageTimeAgent.app found"
+if [ ! -d "$TMPDIR/NesTimerAgent.app" ]; then
+    log "Invalid zip — no NesTimerAgent.app found"
     echo $((FAIL_COUNT + 1)) > "$FAIL_COUNT_FILE"
     rm -rf "$TMPDIR"
     exit 1
 fi
 
 # Kill running agent
-pkill -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
+pkill -f '/Applications/NesTimerAgent.app' 2>/dev/null || true
 sleep 1
-pkill -9 -f '/Applications/UsageTimeAgent.app' 2>/dev/null || true
+pkill -9 -f '/Applications/NesTimerAgent.app' 2>/dev/null || true
 sleep 0.5
 
 # Replace
 rm -rf "$APP_PATH"
-mv "$TMPDIR/UsageTimeAgent.app" "$APP_PATH"
+mv "$TMPDIR/NesTimerAgent.app" "$APP_PATH"
 chown -R root:wheel "$APP_PATH"
 
 # Save version + clear fail counter

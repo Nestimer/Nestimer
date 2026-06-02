@@ -56,11 +56,11 @@ docker compose up -d --build
 Build from source (one-time):
 
 ```bash
-open macos-agent/UsageTimeAgent.xcodeproj
+open macos-agent/NesTimerAgent.xcodeproj
 # Product → Scheme → Release → Cmd+B
 ```
 
-Or use the pre-built binary from `dist/UsageTimeAgent.app`. Double-click it:
+Or use the pre-built binary from `dist/NesTimerAgent.app`. Double-click it:
 
 1. Paste the **setup string** into the dialog → Connect
 2. The agent asks to install as a **protected system service** → enter admin password once
@@ -96,7 +96,7 @@ Algorithm: HMAC-SHA1 with a shared secret, 300-second step (5 min), ±1 step tol
 ## Tamper Protection
 
 With the child running as a **Standard User** (not admin):
-- `/Applications/UsageTimeAgent.app` is owned by root → can't be deleted
+- `/Applications/NesTimerAgent.app` is owned by root → can't be deleted
 - `/Library/LaunchDaemons/com.usagetime.agent-watchdog.plist` owned by root → can't be unloaded
 - Killing the agent → watchdog restarts it within 15s
 - Cmd+Q intercepted by `SelfProtection`
@@ -109,7 +109,7 @@ If the child has admin rights, they can still `sudo` everything. **Make the chil
 ```bash
 sudo launchctl unload /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
 sudo rm /Library/LaunchDaemons/com.usagetime.agent-watchdog.plist
-sudo rm -rf /Applications/UsageTimeAgent.app
+sudo rm -rf /Applications/NesTimerAgent.app
 sudo rm -rf /usr/local/libexec/usagetime-watchdog.sh /var/log/usagetime
 defaults delete com.usagetime.agent
 ```
@@ -152,8 +152,8 @@ npm install && npm run dev    # http://localhost:5173
 
 ### Native Apps
 ```bash
-open ParentApp/UsageTimeControl.xcodeproj     # iOS 17+ / macOS 14+
-open macos-agent/UsageTimeAgent.xcodeproj     # macOS 13+
+open ParentApp/NesTimer.xcodeproj     # iOS 17+ / macOS 14+
+open macos-agent/NesTimerAgent.xcodeproj     # macOS 13+
 ```
 
 ## Security Notes

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct UsageTimeAgentApp: App {
+struct NesTimerAgentApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {

@@ -6,7 +6,7 @@ import AppKit
 struct SystemInstaller {
 
     static let daemonPlistPath = "/Library/LaunchDaemons/com.nestimer.agent-watchdog.plist"
-    static let installedAppPath = "/Applications/UsageTimeAgent.app"
+    static let installedAppPath = "/Applications/NesTimerAgent.app"
     static let watchdogDst = "/usr/local/libexec/nestimer-watchdog.sh"
 
     static var isInstalled: Bool {
@@ -51,7 +51,7 @@ struct SystemInstaller {
 
         if isUpdate {
             cmds += [
-                "pkill -f '/Applications/UsageTimeAgent.app' || true",
+                "pkill -f '/Applications/NesTimerAgent.app' || true",
                 "sleep 1",
             ]
         }
@@ -103,7 +103,7 @@ struct SystemInstaller {
         If macOS blocked the admin prompt, try:
         1. Right-click the app → Open (first time only)
         2. Or run from Terminal:
-           \(Bundle.main.bundlePath)/Contents/MacOS/UsageTimeAgent
+           \(Bundle.main.bundlePath)/Contents/MacOS/NesTimerAgent
         """
         alert.alertStyle = .critical
         alert.addButton(withTitle: "OK")

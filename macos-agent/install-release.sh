@@ -10,11 +10,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_NAME="UsageTimeAgent"
+APP_NAME="NesTimerAgent"
 APP_SRC="$REPO_DIR/dist/${APP_NAME}.app"
 APP_DST="/Applications/${APP_NAME}.app"
 
-echo "=== UsageTimeAgent Installer (Release) ==="
+echo "=== NesTimerAgent Installer (Release) ==="
 
 if [ ! -d "$APP_SRC" ]; then
     echo "ERROR: Release app not found at $APP_SRC"
@@ -82,6 +82,6 @@ echo ""
 echo "To UNINSTALL:"
 echo "  sudo launchctl unload /Library/LaunchDaemons/com.nestimer.watchdog.plist"
 echo "  sudo rm /Library/LaunchDaemons/com.nestimer.watchdog.plist"
-echo "  sudo rm -rf /Applications/UsageTimeAgent.app"
+echo "  sudo rm -rf /Applications/NesTimerAgent.app"
 echo "  sudo rm -rf /usr/local/lib/nestimer /var/log/nestimer"
 echo "  defaults delete com.nestimer.agent"

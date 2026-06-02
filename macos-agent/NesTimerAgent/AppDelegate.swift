@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSLog("[UsageTimeAgent] Application starting...")
+        NSLog("[NesTimerAgent] Application starting...")
 
         // Load config
         agentConfig = AgentConfig.load()
@@ -49,13 +49,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard !agentConfig.apiToken.isEmpty else {
-            NSLog("[UsageTimeAgent] ERROR: No API token configured.")
+            NSLog("[NesTimerAgent] ERROR: No API token configured.")
             showSetupRequiredAlert()
             return
         }
 
         if agentConfig.devMode {
-            NSLog("[UsageTimeAgent] ⚠️ DEV MODE ENABLED — lock screen will auto-dismiss, quit allowed")
+            NSLog("[NesTimerAgent] ⚠️ DEV MODE ENABLED — lock screen will auto-dismiss, quit allowed")
         }
 
         // Initialize services
@@ -87,7 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !agentConfig.devMode {
             selfProtection.start()
         } else {
-            NSLog("[UsageTimeAgent] DEV: Self-protection DISABLED")
+            NSLog("[NesTimerAgent] DEV: Self-protection DISABLED")
         }
 
         // Timer intervals: faster in dev mode for quick testing
@@ -122,7 +122,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         RunLoop.current.add(tickTimer!, forMode: .common)
         RunLoop.current.add(syncTimer!, forMode: .common)
 
-        NSLog("[UsageTimeAgent] Started. Server: \(agentConfig.serverURL), poll: \(Int(syncInterval))s, devMode: \(agentConfig.devMode)")
+        NSLog("[NesTimerAgent] Started. Server: \(agentConfig.serverURL), poll: \(Int(syncInterval))s, devMode: \(agentConfig.devMode)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -156,12 +156,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if !initialSyncCompleted {
                 usageTracker.forceSetUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
                 initialSyncCompleted = true
-                NSLog("[UsageTimeAgent] Initial sync — server says \(String(format: "%.1f", policy.usedMinutesToday))m used")
+                NSLog("[NesTimerAgent] Initial sync — server says \(String(format: "%.1f", policy.usedMinutesToday))m used")
                 // Fetch TOTP secret if not in Keychain yet
                 if sharedSecret == nil {
                     if let secret = try? await apiClient.fetchTOTPSecret() {
                         sharedSecret = secret
-                        NSLog("[UsageTimeAgent] TOTP secret stored in Keychain")
+                        NSLog("[NesTimerAgent] TOTP secret stored in Keychain")
                     }
                 }
             } else {
@@ -190,9 +190,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let remaining = Double(policy.screenTimeLimitMinutes) - currentUsed
             let nextIn = Int(adaptiveSyncInterval())
-            NSLog("[UsageTimeAgent] Sync OK — used: \(String(format: "%.1f", currentUsed))m, limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
+            NSLog("[NesTimerAgent] Sync OK — used: \(String(format: "%.1f", currentUsed))m, limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
         } catch {
-            NSLog("[UsageTimeAgent] Sync failed: \(error.localizedDescription)")
+            NSLog("[NesTimerAgent] Sync failed: \(error.localizedDescription)")
         }
     }
 
@@ -221,7 +221,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let myPID = ProcessInfo.processInfo.processIdentifier
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        task.arguments = ["-f", "UsageTimeAgent"]
+        task.arguments = ["-f", "NesTimerAgent"]
         let pipe = Pipe()
         task.standardOutput = pipe
         try? task.run()
@@ -229,7 +229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         for line in output.split(separator: "\n") {
             if let pid = Int32(line.trimmingCharacters(in: .whitespaces)), pid != myPID {
-                NSLog("[UsageTimeAgent] Killing other instance PID \(pid)")
+                NSLog("[NesTimerAgent] Killing other instance PID \(pid)")
                 kill(pid, SIGTERM)
             }
         }
@@ -242,16 +242,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let service = SMAppService.mainApp
         switch service.status {
         case .enabled:
-            NSLog("[UsageTimeAgent] Login item: already enabled")
+            NSLog("[NesTimerAgent] Login item: already enabled")
         case .notRegistered, .notFound:
             do {
                 try service.register()
-                NSLog("[UsageTimeAgent] Login item: registered ✓")
+                NSLog("[NesTimerAgent] Login item: registered ✓")
             } catch {
-                NSLog("[UsageTimeAgent] Login item: failed to register — \(error.localizedDescription)")
+                NSLog("[NesTimerAgent] Login item: failed to register — \(error.localizedDescription)")
             }
         case .requiresApproval:
-            NSLog("[UsageTimeAgent] Login item: requires user approval in System Settings")
+            NSLog("[NesTimerAgent] Login item: requires user approval in System Settings")
         @unknown default:
             break
         }
@@ -261,14 +261,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleCodeSubmission(_ code: String) {
         guard let secret = sharedSecret else {
-            NSLog("[UsageTimeAgent] TOTP: No shared secret available")
+            NSLog("[NesTimerAgent] TOTP: No shared secret available")
             return
         }
         if TOTPGenerator.verifyCode(secretHex: secret, code: code) {
-            NSLog("[UsageTimeAgent] TOTP: Code accepted — granting 5 minutes")
+            NSLog("[NesTimerAgent] TOTP: Code accepted — granting 5 minutes")
             policyEnforcer.grantTemporaryAccess(minutes: 5)
         } else {
-            NSLog("[UsageTimeAgent] TOTP: Code rejected")
+            NSLog("[NesTimerAgent] TOTP: Code rejected")
         }
     }
 
@@ -312,7 +312,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let defaults = UserDefaults.standard
         defaults.set(serverURL, forKey: "ServerURL")
         defaults.set(apiToken, forKey: "APIToken")
-        NSLog("[UsageTimeAgent] Setup saved: server=\(serverURL)")
+        NSLog("[NesTimerAgent] Setup saved: server=\(serverURL)")
 
         // Restart app to pick up new config
         let url = URL(fileURLWithPath: Bundle.main.bundlePath)

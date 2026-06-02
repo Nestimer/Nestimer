@@ -65,11 +65,11 @@ class MediaController {
 
     private lazy var sendCommand: MRMediaRemoteSendCommandFunc? = {
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY) else {
-            NSLog("[UsageTimeAgent] MediaController: failed to load MediaRemote framework")
+            NSLog("[NesTimerAgent] MediaController: failed to load MediaRemote framework")
             return nil
         }
         guard let sym = dlsym(handle, "MRMediaRemoteSendCommand") else {
-            NSLog("[UsageTimeAgent] MediaController: MRMediaRemoteSendCommand not found")
+            NSLog("[NesTimerAgent] MediaController: MRMediaRemoteSendCommand not found")
             return nil
         }
         return unsafeBitCast(sym, to: MRMediaRemoteSendCommandFunc.self)
@@ -116,7 +116,7 @@ class MediaController {
         )
         let status = AudioObjectSetPropertyData(device, &address, 0, nil, size, &value)
         if status != noErr {
-            NSLog("[UsageTimeAgent] MediaController: failed to set mute (\(status)), trying volume fallback")
+            NSLog("[NesTimerAgent] MediaController: failed to set mute (\(status)), trying volume fallback")
             setVolumeFallback(mute: mute, device: device)
         }
     }
@@ -210,7 +210,7 @@ class MediaController {
         guard isLocked, let device = listenerDeviceID else { return }
         if !isMuted(device: device) {
             setMuted(true, device: device)
-            NSLog("[UsageTimeAgent] MediaController: re-muted (media key bypass blocked)")
+            NSLog("[NesTimerAgent] MediaController: re-muted (media key bypass blocked)")
         }
     }
 
@@ -223,9 +223,9 @@ class MediaController {
             guard pid > 0 else { continue }
             if kill(pid, SIGSTOP) == 0 {
                 suspendedPIDs.insert(pid)
-                NSLog("[UsageTimeAgent] MediaController: SIGSTOP \(bid) (pid \(pid))")
+                NSLog("[NesTimerAgent] MediaController: SIGSTOP \(bid) (pid \(pid))")
             } else {
-                NSLog("[UsageTimeAgent] MediaController: SIGSTOP failed for \(bid) (pid \(pid)), errno \(errno)")
+                NSLog("[NesTimerAgent] MediaController: SIGSTOP failed for \(bid) (pid \(pid)), errno \(errno)")
             }
         }
     }
@@ -235,7 +235,7 @@ class MediaController {
             kill(pid, SIGCONT)
         }
         if !suspendedPIDs.isEmpty {
-            NSLog("[UsageTimeAgent] MediaController: SIGCONT'd \(suspendedPIDs.count) processes")
+            NSLog("[NesTimerAgent] MediaController: SIGCONT'd \(suspendedPIDs.count) processes")
         }
         suspendedPIDs.removeAll()
     }
@@ -255,7 +255,7 @@ class MediaController {
             guard pid > 0 else { return }
             if kill(pid, SIGSTOP) == 0 {
                 self.suspendedPIDs.insert(pid)
-                NSLog("[UsageTimeAgent] MediaController: SIGSTOP newly launched \(bid) (pid \(pid))")
+                NSLog("[NesTimerAgent] MediaController: SIGSTOP newly launched \(bid) (pid \(pid))")
             }
         }
     }
@@ -306,7 +306,7 @@ class MediaController {
         // 4. Catch new launches during lock
         startAppLaunchObserver()
 
-        NSLog("[UsageTimeAgent] MediaController: locked (suspended \(suspendedPIDs.count) apps)")
+        NSLog("[NesTimerAgent] MediaController: locked (suspended \(suspendedPIDs.count) apps)")
     }
 
     /// Called when lock screen is dismissed.
@@ -330,7 +330,7 @@ class MediaController {
         wasMutedBeforeLock = false
         listenerDeviceID = nil
 
-        NSLog("[UsageTimeAgent] MediaController: unlocked")
+        NSLog("[NesTimerAgent] MediaController: unlocked")
     }
 
     deinit {

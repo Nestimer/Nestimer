@@ -1,5 +1,5 @@
 import XCTest
-@testable import UsageTimeAgent
+@testable import NesTimerAgent
 
 /// Tests for PolicyEnforcer logic — downtime detection and screen time checks.
 /// These tests verify pure logic without needing macOS-specific APIs.

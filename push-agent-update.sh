@@ -21,7 +21,7 @@ if [ -z "$SERVER" ]; then
     exit 1
 fi
 
-APP_PATH="$(dirname "$0")/dist/UsageTimeAgent.app"
+APP_PATH="$(dirname "$0")/dist/NesTimerAgent.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "ERROR: $APP_PATH not found. Build Release first."
     exit 1
@@ -37,15 +37,15 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Update MARKETING_VERSION in Xcode project to match push version
-PBXPROJ="$(dirname "$0")/macos-agent/UsageTimeAgent.xcodeproj/project.pbxproj"
+PBXPROJ="$(dirname "$0")/macos-agent/NesTimerAgent.xcodeproj/project.pbxproj"
 if [ -f "$PBXPROJ" ]; then
     sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = $VERSION/" "$PBXPROJ"
 
     # Rebuild with new version — signed with Developer ID + hardened runtime
     # (required for notarization). No more ad-hoc "-" signing.
     echo "Building v$VERSION (Developer ID, hardened runtime)..."
-    xcodebuild -project "$(dirname "$0")/macos-agent/UsageTimeAgent.xcodeproj" \
-        -scheme UsageTimeAgent -configuration Release \
+    xcodebuild -project "$(dirname "$0")/macos-agent/NesTimerAgent.xcodeproj" \
+        -scheme NesTimerAgent -configuration Release \
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES \
         CODE_SIGN_STYLE=Manual \
         CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
@@ -57,7 +57,7 @@ if [ -f "$PBXPROJ" ]; then
 
     # Copy fresh build to dist — pick the most-recently-modified DerivedData result,
     # not the alphabetically first one (stale DerivedData folders would otherwise win).
-    DERIVED=$(find ~/Library/Developer/Xcode/DerivedData -path "*UsageTimeAgent*/Build/Products/Release/UsageTimeAgent.app" -maxdepth 6 -prune 2>/dev/null \
+    DERIVED=$(find ~/Library/Developer/Xcode/DerivedData -path "*NesTimerAgent*/Build/Products/Release/NesTimerAgent.app" -maxdepth 6 -prune 2>/dev/null \
         | while read -r p; do echo "$(stat -f '%m' "$p") $p"; done \
         | sort -rn | head -1 | cut -d' ' -f2-)
     if [ -n "$DERIVED" ]; then
@@ -66,7 +66,7 @@ if [ -f "$PBXPROJ" ]; then
         if [ "$BUILT_VERSION" != "$VERSION" ]; then
             echo "ERROR: DerivedData build reports version $BUILT_VERSION, expected $VERSION"
             echo "       Path: $DERIVED"
-            echo "       Try: rm -rf ~/Library/Developer/Xcode/DerivedData/UsageTimeAgent-*"
+            echo "       Try: rm -rf ~/Library/Developer/Xcode/DerivedData/NesTimerAgent-*"
             exit 1
         fi
         rm -rf "$APP_PATH"
@@ -119,9 +119,9 @@ if ! spctl --assess --type execute --verbose=2 "$APP_PATH" 2>&1; then
 fi
 
 # Create the upload zip from the stapled app
-ZIPFILE="$TMPDIR/UsageTimeAgent.zip"
+ZIPFILE="$TMPDIR/NesTimerAgent.zip"
 cd "$(dirname "$APP_PATH")"
-ditto -c -k --keepParent "UsageTimeAgent.app" "$ZIPFILE"
+ditto -c -k --keepParent "NesTimerAgent.app" "$ZIPFILE"
 SHA256=$(shasum -a 256 "$ZIPFILE" | awk '{print $1}')
 
 echo "Zip:     $(du -h "$ZIPFILE" | awk '{print $1}')"
@@ -132,19 +132,19 @@ echo ""
 echo "Uploading to $SERVER..."
 # Find the repo dir on server — try common locations
 REMOTE_CMD="
-  for d in /root/UsageTimeController ~/UsageTimeController; do
+  for d in /root/Nestimer ~/Nestimer /root/UsageTimeController ~/UsageTimeController; do
     [ -f \"\$d/docker-compose.yml\" ] && echo \"\$d\" && exit 0
   done
   echo ''
 "
 REMOTE_DIR=$(ssh "root@$SERVER" "$REMOTE_CMD" 2>/dev/null | tail -1)
 if [ -z "$REMOTE_DIR" ]; then
-    echo "ERROR: Could not find UsageTimeController on server"
+    echo "ERROR: Could not find Nestimer repo on server"
     exit 1
 fi
 
 ssh "root@$SERVER" "mkdir -p $REMOTE_DIR/data/agent-update"
-scp "$ZIPFILE" "root@$SERVER:$REMOTE_DIR/data/agent-update/UsageTimeAgent.zip"
+scp "$ZIPFILE" "root@$SERVER:$REMOTE_DIR/data/agent-update/NesTimerAgent.zip"
 ssh "root@$SERVER" "echo '$VERSION' > $REMOTE_DIR/data/agent-update/version.txt"
 
 rm -rf "$TMPDIR"

@@ -43,7 +43,7 @@ class PolicyEnforcer {
         temporaryUnlockUntil = Date().addingTimeInterval(TimeInterval(minutes * 60))
         lockScreen.hide()
         transitionToUnlocked()
-        NSLog("[UsageTimeAgent] Temporary access granted for \(minutes) minutes (until \(temporaryUnlockUntil!))")
+        NSLog("[NesTimerAgent] Temporary access granted for \(minutes) minutes (until \(temporaryUnlockUntil!))")
     }
 
     // MARK: - Lock state transitions (media control)
@@ -65,7 +65,7 @@ class PolicyEnforcer {
         lockScreen.devMode = enabled
         lockScreen.devAutoUnlockSeconds = autoUnlockSeconds
         if enabled {
-            NSLog("[UsageTimeAgent] PolicyEnforcer: dev mode enabled (auto-unlock: \(Int(autoUnlockSeconds))s)")
+            NSLog("[NesTimerAgent] PolicyEnforcer: dev mode enabled (auto-unlock: \(Int(autoUnlockSeconds))s)")
         }
     }
 
