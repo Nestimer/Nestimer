@@ -144,6 +144,11 @@ cd ~/Nestimer && git pull && docker compose up -d --build
 # Agent update (from dev Mac)
 ./push-agent-update.sh 134.209.8.62 <version>
 
+# iOS parent app -> TestFlight (from dev Mac)
+# Needs ASC_KEY_ID + ASC_ISSUER_ID env + ~/.appstoreconnect/private_keys/AuthKey_<id>.p8
+./push-ios-testflight.sh            # auto-bumps build number
+./push-ios-testflight.sh <build>    # explicit build number
+
 # Marketing site update
 ssh root@134.209.8.62 "cd ~/Nestimer && git pull && cp -R website/* /var/www/nestimer/"
 ```

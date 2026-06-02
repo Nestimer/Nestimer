@@ -23,3 +23,4 @@ mempalace.yaml
 # Python virtualenv
 .venv/
 api/.venv/
+ios-build/
