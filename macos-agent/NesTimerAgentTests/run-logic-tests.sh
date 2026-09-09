@@ -26,8 +26,12 @@ trap 'rm -rf "$WORKDIR"' EXIT
 BINARY="$WORKDIR/logic-tests"
 
 # Pure-logic source files under test. Tasks 9 and 10 add more here.
+# APIClient.swift is Foundation-only (ServerPolicy/ScheduledActivity/UsageReport + the
+# APIClient class itself use only Foundation types — no AppKit/UIKit or other
+# app-target-only dependency), so it compiles standalone here just like RemainingTime.swift.
 SOURCES=(
     "$SERVICES_DIR/RemainingTime.swift"
+    "$SERVICES_DIR/APIClient.swift"
 )
 
 cat > "$WORKDIR/main.swift" <<'SWIFT'
@@ -51,6 +55,20 @@ func check(_ name: String, _ actual: LimitSource, _ expected: LimitSource) {
     } else {
         print("PASS: \(name)")
     }
+}
+
+func check(_ name: String, _ actual: Int?, _ expected: Int?) {
+    if actual != expected {
+        failures += 1
+        FileHandle.standardError.write("FAIL: \(name) — expected \(String(describing: expected)), got \(String(describing: actual))\n".data(using: .utf8)!)
+    } else {
+        print("PASS: \(name)")
+    }
+}
+
+func fail(_ name: String, _ message: String) {
+    failures += 1
+    FileHandle.standardError.write("FAIL: \(name) — \(message)\n".data(using: .utf8)!)
 }
 
 // MARK: - Cases
@@ -88,6 +106,21 @@ check(
     5.0
 )
 
+// testSharedBudgetBindsWhenCapIsLooser (above) passes even if the cap logic were deleted
+// entirely, because the budget is already the binding constraint at those values (5.0
+// either way). This case is chosen so the cap genuinely is looser (80 remaining from the
+// cap vs. 30 from the budget) AND deviceUsedMinutes (20) is deliberately far from
+// childUsedMinutes (90) — the exact shape of Task 8's deliberate no-op regression, where
+// deviceUsedMinutes was accidentally passed the same value as childUsedMinutes. If that
+// aliasing regressed (deviceUsedMinutes read as childUsedMinutes = 90), fromCap would become
+// 100 - 90 = 10, which is LESS than the budget's 30 and would flip the answer to 10 — so
+// this case fails loudly under that regression instead of silently agreeing with it.
+check(
+    "testCapPresentAndLooserStillReadsRealDeviceUsage",
+    RemainingTime.minutes(limitMinutes: 120, childUsedMinutes: 90, deviceCapMinutes: 100, deviceUsedMinutes: 20),
+    30.0
+)
+
 check(
     "testBindingLimitIsReportedForTheLockScreen_deviceCap",
     RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 20, deviceCapMinutes: 60, deviceUsedMinutes: 55),
@@ -99,6 +132,42 @@ check(
     RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 115, deviceCapMinutes: 60, deviceUsedMinutes: 10),
     LimitSource.sharedBudget
 )
+
+// MARK: - ServerPolicy decode compatibility
+//
+// This is the highest-stakes guarantee in the shared-budget change: a server that hasn't
+// been upgraded yet omits device_used_minutes/device_cap_minutes entirely. If decoding ever
+// throws on that response, the agent gets no config at all and the device goes unmanaged.
+
+do {
+    // Legacy payload: a pre-upgrade server response with BOTH new fields absent.
+    let legacyJSON = """
+    {"downtime_enabled": true, "downtime_start": "22:00", "downtime_end": "08:00",
+     "screen_time_enabled": true, "screen_time_limit_minutes": 120,
+     "used_minutes_today": 10.0}
+    """.data(using: .utf8)!
+
+    let policy = try JSONDecoder().decode(ServerPolicy.self, from: legacyJSON)
+    check("testMissingFieldsDecodeToSafeDefaults_deviceUsedMinutes", policy.deviceUsedMinutes, 0)
+    check("testMissingFieldsDecodeToSafeDefaults_deviceCapMinutes", policy.deviceCapMinutes, nil)
+} catch {
+    fail("testMissingFieldsDecodeToSafeDefaults", "decode threw \(error) instead of defaulting")
+}
+
+do {
+    // Upgraded-server payload: both new fields present, should round-trip to their real values.
+    let upgradedJSON = """
+    {"downtime_enabled": true, "downtime_start": "22:00", "downtime_end": "08:00",
+     "screen_time_enabled": true, "screen_time_limit_minutes": 120,
+     "used_minutes_today": 10.0, "device_used_minutes": 7.5, "device_cap_minutes": 60}
+    """.data(using: .utf8)!
+
+    let policy = try JSONDecoder().decode(ServerPolicy.self, from: upgradedJSON)
+    check("testPresentFieldsDecodeCorrectly_deviceUsedMinutes", policy.deviceUsedMinutes, 7.5)
+    check("testPresentFieldsDecodeCorrectly_deviceCapMinutes", policy.deviceCapMinutes, 60)
+} catch {
+    fail("testPresentFieldsDecodeCorrectly", "decode threw \(error)")
+}
 
 // MARK: - Report
 
