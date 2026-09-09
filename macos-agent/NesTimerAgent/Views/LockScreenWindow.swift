@@ -19,6 +19,8 @@ class LockScreenWindow {
     indirect enum LockReason: Equatable {
         case downtime(until: String)
         case timeExpired
+        /// The shared daily budget still has time left, but this device's own cap is used up.
+        case deviceCapReached
         /// Dev mode wrapper: shows the real reason + dev mode badge with auto-unlock countdown
         case devOverlay(wrapped: LockReason, autoUnlock: Int)
 
@@ -26,6 +28,7 @@ class LockScreenWindow {
             switch self {
             case .downtime: return "Downtime"
             case .timeExpired: return "Time's Up"
+            case .deviceCapReached: return "Done On This Mac"
             case .devOverlay(let wrapped, _): return "⚠️ DEV: \(wrapped.title)"
             }
         }
@@ -34,6 +37,7 @@ class LockScreenWindow {
             switch self {
             case .downtime(let until): return "Computer available at \(until)"
             case .timeExpired: return "Screen time for today has ended"
+            case .deviceCapReached: return "Today's time for this Mac is used up. Other devices may still have time left."
             case .devOverlay(let wrapped, let seconds):
                 return "\(wrapped.message)\n\nDEV MODE: Auto-unlock in \(seconds)s\nCtrl+Opt+Cmd+U — unlock now"
             }
@@ -43,6 +47,7 @@ class LockScreenWindow {
             switch self {
             case .downtime: return "moon.zzz.fill"
             case .timeExpired: return "hourglass.bottomhalf.filled"
+            case .deviceCapReached: return "desktopcomputer.trianglebadge.exclamationmark"
             case .devOverlay(let wrapped, _): return wrapped.icon
             }
         }

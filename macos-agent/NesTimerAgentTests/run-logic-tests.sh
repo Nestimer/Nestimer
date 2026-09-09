@@ -29,9 +29,18 @@ BINARY="$WORKDIR/logic-tests"
 # APIClient.swift is Foundation-only (ServerPolicy/ScheduledActivity/UsageReport + the
 # APIClient class itself use only Foundation types — no AppKit/UIKit or other
 # app-target-only dependency), so it compiles standalone here just like RemainingTime.swift.
+#
+# LockScreenWindow.swift imports AppKit and SwiftUI (not just Foundation), but Task 10
+# confirmed it compiles and links standalone via `swiftc` on this platform (AppKit/SwiftUI
+# are system frameworks available to any macOS command-line swiftc invocation, not just
+# app-target builds) — no NSApplication run loop is needed just to construct enum values
+# and read their computed properties. So LockReason's distinct-strings guarantee gets a
+# real executed assertion below instead of only build-plus-inspection.
+AGENT_VIEWS_DIR="$AGENT_DIR/Views"
 SOURCES=(
     "$SERVICES_DIR/RemainingTime.swift"
     "$SERVICES_DIR/APIClient.swift"
+    "$AGENT_VIEWS_DIR/LockScreenWindow.swift"
 )
 
 cat > "$WORKDIR/main.swift" <<'SWIFT'
@@ -69,6 +78,15 @@ func check(_ name: String, _ actual: Int?, _ expected: Int?) {
 func fail(_ name: String, _ message: String) {
     failures += 1
     FileHandle.standardError.write("FAIL: \(name) — \(message)\n".data(using: .utf8)!)
+}
+
+func checkNotEqual(_ name: String, _ actual: String, _ notExpected: String) {
+    if actual == notExpected {
+        failures += 1
+        FileHandle.standardError.write("FAIL: \(name) — expected a value different from \(notExpected), got \(actual)\n".data(using: .utf8)!)
+    } else {
+        print("PASS: \(name)")
+    }
 }
 
 // MARK: - Cases
@@ -132,6 +150,27 @@ check(
     RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 115, deviceCapMinutes: 60, deviceUsedMinutes: 10),
     LimitSource.sharedBudget
 )
+
+check(
+    "testBindingLimitIsATieOnExactMatch_reportsSharedBudget",
+    // When both limits would hit zero in the same minute, .binding reports .sharedBudget —
+    // a deliberate choice (see PolicyEnforcer's call site comment): on a tie the cap isn't
+    // what ran out first, so the honest message is the shared-budget one.
+    RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 100, deviceCapMinutes: 40, deviceUsedMinutes: 20),
+    LimitSource.sharedBudget
+)
+
+// MARK: - LockScreenWindow.LockReason (device cap gets its own lock screen message)
+//
+// LockScreenWindow.swift imports AppKit/SwiftUI but has no dependency on a running app —
+// it compiles and links here, so the "distinct strings" guarantee is a real executed
+// assertion, not just build-plus-inspection.
+
+let deviceCapReason = LockScreenWindow.LockReason.deviceCapReached
+let timeExpiredReason = LockScreenWindow.LockReason.timeExpired
+checkNotEqual("testDeviceCapLockHasItsOwnMessage_title", deviceCapReason.title, timeExpiredReason.title)
+checkNotEqual("testDeviceCapLockHasItsOwnMessage_message", deviceCapReason.message, timeExpiredReason.message)
+checkNotEqual("testDeviceCapLockHasItsOwnMessage_icon", deviceCapReason.icon, timeExpiredReason.icon)
 
 // MARK: - ServerPolicy decode compatibility
 //
