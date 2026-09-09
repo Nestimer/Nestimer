@@ -46,6 +46,17 @@ struct ServerPolicy: Codable {
     /// child's combined total across all their devices rather than just this one's.
     var reportsDeviceUsage: Bool { deviceUsedMinutesReported != nil }
 
+    /// What the agent's local counter — which holds THIS device's own usage — must be
+    /// reconciled against. On a server that reports the per-device breakdown that is
+    /// `deviceUsedMinutes`; on an older one there is no breakdown and `usedMinutesToday`
+    /// IS this device's own total, so reconciling against `deviceUsedMinutes` (0 there)
+    /// would wipe the counter on the first sync and re-zero it on every one after —
+    /// UsageTracker reads a value that far below the local one as a parent reset — and
+    /// the child's screen time would never accumulate at all.
+    var deviceUsedMinutesForReconciliation: Double {
+        reportsDeviceUsage ? deviceUsedMinutes : usedMinutesToday
+    }
+
     /// Usage the child racked up on their OTHER devices, per the server's snapshot.
     /// Against a pre-shared-budget server (no per-device breakdown) this is 0 and
     /// `usedMinutesToday` is treated as this device's own total — never double-counted.

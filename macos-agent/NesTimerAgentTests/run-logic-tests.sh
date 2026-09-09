@@ -204,6 +204,13 @@ do {
     // local counter it reconciles, once again as "other devices" — and lock early.
     check("testLegacyServerIsNotTreatedAsPerDeviceBreakdown", policy.reportsDeviceUsage, false)
     check("testLegacyServerReportsNoOtherDeviceUsage", policy.otherDevicesUsed, 0)
+    // The agent reconciles its local counter (this device's own usage) against this value
+    // every sync. Against a legacy server it MUST be used_minutes_today — that is already
+    // this device's own total there. Taking deviceUsedMinutes (0) instead would force the
+    // counter to 0 on the first sync and, on every later one, trip UsageTracker's
+    // "server reset detected" branch and pin it back to ~0: the child's screen time would
+    // never accumulate and the limit would never be reached.
+    check("testLegacyServerReconcilesAgainstUsedMinutesToday", policy.deviceUsedMinutesForReconciliation, 10.0)
 } catch {
     fail("testMissingFieldsDecodeToSafeDefaults", "decode threw \(error) instead of defaulting")
 }
@@ -223,6 +230,9 @@ do {
     // The agent reports its OWN counter and derives the child total as
     // otherDevicesUsed + local. 10.0 shared - 7.5 here = 2.5 spent on other devices.
     check("testOtherDeviceUsageIsTheSharedTotalMinusThisDevice", policy.otherDevicesUsed, 2.5)
+    // With a real breakdown, reconciliation uses the per-device figure — never the shared
+    // total, which is what caused the runaway echo loop.
+    check("testUpgradedServerReconcilesAgainstDeviceUsedMinutes", policy.deviceUsedMinutesForReconciliation, 7.5)
 } catch {
     fail("testPresentFieldsDecodeCorrectly", "decode threw \(error)")
 }

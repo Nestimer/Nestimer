@@ -265,6 +265,31 @@ async def update_device(
                 .values(child_id=data.child_id)
             )
 
+            # Make sure the device lands on a child that HAS a policy, and that the
+            # policy is reachable by device_id. Moving a device to a child created via
+            # "Add Child" (which deliberately creates no policy row) otherwise leaves it
+            # with none at all: `/agent/config` finds nothing by child_id and nothing by
+            # device_id — this device may never have owned a row, its old child's row
+            # being keyed to a sibling — and takes its no-policy branch
+            # (screen_time_enabled=False, downtime_enabled=False), i.e. that Mac stops
+            # locking. Same create-or-adopt shape as create_device, and for the same
+            # rollback reason: device_id is the only route back for pre-child code.
+            # Only when this device owns no policy row of its own: if it does, both the
+            # child-first lookup and the device-keyed fallback already reach a real policy,
+            # and Policy.device_id is unique so a second row naming this device would be
+            # rejected outright. (Re-keying that owned row's child_id is deliberately out
+            # of scope here.)
+            result = await db.execute(select(Policy).where(Policy.device_id == device.id))
+            if result.scalar_one_or_none() is None:
+                result = await db.execute(
+                    select(Policy).where(Policy.child_id == data.child_id)
+                )
+                child_policy = result.scalar_one_or_none()
+                if child_policy is None:
+                    db.add(Policy(child_id=data.child_id, device_id=device.id))
+                elif child_policy.device_id is None:
+                    child_policy.device_id = device.id
+
     if "daily_cap_minutes" in data.model_fields_set:
         device.daily_cap_minutes = data.daily_cap_minutes
 

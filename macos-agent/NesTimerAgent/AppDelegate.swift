@@ -166,8 +166,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // device's usage row absorb the whole child's sum, which the next poll feeds back
             // in again: two Macs on one child inflate each other (30+20 → 50 → 70 → 120 → …)
             // until both lock permanently and only a manual database edit clears it.
-            // Reconcile against `deviceUsedMinutes` instead.
-            let serverDeviceUsed = policy.deviceUsedMinutes
+            // Reconcile against the per-device figure instead — falling back to
+            // `usedMinutesToday` on a server that reports no per-device breakdown at all,
+            // where that value already IS this device's own total (see
+            // `deviceUsedMinutesForReconciliation`).
+            let serverDeviceUsed = policy.deviceUsedMinutesForReconciliation
             otherDevicesUsedMinutes = policy.otherDevicesUsed
 
             // On first sync, trust server value completely (local cache may be stale)

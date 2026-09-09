@@ -327,9 +327,10 @@ async def test_echoing_the_shared_total_back_does_not_inflate_the_counters(clien
 
     total = await _child_total(mac_a)
 
-    # Each of the 2 * rounds reports may add at most the slack (plus the real elapsed
-    # time of the test itself, which is milliseconds — 1.0 minute covers a very slow CI
-    # box with room to spare). Unclamped, this loop passes 3000 minutes by round 6.
+    # Each of the 2 * rounds reports may add at most the slack, plus the real elapsed time
+    # of the test itself. That elapsed time is charged to BOTH devices' ceilings, so the
+    # +1.0 buys only about 30 seconds of actual wall clock — still a wide margin for a
+    # loop that runs in milliseconds. Unclamped, this reaches 14530 minutes by round 6.
     ceiling = 50.0 + rounds * 2 * USAGE_REPORT_SLACK_MINUTES + 1.0
     assert total <= ceiling, (
         f"child total ran away to {total}m after {rounds} echo rounds "

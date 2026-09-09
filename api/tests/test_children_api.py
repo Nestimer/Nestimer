@@ -222,3 +222,56 @@ async def test_auto_created_policy_is_device_keyed_too(client):
         return (await conn.execute(text("SELECT device_id FROM policies"))).scalars().all()
 
     assert list(await _run_on_app_db(_policy_device_ids)) == [device["id"]]
+
+
+async def test_moving_a_sibling_device_to_a_new_child_keeps_it_policed(client):
+    """The exact UI path: child X has devices A and B (the policy row is keyed to A),
+    parent uses "Add Child" to create Y, then moves B to Y from the device detail page.
+
+    B never owned a policy row and Y has none, so without create-or-adopt in
+    `update_device` the agent finds nothing by child_id and nothing by device_id, takes
+    /agent/config's no-policy branch (screen_time_enabled=False, downtime_enabled=False)
+    and B's Mac stops locking. It would self-heal only if the parent happened to open that
+    device's policy page afterwards — which the move flow does not do.
+    """
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    device_a = await create_device(client, token, name="Mac A", child_name="Alex")
+    child_x = (await client.get(f"/api/v1/devices/{device_a['id']}", headers=headers)).json()["child_id"]
+    device_b = (await client.post(
+        "/api/v1/devices",
+        json={"name": "Mac B", "child_name": "Alex", "child_id": child_x},
+        headers=headers,
+    )).json()
+
+    # The policy row belongs to A; B has none of its own.
+    async def _policy_device_ids(conn):
+        return (await conn.execute(text("SELECT device_id FROM policies"))).scalars().all()
+
+    assert list(await _run_on_app_db(_policy_device_ids)) == [device_a["id"]]
+
+    child_y = (await client.post("/api/v1/children", json={"name": "Sam"}, headers=headers)).json()
+    resp = await client.patch(
+        f"/api/v1/devices/{device_b['id']}", json={"child_id": child_y["id"]}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    # The agent must still be policed — and by real rules, not the fail-open branch.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {device_b['api_token']}"},
+    )
+    assert resp.status_code == 200
+    config = resp.json()
+    assert config["screen_time_enabled"] is True, "moved device fell through to the no-policy branch"
+    assert config["downtime_enabled"] is True
+    assert config["screen_time_limit_minutes"] != 999, "999 is the no-policy sentinel"
+
+    # And the new row carries device_id, the only route back for a rolled-back API.
+    async def _policy_for_child_y(conn):
+        return (await conn.execute(
+            text("SELECT device_id FROM policies WHERE child_id = :cid"), {"cid": child_y["id"]}
+        )).scalars().all()
+
+    assert list(await _run_on_app_db(_policy_for_child_y)) == [device_b["id"]]
