@@ -45,7 +45,6 @@ async def create_child(
     await db.flush()
     db.add(Policy(child_id=child.id))  # default policy, same defaults as a new device
     await db.commit()
-    await db.refresh(child)
     return await _to_out(db, child)
 
 
