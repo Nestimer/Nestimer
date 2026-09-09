@@ -1,5 +1,5 @@
 import pytest
-from .conftest import register_user, create_device
+from .conftest import register_user, create_device, simulate_elapsed_time
 
 pytestmark = pytest.mark.anyio
 
@@ -89,6 +89,9 @@ async def test_agent_usage_updates_not_duplicates(client):
         json={"date": "2026-04-03", "total_minutes": 30.0},
         headers={"Authorization": f"Bearer {agent_token}"},
     )
+    # 45 more minutes of screen time really have to pass for the agent to report 75:
+    # /agent/usage clamps a report to what could have accumulated since the last one.
+    await simulate_elapsed_time(45)
     await client.post(
         "/api/v1/agent/usage",
         json={"date": "2026-04-03", "total_minutes": 75.0},

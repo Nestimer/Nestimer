@@ -5,8 +5,9 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.main import app
+from app.routers.agent import USAGE_REPORT_SLACK_MINUTES
 
-from .conftest import register_user, create_device
+from .conftest import register_user, create_device, simulate_elapsed_time
 
 pytestmark = pytest.mark.anyio
 
@@ -274,3 +275,117 @@ async def test_sibling_device_sees_combined_total(client):
     config = resp.json()
     assert config["used_minutes_today"] == 50.0, "sibling must see the combined total, not just its own zero"
     assert config["device_used_minutes"] == 0.0, "the phone's own counter is separately zero"
+
+
+async def test_echoing_the_shared_total_back_does_not_inflate_the_counters(client):
+    """The runaway loop, reproduced end to end.
+
+    Agent 2.9 ratchets its local counter up to `used_minutes_today` — which is now the
+    CHILD's combined total across every device — and then posts that value back as this
+    device's own total. Two Macs on one child therefore echo each other's sums: 30 + 20
+    becomes 50, then 70, then 120, then 190, and both machines lock permanently within a
+    handful of sync rounds (locked → 5s syncs → faster).
+
+    We cannot ship an agent fix to a Mac whose auto-update failed, so the server has to
+    refuse the impossible growth: `report_usage` clamps each report to what could have
+    been accumulated since that device's previous report. Growth is then bounded by real
+    elapsed time plus USAGE_REPORT_SLACK_MINUTES per report, instead of compounding.
+    """
+    token = await register_user(client)
+    mac_a = await create_device(client, token, name="Mac A")
+    mac_b = await create_device(client, token, name="Mac B")
+    await _put_devices_on_one_child(mac_a["id"], mac_b["id"])
+
+    date = "2026-09-09"
+
+    async def _post(device, minutes):
+        resp = await client.post(
+            "/api/v1/agent/usage",
+            json={"date": date, "total_minutes": minutes},
+            headers={"Authorization": f"Bearer {device['api_token']}"},
+        )
+        assert resp.status_code == 200
+
+    async def _child_total(device):
+        resp = await client.get(
+            f"/api/v1/agent/config?date={date}",
+            headers={"Authorization": f"Bearer {device['api_token']}"},
+        )
+        assert resp.status_code == 200
+        return resp.json()["used_minutes_today"]
+
+    # Honest starting point: 30 minutes on one Mac, 20 on the other.
+    await _post(mac_a, 30.0)
+    await _post(mac_b, 20.0)
+    assert await _child_total(mac_a) == 50.0
+
+    # Now both Macs behave exactly like agent 2.9: read the shared total, post it back.
+    rounds = 6
+    for _ in range(rounds):
+        for device in (mac_a, mac_b):
+            await _post(device, await _child_total(device))
+
+    total = await _child_total(mac_a)
+
+    # Each of the 2 * rounds reports may add at most the slack (plus the real elapsed
+    # time of the test itself, which is milliseconds — 1.0 minute covers a very slow CI
+    # box with room to spare). Unclamped, this loop passes 3000 minutes by round 6.
+    ceiling = 50.0 + rounds * 2 * USAGE_REPORT_SLACK_MINUTES + 1.0
+    assert total <= ceiling, (
+        f"child total ran away to {total}m after {rounds} echo rounds "
+        f"(honest total was 50m, ceiling {ceiling}m)"
+    )
+
+
+async def test_a_device_that_was_offline_can_report_its_catch_up_total(client):
+    """The clamp must not punish a Mac that could not reach the server for a while.
+
+    `last_updated` only advances when the device actually reports, so three hours of
+    silence buys three hours of headroom: the agent kept counting locally and posts the
+    whole catch-up total on its first successful sync.
+    """
+    token = await register_user(client)
+    mac = await create_device(client, token, name="Mac")
+
+    resp = await client.post(
+        "/api/v1/agent/usage",
+        json={"date": "2026-09-09", "total_minutes": 10.0},
+        headers={"Authorization": f"Bearer {mac['api_token']}"},
+    )
+    assert resp.status_code == 200
+
+    await simulate_elapsed_time(180)
+
+    resp = await client.post(
+        "/api/v1/agent/usage",
+        json={"date": "2026-09-09", "total_minutes": 185.0},
+        headers={"Authorization": f"Bearer {mac['api_token']}"},
+    )
+    assert resp.status_code == 200
+
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-09-09",
+        headers={"Authorization": f"Bearer {mac['api_token']}"},
+    )
+    assert resp.json()["used_minutes_today"] == 185.0, "offline catch-up must not be clamped"
+
+
+async def test_a_lower_total_is_still_accepted(client):
+    """A report BELOW the stored value is a parent-initiated reset, never an attack —
+    the clamp only ever caps growth."""
+    token = await register_user(client)
+    mac = await create_device(client, token, name="Mac")
+
+    for minutes in (60.0, 0.0):
+        resp = await client.post(
+            "/api/v1/agent/usage",
+            json={"date": "2026-09-09", "total_minutes": minutes},
+            headers={"Authorization": f"Bearer {mac['api_token']}"},
+        )
+        assert resp.status_code == 200
+
+    resp = await client.get(
+        "/api/v1/agent/config?date=2026-09-09",
+        headers={"Authorization": f"Bearer {mac['api_token']}"},
+    )
+    assert resp.json()["used_minutes_today"] == 0.0

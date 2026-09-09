@@ -75,6 +75,15 @@ func check(_ name: String, _ actual: Int?, _ expected: Int?) {
     }
 }
 
+func check(_ name: String, _ actual: Bool, _ expected: Bool) {
+    if actual != expected {
+        failures += 1
+        FileHandle.standardError.write("FAIL: \(name) — expected \(expected), got \(actual)\n".data(using: .utf8)!)
+    } else {
+        print("PASS: \(name)")
+    }
+}
+
 func fail(_ name: String, _ message: String) {
     failures += 1
     FileHandle.standardError.write("FAIL: \(name) — \(message)\n".data(using: .utf8)!)
@@ -189,6 +198,12 @@ do {
     let policy = try JSONDecoder().decode(ServerPolicy.self, from: legacyJSON)
     check("testMissingFieldsDecodeToSafeDefaults_deviceUsedMinutes", policy.deviceUsedMinutes, 0)
     check("testMissingFieldsDecodeToSafeDefaults_deviceCapMinutes", policy.deviceCapMinutes, nil)
+    // An absent device_used_minutes is NOT "this device used 0 of the child's 10 minutes":
+    // on such a server used_minutes_today IS this device's own total. If the agent treated
+    // the gap as time spent elsewhere it would count those 10 minutes twice — once from the
+    // local counter it reconciles, once again as "other devices" — and lock early.
+    check("testLegacyServerIsNotTreatedAsPerDeviceBreakdown", policy.reportsDeviceUsage, false)
+    check("testLegacyServerReportsNoOtherDeviceUsage", policy.otherDevicesUsed, 0)
 } catch {
     fail("testMissingFieldsDecodeToSafeDefaults", "decode threw \(error) instead of defaulting")
 }
@@ -204,8 +219,29 @@ do {
     let policy = try JSONDecoder().decode(ServerPolicy.self, from: upgradedJSON)
     check("testPresentFieldsDecodeCorrectly_deviceUsedMinutes", policy.deviceUsedMinutes, 7.5)
     check("testPresentFieldsDecodeCorrectly_deviceCapMinutes", policy.deviceCapMinutes, 60)
+    check("testUpgradedServerIsTreatedAsPerDeviceBreakdown", policy.reportsDeviceUsage, true)
+    // The agent reports its OWN counter and derives the child total as
+    // otherDevicesUsed + local. 10.0 shared - 7.5 here = 2.5 spent on other devices.
+    check("testOtherDeviceUsageIsTheSharedTotalMinusThisDevice", policy.otherDevicesUsed, 2.5)
 } catch {
     fail("testPresentFieldsDecodeCorrectly", "decode threw \(error)")
+}
+
+do {
+    // A snapshot where this device's own row is somehow ahead of the child's sum (a
+    // partially applied write, a device re-pointed at another child mid-day). The
+    // derived "other devices" share must floor at 0, never go negative and hand the
+    // child back time they already spent.
+    let inconsistentJSON = """
+    {"downtime_enabled": false, "downtime_start": "22:00", "downtime_end": "08:00",
+     "screen_time_enabled": true, "screen_time_limit_minutes": 120,
+     "used_minutes_today": 5.0, "device_used_minutes": 40.0}
+    """.data(using: .utf8)!
+
+    let policy = try JSONDecoder().decode(ServerPolicy.self, from: inconsistentJSON)
+    check("testOtherDeviceUsageNeverGoesNegative", policy.otherDevicesUsed, 0)
+} catch {
+    fail("testOtherDeviceUsageNeverGoesNegative", "decode threw \(error)")
 }
 
 // MARK: - Report

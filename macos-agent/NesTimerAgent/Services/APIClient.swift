@@ -31,10 +31,28 @@ struct ServerPolicy: Codable {
     let activities: [ScheduledActivity]?
     /// Parent-granted bonus window (ISO8601 UTC). Decoded into `bonusUntilDate`.
     let bonusUntil: String?
-    /// This device's own usage today. Absent on servers older than the shared-budget release.
-    let deviceUsedMinutes: Double
+    /// This device's own usage today, exactly as the wire carried it — nil when the server
+    /// omitted the field, i.e. any server older than the shared-budget release. Nil is NOT
+    /// the same as 0: it means `usedMinutesToday` is this device's own total rather than the
+    /// child's combined one, so nothing may be subtracted out of it (see `otherDevicesUsed`).
+    private let deviceUsedMinutesReported: Double?
     /// Per-device ceiling within the shared budget. Nil means no ceiling.
     let deviceCapMinutes: Int?
+
+    /// This device's own usage today; 0 when the server doesn't report it.
+    var deviceUsedMinutes: Double { deviceUsedMinutesReported ?? 0 }
+
+    /// True when the server breaks usage down per device, i.e. `usedMinutesToday` is the
+    /// child's combined total across all their devices rather than just this one's.
+    var reportsDeviceUsage: Bool { deviceUsedMinutesReported != nil }
+
+    /// Usage the child racked up on their OTHER devices, per the server's snapshot.
+    /// Against a pre-shared-budget server (no per-device breakdown) this is 0 and
+    /// `usedMinutesToday` is treated as this device's own total — never double-counted.
+    var otherDevicesUsed: Double {
+        guard let own = deviceUsedMinutesReported else { return 0 }
+        return max(0, usedMinutesToday - own)
+    }
 
     init(
         downtimeEnabled: Bool,
@@ -45,7 +63,7 @@ struct ServerPolicy: Codable {
         usedMinutesToday: Double,
         activities: [ScheduledActivity]? = nil,
         bonusUntil: String? = nil,
-        deviceUsedMinutes: Double = 0,
+        deviceUsedMinutes: Double? = nil,
         deviceCapMinutes: Int? = nil
     ) {
         self.downtimeEnabled = downtimeEnabled
@@ -56,7 +74,7 @@ struct ServerPolicy: Codable {
         self.usedMinutesToday = usedMinutesToday
         self.activities = activities
         self.bonusUntil = bonusUntil
-        self.deviceUsedMinutes = deviceUsedMinutes
+        self.deviceUsedMinutesReported = deviceUsedMinutes
         self.deviceCapMinutes = deviceCapMinutes
     }
 
@@ -69,7 +87,7 @@ struct ServerPolicy: Codable {
         case usedMinutesToday = "used_minutes_today"
         case activities
         case bonusUntil = "bonus_until"
-        case deviceUsedMinutes = "device_used_minutes"
+        case deviceUsedMinutesReported = "device_used_minutes"
         case deviceCapMinutes = "device_cap_minutes"
     }
 
@@ -87,7 +105,7 @@ struct ServerPolicy: Codable {
         usedMinutesToday = try c.decode(Double.self, forKey: .usedMinutesToday)
         activities = try c.decodeIfPresent([ScheduledActivity].self, forKey: .activities)
         bonusUntil = try c.decodeIfPresent(String.self, forKey: .bonusUntil)
-        deviceUsedMinutes = try c.decodeIfPresent(Double.self, forKey: .deviceUsedMinutes) ?? 0
+        deviceUsedMinutesReported = try c.decodeIfPresent(Double.self, forKey: .deviceUsedMinutesReported)
         deviceCapMinutes = try c.decodeIfPresent(Int.self, forKey: .deviceCapMinutes)
     }
 

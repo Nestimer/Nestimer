@@ -1,5 +1,6 @@
 """Endpoints called by the macOS agent on the child's computer."""
 import hashlib
+import logging
 import os
 import re
 from datetime import datetime, time, timezone
@@ -19,6 +20,16 @@ from ..totp import verify_totp
 from ..rate_limit import totp_limiter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+
+logger = logging.getLogger(__name__)
+
+# How much a usage report may exceed real elapsed time before we treat it as bogus.
+# The agent counts wall-clock minutes, so between two reports it can only have gained
+# the time that actually passed; the slack absorbs sync jitter — the gap between the
+# tick that produced the number and the POST that delivers it, a retry after a failed
+# request, and modest clock skew between the child's Mac and the server. Two minutes is
+# comfortably above one 60s sync interval and far below any limit worth enforcing.
+USAGE_REPORT_SLACK_MINUTES = 2.0
 
 
 def format_time(t: time | None) -> str:
@@ -199,13 +210,70 @@ async def get_config(
     )
 
 
+def _clamp_reported_minutes(
+    *,
+    reported: float,
+    previous: float,
+    last_updated: Optional[datetime],
+    now: datetime,
+    device_id: str,
+    date: str,
+) -> float:
+    """Cap an absolute usage report at what this device could actually have accumulated.
+
+    A device's counter can only grow with wall-clock time, so between two reports it
+    can gain at most the elapsed time (plus `USAGE_REPORT_SLACK_MINUTES`). Anything
+    above that is a misbehaving agent — notably agent 2.9, which ratchets its local
+    counter up to `used_minutes_today` (now the CHILD's combined total across devices)
+    and then posts that back as this device's own total. Without this clamp two Macs
+    sharing a child echo each other's sums and both counters explode within a few sync
+    rounds, locking the child out until someone edits the database by hand.
+
+    What this deliberately still allows:
+      * Offline catch-up. `last_updated` only advances when the device reports, so a
+        Mac that was off (or offline) for three hours has three hours of elapsed time
+        to spend and may legitimately report ~180 extra minutes.
+      * Parent-initiated resets. A report LOWER than the stored value is always
+        accepted untouched — the agent honours a downward correction on its next sync.
+      * A brand-new row for the date (handled by the caller): accepted as-is.
+    """
+    if reported <= previous:
+        return reported  # parent reset or a no-op re-send of the same total
+    if last_updated is None:
+        return reported  # no anchor to measure elapsed time against
+
+    # SQLite hands back naive datetimes even for timezone-aware columns.
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+
+    elapsed_minutes = max(0.0, (now - last_updated).total_seconds() / 60.0)
+    ceiling = previous + elapsed_minutes + USAGE_REPORT_SLACK_MINUTES
+    if reported <= ceiling:
+        return reported
+
+    logger.warning(
+        "Clamped usage report for device=%s date=%s: reported %.1fm but only %.1fm "
+        "was reachable (previous %.1fm + %.1fm elapsed + %.1fm slack). "
+        "An agent is reporting time it cannot have accumulated.",
+        device_id, date, reported, ceiling, previous, elapsed_minutes,
+        USAGE_REPORT_SLACK_MINUTES,
+    )
+    return ceiling
+
+
 @router.post("/usage")
 async def report_usage(
     report: UsageReport,
     device: Device = Depends(get_device_by_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Agent reports accumulated usage for a date."""
+    """Agent reports accumulated usage for a date.
+
+    The value is absolute (this device's total for that date), not a delta, and it is
+    clamped to what could physically have been accumulated since this device's previous
+    report — see `_clamp_reported_minutes`.
+    """
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(UsageLog).where(
             UsageLog.device_id == device.id, UsageLog.date == report.date
@@ -214,9 +282,19 @@ async def report_usage(
     log = result.scalar_one_or_none()
 
     if log:
-        log.total_minutes = report.total_minutes
-        log.last_updated = datetime.now(timezone.utc)
+        log.total_minutes = _clamp_reported_minutes(
+            reported=report.total_minutes,
+            previous=log.total_minutes or 0.0,
+            last_updated=log.last_updated,
+            now=now,
+            device_id=device.id,
+            date=report.date,
+        )
+        log.last_updated = now
     else:
+        # First report for this device/date: there is no previous total to measure
+        # growth against, and the agent may legitimately have been counting offline
+        # for hours before its first successful sync. Accept it as-is.
         log = UsageLog(
             device_id=device.id,
             date=report.date,
@@ -224,7 +302,7 @@ async def report_usage(
         )
         db.add(log)
 
-    device.last_seen = datetime.now(timezone.utc)
+    device.last_seen = now
     await db.commit()
     return {"ok": True}
 

@@ -80,7 +80,14 @@ class PolicyEnforcer {
     private(set) var activeActivityEndsAt: String?
 
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
-    func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
+    ///
+    /// `usedMinutesToday` is the CHILD's total across all their devices; `deviceUsedMinutes`
+    /// is this device's own usage, for the per-device ceiling. Pass the agent's live local
+    /// counter for the latter when there is one — it is fresher than `policy.deviceUsedMinutes`,
+    /// which is a server snapshot up to one sync interval old. Omitting it falls back to that
+    /// snapshot.
+    func evaluate(policy: ServerPolicy, usedMinutesToday: Double, deviceUsedMinutes: Double? = nil) {
+        let deviceUsed = deviceUsedMinutes ?? policy.deviceUsedMinutes
         // 0. Check scheduled activities (highest priority — bypasses downtime + limit)
         let (active, endsAt) = findActiveActivity(in: policy.activities ?? [])
         activeActivity = active
@@ -137,7 +144,7 @@ class PolicyEnforcer {
                 limitMinutes: policy.screenTimeLimitMinutes,
                 childUsedMinutes: usedMinutesToday,
                 deviceCapMinutes: policy.deviceCapMinutes,
-                deviceUsedMinutes: policy.deviceUsedMinutes
+                deviceUsedMinutes: deviceUsed
             )
 
             // Lock when less than 1 minute remaining (menu shows 0m at this point)
@@ -146,7 +153,7 @@ class PolicyEnforcer {
                     limitMinutes: policy.screenTimeLimitMinutes,
                     childUsedMinutes: usedMinutesToday,
                     deviceCapMinutes: policy.deviceCapMinutes,
-                    deviceUsedMinutes: policy.deviceUsedMinutes
+                    deviceUsedMinutes: deviceUsed
                 )
                 notifications.showTimeExpired()
                 // On a tie (both limits reach zero together), .binding reports .sharedBudget —
