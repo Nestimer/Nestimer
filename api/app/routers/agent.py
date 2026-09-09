@@ -81,18 +81,32 @@ async def get_config(
     if version:
         device.agent_version = version
 
-    # Policy lives on the child; fall back to the device for rows not yet backfilled.
+    # Policy lives on the child; fall back to the device if the child has no policy row
+    # of its own (e.g. a sibling device whose child's policy-owning device was deleted —
+    # NEVER fall through to "no policy" for a device that has a device-keyed policy, since
+    # that early-returns with screen_time_enabled=False / no downtime, i.e. unlocked forever).
+    policy = None
     if device.child_id:
         result = await db.execute(select(Policy).where(Policy.child_id == device.child_id))
-    else:
+        policy = result.scalar_one_or_none()
+    if policy is None:
         result = await db.execute(select(Policy).where(Policy.device_id == device.id))
-    policy = result.scalar_one_or_none()
+        policy = result.scalar_one_or_none()
 
     # SQLite returns naive datetimes even for tz-aware columns — coerce to UTC.
     bu = device.bonus_until
     if bu is not None and bu.tzinfo is None:
         bu = bu.replace(tzinfo=timezone.utc)
     bonus_until = bu if bu and bu > now else None
+
+    # This device's own counter (used for the per-device ceiling). Computed before the
+    # no-policy early return too, so device_used_minutes is never inconsistent with the
+    # real device_cap_minutes we report alongside it.
+    result = await db.execute(
+        select(UsageLog).where(UsageLog.device_id == device.id, UsageLog.date == today)
+    )
+    own = result.scalar_one_or_none()
+    device_used = own.total_minutes if own else 0.0
 
     if not policy:
         await db.commit()
@@ -103,25 +117,23 @@ async def get_config(
             screen_time_enabled=False,
             screen_time_limit_minutes=999,
             used_minutes_today=0,
-            device_used_minutes=0.0,
+            device_used_minutes=device_used,
             device_cap_minutes=device.daily_cap_minutes,
             bonus_until=bonus_until,
         )
 
-    # This device's own counter (used for the per-device ceiling).
-    result = await db.execute(
-        select(UsageLog).where(UsageLog.device_id == device.id, UsageLog.date == today)
-    )
-    own = result.scalar_one_or_none()
-    device_used = own.total_minutes if own else 0.0
-
-    # The child's shared counter: the sum over every device they own.
+    # The child's shared counter: the sum over every device they own (scoped to the same
+    # owner too, as defense in depth against a device ever mis-linking to another user's child).
     if device.child_id:
         result = await db.execute(
             select(func.coalesce(func.sum(UsageLog.total_minutes), 0.0))
             .select_from(UsageLog)
             .join(Device, Device.id == UsageLog.device_id)
-            .where(Device.child_id == device.child_id, UsageLog.date == today)
+            .where(
+                Device.child_id == device.child_id,
+                Device.owner_id == device.owner_id,
+                UsageLog.date == today,
+            )
         )
         used_today = float(result.scalar_one())
     else:
