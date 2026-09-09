@@ -24,12 +24,28 @@ class User(Base):
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
 
 
+class Child(Base):
+    """A child. Owns the policy, activities and bonus window shared by all their devices."""
+    __tablename__ = "children"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    bonus_until = Column(DateTime(timezone=True), nullable=True)  # parent-granted temporary unlock
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    devices = relationship("Device", back_populates="child")
+
+
 class Device(Base):
     """A child's Mac registered to a parent."""
     __tablename__ = "devices"
 
     id = Column(String, primary_key=True, default=gen_uuid)
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+    child_id = Column(String, ForeignKey("children.id"), nullable=True, index=True)
+    platform = Column(String, nullable=False, default="macos")  # macos | android | ios
+    daily_cap_minutes = Column(Integer, nullable=True)  # per-device ceiling; null = no ceiling
     name = Column(String, nullable=False)  # e.g. "Alex's MacBook"
     child_name = Column(String, nullable=False)
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
@@ -40,6 +56,7 @@ class Device(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="devices")
+    child = relationship("Child", back_populates="devices")
     policy = relationship("Policy", back_populates="device", uselist=False, cascade="all, delete-orphan")
     usage_logs = relationship("UsageLog", back_populates="device", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="device", cascade="all, delete-orphan")
@@ -50,7 +67,8 @@ class Policy(Base):
     __tablename__ = "policies"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    device_id = Column(String, ForeignKey("devices.id"), unique=True, nullable=False)
+    device_id = Column(String, ForeignKey("devices.id"), unique=True, nullable=True)
+    child_id = Column(String, ForeignKey("children.id"), unique=True, nullable=True)
 
     # Downtime: when the computer is fully locked
     downtime_enabled = Column(Boolean, default=True)
@@ -107,7 +125,8 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=True, index=True)
+    child_id = Column(String, ForeignKey("children.id"), nullable=True, index=True)
     name = Column(String, nullable=False)  # e.g. "English"
     day_of_week = Column(Integer, nullable=False)  # 0=Mon, 6=Sun
     start_time = Column(Time, nullable=False)

@@ -49,3 +49,22 @@ async def init_db():
         pol_cols = await _get_columns(conn, "policies")
         for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]:
             await _add_column_if_missing(conn, "policies", f"screen_time_{day}_minutes", "INTEGER", pol_cols)
+
+        # children / shared-budget migration (see specs/2026-09-09-cross-platform-shared-budget-design.md)
+        await _add_column_if_missing(conn, "devices", "child_id", "TEXT", dev_cols)
+        await _add_column_if_missing(conn, "devices", "platform", "TEXT", dev_cols)
+        await _add_column_if_missing(conn, "devices", "daily_cap_minutes", "INTEGER", dev_cols)
+        await _add_column_if_missing(conn, "policies", "child_id", "TEXT", pol_cols)
+
+        act_cols = await _get_columns(conn, "activities")
+        await _add_column_if_missing(conn, "activities", "child_id", "TEXT", act_cols)
+
+        # Existing rows predate `platform`; they are all Macs.
+        await conn.execute(text("UPDATE devices SET platform = 'macos' WHERE platform IS NULL"))
+
+        # Policies and activities may now belong to a child instead of a device.
+        # SQLite cannot drop NOT NULL, but its test databases are created fresh
+        # from the models, where these columns are already nullable.
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("ALTER TABLE policies ALTER COLUMN device_id DROP NOT NULL"))
+            await conn.execute(text("ALTER TABLE activities ALTER COLUMN device_id DROP NOT NULL"))
