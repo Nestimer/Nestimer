@@ -17,10 +17,43 @@ function isOnline(dateStr) {
   return (Date.now() - new Date(dateStr).getTime()) < 3 * 60 * 1000 // 3 min
 }
 
+// A device is stale when it hasn't reported in over 15 minutes — the compensating
+// control for platforms the agent can't forcibly lock: a bypass stops being invisible.
+const STALE_AFTER_MS = 15 * 60 * 1000
+
+function isStale(device) {
+  return !device.last_seen || (Date.now() - new Date(device.last_seen).getTime()) > STALE_AFTER_MS
+}
+
+function staleLabel(device) {
+  if (!device.last_seen) return 'Never reported'
+  const seen = new Date(device.last_seen)
+  const hh = String(seen.getHours()).padStart(2, '0')
+  const mm = String(seen.getMinutes()).padStart(2, '0')
+  return `Not reporting since ${hh}:${mm}`
+}
+
+// One shared daily budget per child, across all their devices. Group the device
+// list by child so that's visible; devices without a child yet go in a trailing
+// "Unassigned" group instead of vanishing.
+function groupByChild(devices, children) {
+  const byId = new Map(children.map((c) => [c.id, { child: c, devices: [] }]))
+  const orphans = []
+  for (const device of devices) {
+    const group = byId.get(device.child_id)
+    if (group) group.devices.push(device)
+    else orphans.push(device)
+  }
+  const groups = [...byId.values()].filter((g) => g.devices.length > 0)
+  if (orphans.length) groups.push({ child: { id: null, name: 'Unassigned' }, devices: orphans })
+  return groups
+}
+
 export default function DevicesPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [devices, setDevices] = useState([])
+  const [children, setChildren] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [childName, setChildName] = useState('')
@@ -30,8 +63,9 @@ export default function DevicesPage() {
 
   const loadDevices = async () => {
     try {
-      const data = await api.listDevices()
-      setDevices(data)
+      const [devs, kids] = await Promise.all([api.listDevices(), api.listChildren()])
+      setDevices(devs)
+      setChildren(kids)
     } catch (e) { console.error(e) }
   }
 
@@ -40,9 +74,9 @@ export default function DevicesPage() {
     try {
       const device = await api.createDevice({ name: newName, child_name: childName })
       setNewToken(device.api_token)
-      setDevices([...devices, { id: device.id, name: device.name, child_name: device.child_name, last_seen: null }])
       setNewName('')
       setChildName('')
+      loadDevices()
     } catch (e) { alert(e.message) }
   }
 
@@ -98,17 +132,27 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {devices.map(device => (
-        <div key={device.id} className="card device-card" onClick={() => navigate(`/devices/${device.id}`)}>
-          <div className="device-info">
-            <h3>{device.name}</h3>
-            <p className="child-name">{device.child_name}</p>
-          </div>
-          <div className="device-status">
-            <span className={`status-dot ${isOnline(device.last_seen) ? 'status-online' : 'status-offline'}`}></span>
-            {isOnline(device.last_seen) ? 'Online' : timeSince(device.last_seen)}
-            {device.agent_version && <div style={{ fontSize: 11, color: '#86868b', marginTop: 2 }}>v{device.agent_version}</div>}
-          </div>
+      {groupByChild(devices, children).map(({ child, devices: childDevices }) => (
+        <div key={child.id ?? 'unassigned'}>
+          <h2 className="section-title">{child.name}</h2>
+          {childDevices.map(device => (
+            <div key={device.id} className="card device-card" onClick={() => navigate(`/devices/${device.id}`)}>
+              <div className="device-info">
+                <h3>{device.name}</h3>
+                <p className="child-name">{device.child_name}</p>
+              </div>
+              <div className="device-status">
+                <span className={`status-dot ${isOnline(device.last_seen) ? 'status-online' : 'status-offline'}`}></span>
+                {isOnline(device.last_seen) ? 'Online' : timeSince(device.last_seen)}
+                {device.agent_version && <div style={{ fontSize: 11, color: '#86868b', marginTop: 2 }}>v{device.agent_version}</div>}
+                {isStale(device) && (
+                  <div style={{ fontSize: 11, color: '#ff9500', fontWeight: 600, marginTop: 4 }}>
+                    {staleLabel(device)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>

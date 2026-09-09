@@ -28,19 +28,23 @@ export default function DeviceDetailPage() {
   const [editName, setEditName] = useState('')
   const [editChildName, setEditChildName] = useState('')
   const [savingName, setSavingName] = useState(false)
+  const [children, setChildren] = useState([])
+  const [savingCap, setSavingCap] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [dev, pol, usg, acts] = await Promise.all([
+      const [dev, pol, usg, acts, kids] = await Promise.all([
         api.getDevice(id),
         api.getPolicy(id),
         api.getUsage(id, 7),
         api.listActivities(id),
+        api.listChildren(),
       ])
       setDevice(dev)
       setPolicy(pol)
       setUsage(usg)
       setActivities(acts)
+      setChildren(kids)
       setBonusUntil(dev.bonus_until ? new Date(dev.bonus_until) : null)
     } catch (e) { console.error(e) }
   }, [id])
@@ -90,6 +94,26 @@ export default function DeviceDetailPage() {
       setPolicy(updated)
     } catch (e) { alert(e.message) }
     setSaving(false)
+  }
+
+  // Daily cap is a ceiling within the child's shared daily budget — it never grants
+  // this device extra time. Blank input means "no cap" (null), which is distinct
+  // from 0 ("no time at all on this device"), so send exactly what the field holds.
+  const setDailyCap = async (raw) => {
+    const minutes = raw === '' ? null : parseInt(raw, 10)
+    setSavingCap(true)
+    try {
+      const updated = await api.updateDevice(id, { daily_cap_minutes: minutes })
+      setDevice(updated)
+    } catch (e) { alert(e.message) }
+    setSavingCap(false)
+  }
+
+  const moveToChild = async (childId) => {
+    try {
+      const updated = await api.updateDevice(id, { child_id: childId })
+      setDevice(updated)
+    } catch (e) { alert(e.message) }
   }
 
   if (!device || !policy) return <div className="loading">Loading...</div>
@@ -410,6 +434,40 @@ export default function DeviceDetailPage() {
             </div>
           </>
         )}
+      </div>
+
+      {/* Shared daily budget: per-device cap + which child this device belongs to */}
+      <h2 className="section-title">Shared Daily Budget</h2>
+      <div className="card">
+        <p style={{ color: '#86868b', fontSize: 13, marginBottom: 12 }}>
+          Each child has one daily screen-time budget shared across all their devices. Time spent on any of a child's devices drains that same budget.
+        </p>
+
+        <div className="form-group">
+          <label>Child</label>
+          <select value={device.child_id ?? ''} onChange={(e) => moveToChild(e.target.value)}>
+            {!device.child_id && <option value="" disabled>Unassigned</option>}
+            {children.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group" style={{ marginBottom: 4 }}>
+          <label>Daily cap on this device</label>
+          <input
+            type="number"
+            min="0"
+            max="1440"
+            value={device.daily_cap_minutes ?? ''}
+            placeholder="No cap"
+            onChange={(e) => setDailyCap(e.target.value)}
+          />
+          <small style={{ display: 'block', marginTop: 6, color: '#86868b', fontSize: 12 }}>
+            Minutes of the shared daily budget that may be spent on this device. It is a ceiling within that budget, not extra time — leave blank for no ceiling.
+          </small>
+        </div>
+        {savingCap && <p style={{ color: '#86868b', fontSize: 13, marginTop: 8 }}>Saving...</p>}
       </div>
 
       {/* Scheduled activities */}
