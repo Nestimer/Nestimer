@@ -24,6 +24,7 @@
 		AA0015 /* watchdog.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0015 /* watchdog.plist */; };
 		AA0016 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0016 /* KeychainStore.swift */; };
 		AA0017 /* MediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0017 /* MediaController.swift */; };
+		AA0018 /* RemainingTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0018 /* RemainingTime.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		BB0015 /* watchdog.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = watchdog.plist; sourceTree = "<group>"; };
 		BB0016 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		BB0017 /* MediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaController.swift; sourceTree = "<group>"; };
+		BB0018 /* RemainingTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemainingTime.swift; sourceTree = "<group>"; };
 		CC0001 /* NesTimerAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimerAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC0002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CC0003 /* NesTimerAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerAgent.entitlements; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 				BB0013 /* SystemInstaller.swift */,
 				BB0016 /* KeychainStore.swift */,
 				BB0017 /* MediaController.swift */,
+				BB0018 /* RemainingTime.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -188,6 +191,7 @@
 				AA0013 /* SystemInstaller.swift in Sources */,
 				AA0016 /* KeychainStore.swift in Sources */,
 				AA0017 /* MediaController.swift in Sources */,
+				AA0018 /* RemainingTime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

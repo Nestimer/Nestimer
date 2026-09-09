@@ -86,13 +86,12 @@ final class PolicyEnforcerLogicTests: XCTestCase {
         XCTAssertFalse(isScreenTimeExceeded(policy: policy, usedMinutes: 999.0))
     }
 
-    func testRemainingMinutes() {
-        let policy = makePolicy(screenTimeLimitMinutes: 120)
-        XCTAssertEqual(remainingMinutes(policy: policy, usedMinutes: 0), 120.0)
-        XCTAssertEqual(remainingMinutes(policy: policy, usedMinutes: 60), 60.0)
-        XCTAssertEqual(remainingMinutes(policy: policy, usedMinutes: 120), 0.0)
-        XCTAssertEqual(remainingMinutes(policy: policy, usedMinutes: 150), 0.0)  // clamped to 0
-    }
+    // MARK: - Remaining time (production logic, not a mirror)
+    //
+    // The old `remainingMinutes` helper here was a private re-implementation of
+    // PolicyEnforcer's calculation, so it never actually exercised production code.
+    // That logic now lives in RemainingTime.swift and is tested for real by
+    // macos-agent/NesTimerAgentTests/run-logic-tests.sh. Do not re-add a mirror here.
 
     // MARK: - Helper functions (mirrors PolicyEnforcer logic)
 
@@ -116,9 +115,5 @@ final class PolicyEnforcerLogicTests: XCTestCase {
     private func isScreenTimeExceeded(policy: ServerPolicy, usedMinutes: Double) -> Bool {
         guard policy.screenTimeEnabled else { return false }
         return usedMinutes >= Double(policy.screenTimeLimitMinutes)
-    }
-
-    private func remainingMinutes(policy: ServerPolicy, usedMinutes: Double) -> Double {
-        max(0, Double(policy.screenTimeLimitMinutes) - usedMinutes)
     }
 }

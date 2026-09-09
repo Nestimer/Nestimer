@@ -121,8 +121,12 @@ class PolicyEnforcer {
 
         // 2. Check screen time limit
         if policy.screenTimeEnabled {
-            let limitMinutes = Double(policy.screenTimeLimitMinutes)
-            let remaining = limitMinutes - usedMinutesToday
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: usedMinutesToday,
+                deviceCapMinutes: nil,
+                deviceUsedMinutes: usedMinutesToday
+            )
 
             // Lock when less than 1 minute remaining (menu shows 0m at this point)
             if remaining < 1 {
