@@ -14,7 +14,9 @@ final class PolicyEnforcerLogicTests: XCTestCase {
         downtimeEnd: String = "08:00",
         screenTimeEnabled: Bool = true,
         screenTimeLimitMinutes: Int = 120,
-        usedMinutesToday: Double = 0
+        usedMinutesToday: Double = 0,
+        deviceUsedMinutes: Double = 0,
+        deviceCapMinutes: Int? = nil
     ) -> ServerPolicy {
         ServerPolicy(
             downtimeEnabled: downtimeEnabled,
@@ -22,7 +24,9 @@ final class PolicyEnforcerLogicTests: XCTestCase {
             downtimeEnd: downtimeEnd,
             screenTimeEnabled: screenTimeEnabled,
             screenTimeLimitMinutes: screenTimeLimitMinutes,
-            usedMinutesToday: usedMinutesToday
+            usedMinutesToday: usedMinutesToday,
+            deviceUsedMinutes: deviceUsedMinutes,
+            deviceCapMinutes: deviceCapMinutes
         )
     }
 

@@ -31,6 +31,10 @@ struct ServerPolicy: Codable {
     let activities: [ScheduledActivity]?
     /// Parent-granted bonus window (ISO8601 UTC). Decoded into `bonusUntilDate`.
     let bonusUntil: String?
+    /// This device's own usage today. Absent on servers older than the shared-budget release.
+    let deviceUsedMinutes: Double
+    /// Per-device ceiling within the shared budget. Nil means no ceiling.
+    let deviceCapMinutes: Int?
 
     init(
         downtimeEnabled: Bool,
@@ -40,7 +44,9 @@ struct ServerPolicy: Codable {
         screenTimeLimitMinutes: Int,
         usedMinutesToday: Double,
         activities: [ScheduledActivity]? = nil,
-        bonusUntil: String? = nil
+        bonusUntil: String? = nil,
+        deviceUsedMinutes: Double = 0,
+        deviceCapMinutes: Int? = nil
     ) {
         self.downtimeEnabled = downtimeEnabled
         self.downtimeStart = downtimeStart
@@ -50,6 +56,8 @@ struct ServerPolicy: Codable {
         self.usedMinutesToday = usedMinutesToday
         self.activities = activities
         self.bonusUntil = bonusUntil
+        self.deviceUsedMinutes = deviceUsedMinutes
+        self.deviceCapMinutes = deviceCapMinutes
     }
 
     enum CodingKeys: String, CodingKey {
@@ -61,6 +69,26 @@ struct ServerPolicy: Codable {
         case usedMinutesToday = "used_minutes_today"
         case activities
         case bonusUntil = "bonus_until"
+        case deviceUsedMinutes = "device_used_minutes"
+        case deviceCapMinutes = "device_cap_minutes"
+    }
+
+    /// Custom decoder: `deviceUsedMinutes`/`deviceCapMinutes` are optional on the wire
+    /// because a server older than the shared-budget release omits them entirely.
+    /// Decoding must NOT throw in that case — a throw here would leave the device
+    /// unmanaged (PolicyEnforcer never runs) until the server is upgraded.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        downtimeEnabled = try c.decode(Bool.self, forKey: .downtimeEnabled)
+        downtimeStart = try c.decode(String.self, forKey: .downtimeStart)
+        downtimeEnd = try c.decode(String.self, forKey: .downtimeEnd)
+        screenTimeEnabled = try c.decode(Bool.self, forKey: .screenTimeEnabled)
+        screenTimeLimitMinutes = try c.decode(Int.self, forKey: .screenTimeLimitMinutes)
+        usedMinutesToday = try c.decode(Double.self, forKey: .usedMinutesToday)
+        activities = try c.decodeIfPresent([ScheduledActivity].self, forKey: .activities)
+        bonusUntil = try c.decodeIfPresent(String.self, forKey: .bonusUntil)
+        deviceUsedMinutes = try c.decodeIfPresent(Double.self, forKey: .deviceUsedMinutes) ?? 0
+        deviceCapMinutes = try c.decodeIfPresent(Int.self, forKey: .deviceCapMinutes)
     }
 
     var bonusUntilDate: Date? {

@@ -124,8 +124,8 @@ class PolicyEnforcer {
             let remaining = RemainingTime.minutes(
                 limitMinutes: policy.screenTimeLimitMinutes,
                 childUsedMinutes: usedMinutesToday,
-                deviceCapMinutes: nil,
-                deviceUsedMinutes: usedMinutesToday
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: policy.deviceUsedMinutes
             )
 
             // Lock when less than 1 minute remaining (menu shows 0m at this point)

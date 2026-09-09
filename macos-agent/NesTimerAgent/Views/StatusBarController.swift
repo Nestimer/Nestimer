@@ -36,7 +36,12 @@ class StatusBarController {
         }
 
         if let policy = currentPolicy, policy.screenTimeEnabled {
-            let remaining = Double(policy.screenTimeLimitMinutes) - usedMinutes
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: usedMinutes,
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: policy.deviceUsedMinutes
+            )
             if remaining > 0 {
                 let h = Int(remaining) / 60
                 let m = Int(remaining) % 60
@@ -91,7 +96,12 @@ class StatusBarController {
 
             if let policy = currentPolicy {
                 if policy.screenTimeEnabled {
-                    let remaining = max(0, Double(policy.screenTimeLimitMinutes) - used)
+                    let remaining = RemainingTime.minutes(
+                        limitMinutes: policy.screenTimeLimitMinutes,
+                        childUsedMinutes: used,
+                        deviceCapMinutes: policy.deviceCapMinutes,
+                        deviceUsedMinutes: policy.deviceUsedMinutes
+                    )
                     let limitText = formatMinutes(policy.screenTimeLimitMinutes)
 
                     let usageItem = NSMenuItem(

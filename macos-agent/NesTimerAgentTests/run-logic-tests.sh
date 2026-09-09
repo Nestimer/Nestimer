@@ -75,6 +75,31 @@ check(
     0.0
 )
 
+check(
+    "testDeviceCapBindsBeforeSharedBudget",
+    // 120 min budget with 20 used overall, but only 60 allowed here and 55 already spent.
+    RemainingTime.minutes(limitMinutes: 120, childUsedMinutes: 20, deviceCapMinutes: 60, deviceUsedMinutes: 55),
+    5.0
+)
+
+check(
+    "testSharedBudgetBindsWhenCapIsLooser",
+    RemainingTime.minutes(limitMinutes: 120, childUsedMinutes: 115, deviceCapMinutes: 60, deviceUsedMinutes: 10),
+    5.0
+)
+
+check(
+    "testBindingLimitIsReportedForTheLockScreen_deviceCap",
+    RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 20, deviceCapMinutes: 60, deviceUsedMinutes: 55),
+    LimitSource.deviceCap
+)
+
+check(
+    "testBindingLimitIsReportedForTheLockScreen_sharedBudget",
+    RemainingTime.binding(limitMinutes: 120, childUsedMinutes: 115, deviceCapMinutes: 60, deviceUsedMinutes: 10),
+    LimitSource.sharedBudget
+)
+
 // MARK: - Report
 
 if failures > 0 {

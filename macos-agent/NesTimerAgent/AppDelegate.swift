@@ -188,7 +188,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             lastPolicy = policy
             lastSyncTime = Date()
 
-            let remaining = Double(policy.screenTimeLimitMinutes) - currentUsed
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: currentUsed,
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: policy.deviceUsedMinutes
+            )
             let nextIn = Int(adaptiveSyncInterval())
             NSLog("[NesTimerAgent] Sync OK — used: \(String(format: "%.1f", currentUsed))m, limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
         } catch {
@@ -207,7 +212,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Calculate remaining minutes from last policy
         if let policy = lastPolicy, policy.screenTimeEnabled {
-            let remaining = Double(policy.screenTimeLimitMinutes) - usageTracker.getUsedMinutesToday()
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: usageTracker.getUsedMinutesToday(),
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: policy.deviceUsedMinutes
+            )
             if remaining < 5 { return 10 }
             if remaining < 30 { return 20 }
         }
