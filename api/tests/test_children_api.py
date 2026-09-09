@@ -135,3 +135,90 @@ async def test_cannot_delete_another_parents_child(client):
         headers={"Authorization": f"Bearer {token_b}"}
     )
     assert resp.status_code == 404
+
+
+async def test_renaming_a_child_renames_them_on_every_device(client):
+    """`Device.child_name` is a denormalised copy — the web device cards and the iOS
+    parent app read it. A rename that only touches `Child.name` leaves the group heading
+    saying "Alexander" while every card under it still says "Alex"."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    mac = await create_device(client, token, name="Mac", child_name="Alex")
+    child_id = (await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)).json()["child_id"]
+    # A second device on the same child — every one of them must follow the rename.
+    phone_resp = await client.post(
+        "/api/v1/devices",
+        json={"name": "Phone", "child_name": "Alex", "child_id": child_id},
+        headers=headers,
+    )
+    assert phone_resp.status_code == 200
+    phone = phone_resp.json()
+
+    resp = await client.patch(
+        f"/api/v1/children/{child_id}", json={"name": "Alexander"}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Alexander"
+
+    for device_id in (mac["id"], phone["id"]):
+        device = (await client.get(f"/api/v1/devices/{device_id}", headers=headers)).json()
+        assert device["child_name"] == "Alexander", f"device {device_id} still shows the old name"
+
+
+async def test_a_device_added_to_an_api_created_child_gets_a_device_keyed_policy(client):
+    """"Add Child", then add a device to that child: the resulting policy row must be
+    reachable by `device_id`, not only by `child_id`.
+
+    An API rolled back to pre-child code against a still-migrated database looks policies
+    up by `device_id` alone. A row it cannot find means its no-policy branch —
+    screen_time_enabled=False, downtime_enabled=False — and the child's Mac stops locking
+    entirely. `POST /children` therefore creates no policy row at all; `POST /devices`
+    creates it, with both ids stamped, when the first device attaches.
+    """
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    child = (await client.post("/api/v1/children", json={"name": "Alex"}, headers=headers)).json()
+
+    async def _policies(conn):
+        return (await conn.execute(text("SELECT child_id, device_id FROM policies"))).all()
+
+    rows = await _run_on_app_db(_policies)
+    assert rows == [], "a child with no devices must not own an unreachable policy row"
+
+    resp = await client.post(
+        "/api/v1/devices",
+        json={"name": "Mac", "child_name": "Alex", "child_id": child["id"]},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    device_id = resp.json()["id"]
+
+    rows = await _run_on_app_db(_policies)
+    assert rows == [(child["id"], device_id)], (
+        "the device's policy must carry BOTH ids — device_id is the only route back "
+        "for a rolled-back API"
+    )
+
+
+async def test_auto_created_policy_is_device_keyed_too(client):
+    """`GET /devices/{id}/policy` can create the policy row itself (a device whose child
+    has none and which has no legacy device-keyed row either). That row needs `device_id`
+    for exactly the same rollback reason."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    device = await create_device(client, token, name="Mac")
+
+    async def _drop_policies(conn):
+        await conn.execute(text("DELETE FROM policies"))
+
+    await _run_on_app_db(_drop_policies)
+
+    resp = await client.get(f"/api/v1/devices/{device['id']}/policy", headers=headers)
+    assert resp.status_code == 200
+
+    async def _policy_device_ids(conn):
+        return (await conn.execute(text("SELECT device_id FROM policies"))).scalars().all()
+
+    assert list(await _run_on_app_db(_policy_device_ids)) == [device["id"]]

@@ -23,11 +23,16 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 async def _effective_bonus_until(db: AsyncSession, device: Device) -> Optional[datetime]:
     """Bonus window as reported to the parent apps (`DeviceOut.bonus_until`): the
-    child's window when this device has a child, falling back to the device's own
-    (pre-migration) value only when the child's is None. Same non-exclusive fallback
-    shape as `/agent/config` — grant-bonus writes to the child now, so a stale device
-    row must never shadow it, and a stale device row must never be reported as live
-    once the child has (or clears) its own window."""
+    child's window when this device has a child AND that window is set, falling back to
+    the device's own (pre-migration) value whenever the child's is None. Same non-exclusive
+    fallback shape as `/agent/config` — grant-bonus writes to the child now, so a live
+    child window always shadows a stale device one.
+
+    Note what this does NOT do: a child window that is cleared back to None (nothing does
+    that today — there is no revoke path) falls straight back to the device's own value,
+    so a stale device window WOULD resurface. Whoever adds a revoke must clear
+    `Device.bonus_until` too, or make this fallback conditional on the child never having
+    had a window."""
     if device.child_id:
         result = await db.execute(select(Child.bonus_until).where(Child.id == device.child_id))
         bu = result.scalar_one_or_none()
@@ -128,8 +133,17 @@ async def create_device(
     # this device silently loses its rules AND its activities (that branch returns
     # before activities are computed).
     result = await db.execute(select(Policy).where(Policy.child_id == child.id))
-    if result.scalar_one_or_none() is None:
+    child_policy = result.scalar_one_or_none()
+    if child_policy is None:
         db.add(Policy(child_id=child.id, device_id=device.id))
+    elif child_policy.device_id is None:
+        # The child already has a policy, but nothing device-keyed points at it — it was
+        # created without a device (an older build's `POST /children`, or `get_policy`'s
+        # auto-create before it stamped device_id). Adopt it under this device so the
+        # device-keyed fallback described above has a row to find. Safe despite the unique
+        # constraint on Policy.device_id: this device was created moments ago, so no other
+        # policy row can reference it.
+        child_policy.device_id = device.id
 
     await db.commit()
     await db.refresh(device)
@@ -334,7 +348,11 @@ async def get_policy(
 
     policy = await _resolve_policy(db, child_id, device_id)
     if policy is None:
-        policy = Policy(child_id=child_id)
+        # Stamp device_id as well as child_id: the device-keyed lookup is the only route
+        # back to this row for an API rolled back to pre-child code against a migrated
+        # database, and that code's no-policy branch leaves the device unlocked forever.
+        # Same reasoning as create_device — see the long comment there.
+        policy = Policy(child_id=child_id, device_id=device_id)
         db.add(policy)
 
     await db.commit()

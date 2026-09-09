@@ -29,27 +29,50 @@ export default function DeviceDetailPage() {
   const [editChildName, setEditChildName] = useState('')
   const [savingName, setSavingName] = useState(false)
   const [children, setChildren] = useState([])
+  const [childrenError, setChildrenError] = useState('')
   const [savingCap, setSavingCap] = useState(false)
+  // The cap input is edited locally and written on blur/Enter — see saveDailyCap.
+  const [capInput, setCapInput] = useState('')
 
+  // Children are loaded separately from the device, exactly as DevicesPage does it.
+  // This is the page where a parent grants bonus time and edits the policy, so a failing
+  // /children request must not keep it on "Loading..." forever — it degrades the child
+  // selector and nothing else.
   const load = useCallback(async () => {
     try {
-      const [dev, pol, usg, acts, kids] = await Promise.all([
+      const [dev, pol, usg, acts] = await Promise.all([
         api.getDevice(id),
         api.getPolicy(id),
         api.getUsage(id, 7),
         api.listActivities(id),
-        api.listChildren(),
       ])
       setDevice(dev)
       setPolicy(pol)
       setUsage(usg)
       setActivities(acts)
-      setChildren(kids)
       setBonusUntil(dev.bonus_until ? new Date(dev.bonus_until) : null)
     } catch (e) { console.error(e) }
   }, [id])
 
+  const loadChildren = useCallback(async () => {
+    try {
+      const kids = await api.listChildren()
+      setChildren(kids)
+      setChildrenError('')
+    } catch (e) {
+      console.error(e)
+      setChildren([])
+      setChildrenError('Could not load children — the child selector is unavailable.')
+    }
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadChildren() }, [loadChildren])
+
+  // Mirror the server's value into the input whenever the device is (re)loaded.
+  useEffect(() => {
+    setCapInput(device?.daily_cap_minutes ?? '')
+  }, [device?.daily_cap_minutes])
 
   // Bonus remaining countdown
   useEffect(() => {
@@ -99,13 +122,27 @@ export default function DeviceDetailPage() {
   // Daily cap is a ceiling within the child's shared daily budget — it never grants
   // this device extra time. Blank input means "no cap" (null), which is distinct
   // from 0 ("no time at all on this device"), so send exactly what the field holds.
-  const setDailyCap = async (raw) => {
+  //
+  // Saved on blur or Enter, never per keystroke: typing "60" used to PATCH a cap of 6
+  // first, and if the agent happened to sync in that window on a device already past 6
+  // minutes, the child's Mac locked with the "Done On This Mac" screen until the next
+  // sync undid it.
+  const saveDailyCap = async (raw) => {
+    const current = device.daily_cap_minutes ?? null
     const minutes = raw === '' ? null : parseInt(raw, 10)
+    if (minutes !== null && (Number.isNaN(minutes) || minutes < 0 || minutes > 1440)) {
+      setCapInput(current ?? '')  // reject garbage, put the stored value back
+      return
+    }
+    if (minutes === current) return
     setSavingCap(true)
     try {
       const updated = await api.updateDevice(id, { daily_cap_minutes: minutes })
       setDevice(updated)
-    } catch (e) { alert(e.message) }
+    } catch (e) {
+      alert(e.message)
+      setCapInput(current ?? '')
+    }
     setSavingCap(false)
   }
 
@@ -451,6 +488,11 @@ export default function DeviceDetailPage() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {childrenError && (
+            <small style={{ display: 'block', marginTop: 6, color: '#d70015', fontSize: 12 }}>
+              {childrenError}
+            </small>
+          )}
         </div>
 
         <div className="form-group" style={{ marginBottom: 4 }}>
@@ -459,9 +501,11 @@ export default function DeviceDetailPage() {
             type="number"
             min="0"
             max="1440"
-            value={device.daily_cap_minutes ?? ''}
+            value={capInput}
             placeholder="No cap"
-            onChange={(e) => setDailyCap(e.target.value)}
+            onChange={(e) => setCapInput(e.target.value)}
+            onBlur={(e) => saveDailyCap(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
           />
           <small style={{ display: 'block', marginTop: 6, color: '#86868b', fontSize: 12 }}>
             Minutes of the shared daily budget that may be spent on this device. It is a ceiling within that budget, not extra time — leave blank for no ceiling.
