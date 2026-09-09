@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
@@ -81,8 +81,11 @@ async def get_config(
     if version:
         device.agent_version = version
 
-    # Get policy
-    result = await db.execute(select(Policy).where(Policy.device_id == device.id))
+    # Policy lives on the child; fall back to the device for rows not yet backfilled.
+    if device.child_id:
+        result = await db.execute(select(Policy).where(Policy.child_id == device.child_id))
+    else:
+        result = await db.execute(select(Policy).where(Policy.device_id == device.id))
     policy = result.scalar_one_or_none()
 
     # SQLite returns naive datetimes even for tz-aware columns — coerce to UTC.
@@ -100,15 +103,29 @@ async def get_config(
             screen_time_enabled=False,
             screen_time_limit_minutes=999,
             used_minutes_today=0,
+            device_used_minutes=0.0,
+            device_cap_minutes=device.daily_cap_minutes,
             bonus_until=bonus_until,
         )
 
-    # Get today's usage
+    # This device's own counter (used for the per-device ceiling).
     result = await db.execute(
         select(UsageLog).where(UsageLog.device_id == device.id, UsageLog.date == today)
     )
-    usage = result.scalar_one_or_none()
-    used_today = usage.total_minutes if usage else 0.0
+    own = result.scalar_one_or_none()
+    device_used = own.total_minutes if own else 0.0
+
+    # The child's shared counter: the sum over every device they own.
+    if device.child_id:
+        result = await db.execute(
+            select(func.coalesce(func.sum(UsageLog.total_minutes), 0.0))
+            .select_from(UsageLog)
+            .join(Device, Device.id == UsageLog.device_id)
+            .where(Device.child_id == device.child_id, UsageLog.date == today)
+        )
+        used_today = float(result.scalar_one())
+    else:
+        used_today = device_used
 
     ds, de = get_effective_downtime(policy, agent_weekday)
     limit = get_effective_limit(policy, agent_weekday)
@@ -141,6 +158,8 @@ async def get_config(
         screen_time_enabled=policy.screen_time_enabled,
         screen_time_limit_minutes=limit,
         used_minutes_today=used_today,
+        device_used_minutes=device_used,
+        device_cap_minutes=device.daily_cap_minutes,
         activities=activities,
         bonus_until=bonus_until,
     )

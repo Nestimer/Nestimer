@@ -177,6 +177,8 @@ class AgentConfig(BaseModel):
     screen_time_enabled: bool
     screen_time_limit_minutes: int
     used_minutes_today: float
+    device_used_minutes: float = 0.0       # this device's own total for the day
+    device_cap_minutes: Optional[int] = None  # per-device ceiling; null = no ceiling
     activities: list["ActivityOut"] = Field(default_factory=list)
     bonus_until: Optional[datetime] = None  # parent-granted temporary unlock window
 
