@@ -72,6 +72,13 @@ async def _backfill_children(conn):
 
 async def init_db():
     async with engine.begin() as conn:
+        # init_db() runs once per uvicorn worker (FastAPI lifespan, --workers 4 in the
+        # Dockerfile), so every migration below would otherwise run four times
+        # concurrently against the same database. Serialize them. The _xact_ variant
+        # releases automatically when this transaction ends, including on crash.
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 8274613905})
+
         await conn.run_sync(Base.metadata.create_all)
 
         # --- Migrations for existing databases ---

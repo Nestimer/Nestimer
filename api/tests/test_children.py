@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.database import _backfill_children
 from app.models.models import Child, Device
 
 pytestmark = pytest.mark.anyio
@@ -196,8 +197,6 @@ async def test_init_db_migrates_a_pre_migration_database(tmp_path, monkeypatch):
 
 async def test_backfill_creates_one_child_per_device(db_session):
     """Migration is strictly 1:1 — two devices never get merged, even with the same child_name."""
-    from app.database import _backfill_children
-
     conn = await db_session.connection()
     await conn.execute(text(
         "INSERT INTO users (id, email, hashed_password, name) "
@@ -230,8 +229,6 @@ async def test_backfill_creates_one_child_per_device(db_session):
 
 async def test_backfill_is_idempotent(db_session):
     """init_db runs on every boot, so a second pass must be a no-op."""
-    from app.database import _backfill_children
-
     conn = await db_session.connection()
     await conn.execute(text(
         "INSERT INTO users (id, email, hashed_password, name) VALUES ('u1', 'p@test.com', 'x', 'Parent')"
@@ -253,8 +250,6 @@ async def test_backfill_is_idempotent(db_session):
 
 async def test_backfill_carries_bonus_window_to_child(db_session):
     """bonus_until belongs to the child now; the device's existing window must not be lost."""
-    from app.database import _backfill_children
-
     conn = await db_session.connection()
     await conn.execute(text(
         "INSERT INTO users (id, email, hashed_password, name) VALUES ('u1', 'p@test.com', 'x', 'Parent')"
