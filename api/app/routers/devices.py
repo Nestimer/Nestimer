@@ -95,12 +95,18 @@ async def create_device(
         db.add(child)
         await db.flush()
 
+    # child.name equals data.child_name when a new child was just created above from
+    # it; when attaching to an EXISTING child, use the child's real name rather than
+    # whatever child_name the caller happened to send — otherwise this denormalised
+    # column could show a name that disagrees with the child it's actually attached
+    # to (two devices on one child displaying two different "child names" in the
+    # parent UI, neither necessarily correct).
     device = Device(
         owner_id=user.id,
         child_id=child.id,
         platform=data.platform,
         name=data.name,
-        child_name=data.child_name,
+        child_name=child.name,
         api_token="placeholder",
         shared_secret=secrets.token_hex(20),
     )
@@ -212,8 +218,15 @@ async def update_device(
         result = await db.execute(
             select(Child).where(Child.id == data.child_id, Child.owner_id == user.id)
         )
-        if result.scalar_one_or_none() is None:
+        child = result.scalar_one_or_none()
+        if child is None:
             raise HTTPException(status_code=404, detail="Child not found")
+        # The denormalised child_name column must follow the real child it's
+        # attached to, not whatever child_name the caller last sent — otherwise two
+        # devices on one child can show two different (and possibly both wrong)
+        # names for that child in the parent UI. This intentionally overrides any
+        # child_name supplied in the same request.
+        device.child_name = child.name
         if data.child_id != device.child_id:
             device.child_id = data.child_id
             # Re-key this device's own activities onto the new child. Without this,
@@ -225,6 +238,13 @@ async def update_device(
             # (unenforced) in this device's own parent-facing list. Re-keying keeps
             # "what the parent sees for this device" and "what the agent enforces for
             # this device" the same list, regardless of which child it's attached to.
+            #
+            # Side effect (intentional, not a bug): a SIBLING device still on the old
+            # child that was inheriting this activity only through the child-first
+            # lookup (i.e. it has no device-keyed row of its own for it) loses that
+            # activity the moment it's re-keyed away. The activity belongs to the
+            # device that's moving, not to the old child in general, so this is the
+            # correct outcome — but it is a real, visible change for that sibling.
             await db.execute(
                 Activity.__table__.update()
                 .where(Activity.device_id == device.id)
