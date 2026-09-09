@@ -192,3 +192,81 @@ async def test_init_db_migrates_a_pre_migration_database(tmp_path, monkeypatch):
         assert row[0] == "macos"
 
     await test_engine.dispose()
+
+
+async def test_backfill_creates_one_child_per_device(db_session):
+    """Migration is strictly 1:1 — two devices never get merged, even with the same child_name."""
+    from app.database import _backfill_children
+
+    conn = await db_session.connection()
+    await conn.execute(text(
+        "INSERT INTO users (id, email, hashed_password, name) "
+        "VALUES ('u1', 'p@test.com', 'x', 'Parent')"
+    ))
+    for dev in ("d1", "d2"):
+        await conn.execute(text(
+            "INSERT INTO devices (id, owner_id, name, child_name, api_token, platform) "
+            f"VALUES ('{dev}', 'u1', '{dev}', 'Alex', 'tok-{dev}', 'macos')"
+        ))
+        await conn.execute(text(
+            f"INSERT INTO policies (id, device_id, screen_time_limit_minutes) VALUES ('p-{dev}', '{dev}', 120)"
+        ))
+
+    await _backfill_children(conn)
+
+    rows = (await conn.execute(text("SELECT id, child_id FROM devices ORDER BY id"))).fetchall()
+    child_ids = {r[1] for r in rows}
+    assert len(child_ids) == 2, "each device must get its own child, not a merged one"
+    assert None not in child_ids
+
+    # Each policy follows its device's child, and device_id is left in place.
+    for dev_id, child_id in rows:
+        pol = (await conn.execute(text(
+            "SELECT child_id, device_id FROM policies WHERE device_id = :d"
+        ), {"d": dev_id})).fetchone()
+        assert pol[0] == child_id
+        assert pol[1] == dev_id
+
+
+async def test_backfill_is_idempotent(db_session):
+    """init_db runs on every boot, so a second pass must be a no-op."""
+    from app.database import _backfill_children
+
+    conn = await db_session.connection()
+    await conn.execute(text(
+        "INSERT INTO users (id, email, hashed_password, name) VALUES ('u1', 'p@test.com', 'x', 'Parent')"
+    ))
+    await conn.execute(text(
+        "INSERT INTO devices (id, owner_id, name, child_name, api_token, platform) "
+        "VALUES ('d1', 'u1', 'Mac', 'Alex', 'tok-1', 'macos')"
+    ))
+
+    await _backfill_children(conn)
+    first = (await conn.execute(text("SELECT child_id FROM devices WHERE id = 'd1'"))).scalar_one()
+    await _backfill_children(conn)
+    second = (await conn.execute(text("SELECT child_id FROM devices WHERE id = 'd1'"))).scalar_one()
+
+    assert first == second
+    count = (await conn.execute(text("SELECT COUNT(*) FROM children"))).scalar_one()
+    assert count == 1
+
+
+async def test_backfill_carries_bonus_window_to_child(db_session):
+    """bonus_until belongs to the child now; the device's existing window must not be lost."""
+    from app.database import _backfill_children
+
+    conn = await db_session.connection()
+    await conn.execute(text(
+        "INSERT INTO users (id, email, hashed_password, name) VALUES ('u1', 'p@test.com', 'x', 'Parent')"
+    ))
+    await conn.execute(text(
+        "INSERT INTO devices (id, owner_id, name, child_name, api_token, platform, bonus_until) "
+        "VALUES ('d1', 'u1', 'Mac', 'Alex', 'tok-1', 'macos', '2026-09-09 18:00:00+00')"
+    ))
+
+    await _backfill_children(conn)
+
+    bonus = (await conn.execute(text(
+        "SELECT c.bonus_until FROM children c JOIN devices d ON d.child_id = c.id WHERE d.id = 'd1'"
+    ))).scalar_one()
+    assert bonus is not None

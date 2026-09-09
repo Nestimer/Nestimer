@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import text, inspect
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -31,6 +34,40 @@ async def _add_column_if_missing(conn, table: str, column: str, col_type: str, c
     """Add a column if it doesn't exist yet."""
     if column not in columns:
         await conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}'))
+
+
+async def _backfill_children(conn):
+    """Give every device without a child its own child (strictly 1:1).
+
+    Merging devices under one child is an explicit parent action in the UI —
+    guessing it here from a matching child_name would silently halve the
+    effective daily limit for real users. Idempotent: init_db runs on every boot.
+    """
+    rows = (await conn.execute(text(
+        "SELECT id, owner_id, child_name, bonus_until FROM devices WHERE child_id IS NULL"
+    ))).fetchall()
+
+    for dev_id, owner_id, child_name, bonus_until in rows:
+        child_id = str(uuid.uuid4())
+        await conn.execute(
+            text(
+                "INSERT INTO children (id, owner_id, name, bonus_until, created_at) "
+                "VALUES (:id, :owner_id, :name, :bonus_until, :created_at)"
+            ),
+            {
+                "id": child_id,
+                "owner_id": owner_id,
+                "name": child_name or "Child",
+                "bonus_until": bonus_until,
+                "created_at": datetime.now(timezone.utc),
+            },
+        )
+        for stmt in (
+            "UPDATE devices SET child_id = :child_id WHERE id = :dev_id",
+            "UPDATE policies SET child_id = :child_id WHERE device_id = :dev_id",
+            "UPDATE activities SET child_id = :child_id WHERE device_id = :dev_id",
+        ):
+            await conn.execute(text(stmt), {"child_id": child_id, "dev_id": dev_id})
 
 
 async def init_db():
@@ -74,3 +111,5 @@ async def init_db():
             await conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_devices_child_id ON devices (child_id)"
             ))
+
+        await _backfill_children(conn)
