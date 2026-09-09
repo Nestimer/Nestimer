@@ -50,7 +50,7 @@ async def init_db():
         for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]:
             await _add_column_if_missing(conn, "policies", f"screen_time_{day}_minutes", "INTEGER", pol_cols)
 
-        # children / shared-budget migration (see specs/2026-09-09-cross-platform-shared-budget-design.md)
+        # children / shared-budget migration (see docs/superpowers/specs/2026-09-09-cross-platform-shared-budget-design.md)
         await _add_column_if_missing(conn, "devices", "child_id", "TEXT", dev_cols)
         await _add_column_if_missing(conn, "devices", "platform", "TEXT", dev_cols)
         await _add_column_if_missing(conn, "devices", "daily_cap_minutes", "INTEGER", dev_cols)
@@ -68,3 +68,9 @@ async def init_db():
         if conn.dialect.name == "postgresql":
             await conn.execute(text("ALTER TABLE policies ALTER COLUMN device_id DROP NOT NULL"))
             await conn.execute(text("ALTER TABLE activities ALTER COLUMN device_id DROP NOT NULL"))
+            await conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_policies_child_id ON policies (child_id)"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_devices_child_id ON devices (child_id)"
+            ))
