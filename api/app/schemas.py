@@ -48,11 +48,15 @@ class UserOut(BaseModel):
 class DeviceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     child_name: str = Field(min_length=1, max_length=100)
+    child_id: Optional[str] = None            # attach to an existing child; a new one is created if omitted
+    platform: str = Field(default="macos", pattern="^(macos|android|ios)$")
 
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     child_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    child_id: Optional[str] = None
+    daily_cap_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
 
 
 class DeviceOut(BaseModel):
@@ -65,6 +69,9 @@ class DeviceOut(BaseModel):
     last_seen: Optional[datetime] = None
     created_at: datetime
     bonus_until: Optional[datetime] = None
+    child_id: Optional[str] = None
+    platform: str = "macos"
+    daily_cap_minutes: Optional[int] = None
 
     @field_serializer("last_seen", "created_at", "bonus_until")
     def _serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
@@ -78,6 +85,9 @@ class DeviceListOut(BaseModel):
     child_name: str
     agent_version: Optional[str] = None
     last_seen: Optional[datetime] = None
+    child_id: Optional[str] = None
+    platform: str = "macos"
+    daily_cap_minutes: Optional[int] = None
 
     @field_serializer("last_seen")
     def _serialize_last_seen(self, dt: Optional[datetime]) -> Optional[str]:

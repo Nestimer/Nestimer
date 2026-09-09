@@ -83,8 +83,22 @@ async def create_device(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if data.child_id:
+        result = await db.execute(
+            select(Child).where(Child.id == data.child_id, Child.owner_id == user.id)
+        )
+        child = result.scalar_one_or_none()
+        if not child:
+            raise HTTPException(status_code=404, detail="Child not found")
+    else:
+        child = Child(owner_id=user.id, name=data.child_name)
+        db.add(child)
+        await db.flush()
+
     device = Device(
         owner_id=user.id,
+        child_id=child.id,
+        platform=data.platform,
         name=data.name,
         child_name=data.child_name,
         api_token="placeholder",
@@ -96,9 +110,20 @@ async def create_device(
     # Generate a real agent token
     device.api_token = create_agent_token(device.id)
 
-    # Create default policy
-    policy = Policy(device_id=device.id)
-    db.add(policy)
+    # Create a default policy for the child, but only if it doesn't have one yet —
+    # attaching a second device to an existing child must never overwrite the first
+    # device's rules. Stamp device_id=device.id on it too (not just child_id): the
+    # device-keyed fallback in `/agent/config` and `_resolve_policy` (for a device
+    # later re-pointed at a childless/policy-less child, e.g. after a sibling that
+    # owned the shared policy is deleted, or the pre-child-migration rewind path
+    # covered by test_config_is_byte_identical_across_the_migration) both find their
+    # way back to a policy only via `Policy.device_id`. Without it, that fallback
+    # query never matches, `/agent/config` falls into its "no policy" branch, and
+    # this device silently loses its rules AND its activities (that branch returns
+    # before activities are computed).
+    result = await db.execute(select(Policy).where(Policy.child_id == child.id))
+    if result.scalar_one_or_none() is None:
+        db.add(Policy(child_id=child.id, device_id=device.id))
 
     await db.commit()
     await db.refresh(device)
@@ -112,6 +137,9 @@ async def create_device(
         last_seen=device.last_seen,
         created_at=device.created_at,
         bonus_until=await _effective_bonus_until(db, device),
+        child_id=device.child_id,
+        platform=device.platform,
+        daily_cap_minutes=device.daily_cap_minutes,
     )
 
 
@@ -126,7 +154,8 @@ async def list_devices(
     devices = result.scalars().all()
     return [
         DeviceListOut(
-            id=d.id, name=d.name, child_name=d.child_name, agent_version=d.agent_version, last_seen=d.last_seen
+            id=d.id, name=d.name, child_name=d.child_name, agent_version=d.agent_version, last_seen=d.last_seen,
+            child_id=d.child_id, platform=d.platform, daily_cap_minutes=d.daily_cap_minutes,
         )
         for d in devices
     ]
@@ -154,6 +183,9 @@ async def get_device(
         last_seen=device.last_seen,
         created_at=device.created_at,
         bonus_until=await _effective_bonus_until(db, device),
+        child_id=device.child_id,
+        platform=device.platform,
+        daily_cap_minutes=device.daily_cap_minutes,
     )
 
 
@@ -176,6 +208,32 @@ async def update_device(
     if data.child_name is not None:
         device.child_name = data.child_name
 
+    if data.child_id is not None:
+        result = await db.execute(
+            select(Child).where(Child.id == data.child_id, Child.owner_id == user.id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Child not found")
+        if data.child_id != device.child_id:
+            device.child_id = data.child_id
+            # Re-key this device's own activities onto the new child. Without this,
+            # a device's legacy child-keyed activity rows would still carry the OLD
+            # child_id: `/agent/config` and the activity list both resolve child-first
+            # (falling back to device_id only when the child has NO activities at
+            # all), so the moment the new child has any activity of its own, this
+            # device's rows would silently stop being enforced while still showing up
+            # (unenforced) in this device's own parent-facing list. Re-keying keeps
+            # "what the parent sees for this device" and "what the agent enforces for
+            # this device" the same list, regardless of which child it's attached to.
+            await db.execute(
+                Activity.__table__.update()
+                .where(Activity.device_id == device.id)
+                .values(child_id=data.child_id)
+            )
+
+    if "daily_cap_minutes" in data.model_fields_set:
+        device.daily_cap_minutes = data.daily_cap_minutes
+
     await db.commit()
     await db.refresh(device)
     return DeviceOut(
@@ -188,6 +246,9 @@ async def update_device(
         last_seen=device.last_seen,
         created_at=device.created_at,
         bonus_until=await _effective_bonus_until(db, device),
+        child_id=device.child_id,
+        platform=device.platform,
+        daily_cap_minutes=device.daily_cap_minutes,
     )
 
 
@@ -372,6 +433,9 @@ async def regenerate_secret(
         last_seen=device.last_seen,
         created_at=device.created_at,
         bonus_until=await _effective_bonus_until(db, device),
+        child_id=device.child_id,
+        platform=device.platform,
+        daily_cap_minutes=device.daily_cap_minutes,
     )
 
 
