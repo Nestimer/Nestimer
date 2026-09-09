@@ -80,5 +80,4 @@ export const api = {
   listChildren: () => request('/children'),
   createChild: (name) => request('/children', { method: 'POST', body: JSON.stringify({ name }) }),
   renameChild: (id, name) => request(`/children/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
-  deleteChild: (id) => request(`/children/${id}`, { method: 'DELETE' }),
 }

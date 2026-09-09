@@ -34,8 +34,9 @@ function staleLabel(device) {
 }
 
 // One shared daily budget per child, across all their devices. Group the device
-// list by child so that's visible; devices without a child yet go in a trailing
-// "Unassigned" group instead of vanishing.
+// list by child so that's visible; devices without a child yet — or when the
+// children list failed to load — go in a trailing "Unassigned" group instead of
+// vanishing.
 function groupByChild(devices, children) {
   const byId = new Map(children.map((c) => [c.id, { child: c, devices: [] }]))
   const orphans = []
@@ -54,19 +55,41 @@ export default function DevicesPage() {
   const navigate = useNavigate()
   const [devices, setDevices] = useState([])
   const [children, setChildren] = useState([])
+  const [childrenError, setChildrenError] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [childName, setChildName] = useState('')
   const [newToken, setNewToken] = useState('')
+  const [showAddChild, setShowAddChild] = useState(false)
+  const [newChildName, setNewChildName] = useState('')
+  const [creatingChild, setCreatingChild] = useState(false)
+  const [renamingChildId, setRenamingChildId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [savingRename, setSavingRename] = useState(false)
 
-  useEffect(() => { loadDevices() }, [])
+  useEffect(() => { loadDevices(); loadChildren() }, [])
 
+  // Devices and children are loaded independently: this is the page a parent uses
+  // to see and control their child's machines, so a failing /children request must
+  // not blank out devices that loaded fine. It degrades to an ungrouped list plus a
+  // non-blocking notice instead.
   const loadDevices = async () => {
     try {
-      const [devs, kids] = await Promise.all([api.listDevices(), api.listChildren()])
+      const devs = await api.listDevices()
       setDevices(devs)
-      setChildren(kids)
     } catch (e) { console.error(e) }
+  }
+
+  const loadChildren = async () => {
+    try {
+      const kids = await api.listChildren()
+      setChildren(kids)
+      setChildrenError('')
+    } catch (e) {
+      console.error(e)
+      setChildren([])
+      setChildrenError('Could not load children — showing devices ungrouped.')
+    }
   }
 
   const addDevice = async (e) => {
@@ -77,7 +100,37 @@ export default function DevicesPage() {
       setNewName('')
       setChildName('')
       loadDevices()
+      loadChildren()
     } catch (e) { alert(e.message) }
+  }
+
+  const addChild = async (e) => {
+    e.preventDefault()
+    if (!newChildName.trim()) return
+    setCreatingChild(true)
+    try {
+      await api.createChild(newChildName.trim())
+      setNewChildName('')
+      setShowAddChild(false)
+      loadChildren()
+    } catch (e) { alert(e.message) }
+    setCreatingChild(false)
+  }
+
+  const startRenameChild = (child) => {
+    setRenamingChildId(child.id)
+    setRenameValue(child.name)
+  }
+
+  const saveRenameChild = async (childId) => {
+    if (!renameValue.trim()) return
+    setSavingRename(true)
+    try {
+      await api.renameChild(childId, renameValue.trim())
+      setRenamingChildId(null)
+      loadChildren()
+    } catch (e) { alert(e.message) }
+    setSavingRename(false)
   }
 
   return (
@@ -85,12 +138,28 @@ export default function DevicesPage() {
       <div className="header">
         <h1>Devices</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary btn-small" onClick={() => setShowAddChild(!showAddChild)}>
+            + Add Child
+          </button>
           <button className="btn btn-primary btn-small" onClick={() => { setShowAdd(!showAdd); setNewToken('') }}>
             + Add Device
           </button>
           <button className="btn btn-secondary btn-small" onClick={logout}>Sign Out</button>
         </div>
       </div>
+
+      {showAddChild && (
+        <div className="card">
+          <h3>New Child</h3>
+          <form onSubmit={addChild}>
+            <div className="form-group">
+              <label>Name</label>
+              <input type="text" value={newChildName} onChange={(e) => setNewChildName(e.target.value)} placeholder="Alex" required />
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={creatingChild}>Create</button>
+          </form>
+        </div>
+      )}
 
       {showAdd && (
         <div className="card">
@@ -125,6 +194,8 @@ export default function DevicesPage() {
         </div>
       )}
 
+      {childrenError && <p className="error">{childrenError}</p>}
+
       {devices.length === 0 && !showAdd && (
         <div className="card" style={{ textAlign: 'center', padding: 40 }}>
           <p style={{ fontSize: 18, marginBottom: 8 }}>No devices</p>
@@ -134,7 +205,27 @@ export default function DevicesPage() {
 
       {groupByChild(devices, children).map(({ child, devices: childDevices }) => (
         <div key={child.id ?? 'unassigned'}>
-          <h2 className="section-title">{child.name}</h2>
+          {child.id && renamingChildId === child.id ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '24px 0 12px' }}>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                maxLength={100}
+                autoFocus
+                style={{ fontSize: 18, fontWeight: 600, padding: '6px 10px', border: '1px solid #d2d2d7', borderRadius: 8 }}
+              />
+              <button className="btn btn-primary btn-small" disabled={savingRename || !renameValue.trim()} onClick={() => saveRenameChild(child.id)}>Save</button>
+              <button className="btn btn-secondary btn-small" onClick={() => setRenamingChildId(null)}>Cancel</button>
+            </div>
+          ) : (
+            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span>{child.name}</span>
+              {child.id && (
+                <button className="btn btn-secondary btn-small" onClick={() => startRenameChild(child)}>Edit</button>
+              )}
+            </div>
+          )}
           {childDevices.map(device => (
             <div key={device.id} className="card device-card" onClick={() => navigate(`/devices/${device.id}`)}>
               <div className="device-info">
