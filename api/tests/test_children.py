@@ -32,17 +32,16 @@ async def test_child_defaults(db_session):
     assert child.created_at is not None
 
 
-async def test_init_db_migration_adds_columns(tmp_path):
-    """init_db() adds the new columns to existing databases and ensures idempotency."""
-    from app.database import _get_columns, _add_column_if_missing
+async def test_init_db_migrates_a_pre_migration_database(tmp_path, monkeypatch):
+    """init_db() migrates a pre-migration database and is idempotent."""
+    import app.database as database_module
 
-    # Create a file-backed SQLite database in pre-migration state
-    db_file = tmp_path / "test.db"
-    db_url = f"sqlite+aiosqlite:///{db_file}"
+    db_path = tmp_path / "legacy.db"
+    db_url = f"sqlite+aiosqlite:///{db_path}"
 
-    # Create a pre-migration schema without the new columns
-    engine = create_async_engine(db_url, echo=False)
-    async with engine.begin() as conn:
+    # Build the pre-migration schema without the new columns
+    setup_engine = create_async_engine(db_url, echo=False)
+    async with setup_engine.begin() as conn:
         # Create tables without the new columns
         await conn.execute(text("""
             CREATE TABLE users (
@@ -119,39 +118,39 @@ async def test_init_db_migration_adds_columns(tmp_path):
             VALUES ('device-1', 'user-1', 'Test Device', 'Child', 'token-123')
         """))
 
-    await engine.dispose()
+    await setup_engine.dispose()
 
-    # Now run the migrations directly on the pre-migration database
-    engine = create_async_engine(db_url, echo=False)
-    async with engine.begin() as conn:
-        # Run the migration code from init_db()
-        dev_cols = await _get_columns(conn, "devices")
-        await _add_column_if_missing(conn, "devices", "child_id", "TEXT", dev_cols)
-        await _add_column_if_missing(conn, "devices", "platform", "TEXT", dev_cols)
-        await _add_column_if_missing(conn, "devices", "daily_cap_minutes", "INTEGER", dev_cols)
-
-        pol_cols = await _get_columns(conn, "policies")
-        await _add_column_if_missing(conn, "policies", "child_id", "TEXT", pol_cols)
-
-        act_cols = await _get_columns(conn, "activities")
-        await _add_column_if_missing(conn, "activities", "child_id", "TEXT", act_cols)
-
-        # Existing rows predate `platform`; they are all Macs
-        await conn.execute(text("UPDATE devices SET platform = 'macos' WHERE platform IS NULL"))
-
-    await engine.dispose()
-
-    # Verify the columns were added
-    engine = create_async_engine(db_url, echo=False)
-    async with engine.begin() as conn:
+    # Assert precondition: new columns don't exist yet
+    verify_engine = create_async_engine(db_url, echo=False)
+    async with verify_engine.begin() as conn:
         def _get_dev_columns(sync_conn):
             insp = inspect(sync_conn)
             return {c["name"] for c in insp.get_columns("devices")}
 
         dev_cols = await conn.run_sync(_get_dev_columns)
-        assert "child_id" in dev_cols
-        assert "platform" in dev_cols
-        assert "daily_cap_minutes" in dev_cols
+        assert "child_id" not in dev_cols, "Precondition failed: child_id already exists"
+        assert "platform" not in dev_cols, "Precondition failed: platform already exists"
+        assert "daily_cap_minutes" not in dev_cols, "Precondition failed: daily_cap_minutes already exists"
+
+    await verify_engine.dispose()
+
+    # Redirect init_db to use our test database
+    test_engine = create_async_engine(db_url, echo=False)
+    monkeypatch.setattr(database_module, "engine", test_engine)
+
+    # Run init_db() — the real function
+    await database_module.init_db()
+
+    # Verify the columns were added
+    async with test_engine.begin() as conn:
+        def _get_dev_columns_after(sync_conn):
+            insp = inspect(sync_conn)
+            return {c["name"] for c in insp.get_columns("devices")}
+
+        dev_cols_after = await conn.run_sync(_get_dev_columns_after)
+        assert "child_id" in dev_cols_after
+        assert "platform" in dev_cols_after
+        assert "daily_cap_minutes" in dev_cols_after
 
         def _get_policies_columns(sync_conn):
             insp = inspect(sync_conn)
@@ -167,28 +166,29 @@ async def test_init_db_migration_adds_columns(tmp_path):
         act_cols = await conn.run_sync(_get_activities_columns)
         assert "child_id" in act_cols
 
-        # Verify the platform was set to 'macos' for existing devices
+        # Verify platform was backfilled to 'macos'
         result = await conn.execute(text("SELECT platform FROM devices WHERE id = 'device-1'"))
         row = result.fetchone()
         assert row[0] == "macos"
 
-    await engine.dispose()
+        # Verify we still have exactly one device
+        result = await conn.execute(text("SELECT COUNT(*) FROM devices"))
+        count = result.scalar()
+        assert count == 1
 
-    # Test idempotency: run the migrations again and ensure no errors
-    engine = create_async_engine(db_url, echo=False)
-    async with engine.begin() as conn:
-        # Run migrations again - should be idempotent
-        dev_cols = await _get_columns(conn, "devices")
-        await _add_column_if_missing(conn, "devices", "child_id", "TEXT", dev_cols)
-        await _add_column_if_missing(conn, "devices", "platform", "TEXT", dev_cols)
-        await _add_column_if_missing(conn, "devices", "daily_cap_minutes", "INTEGER", dev_cols)
+    # Test idempotency: run init_db() again
+    await database_module.init_db()
 
-        pol_cols = await _get_columns(conn, "policies")
-        await _add_column_if_missing(conn, "policies", "child_id", "TEXT", pol_cols)
+    # Verify no changes and no errors
+    async with test_engine.begin() as conn:
+        # Verify device count unchanged
+        result = await conn.execute(text("SELECT COUNT(*) FROM devices"))
+        count = result.scalar()
+        assert count == 1
 
-        act_cols = await _get_columns(conn, "activities")
-        await _add_column_if_missing(conn, "activities", "child_id", "TEXT", act_cols)
+        # Verify platform value unchanged
+        result = await conn.execute(text("SELECT platform FROM devices WHERE id = 'device-1'"))
+        row = result.fetchone()
+        assert row[0] == "macos"
 
-        await conn.execute(text("UPDATE devices SET platform = 'macos' WHERE platform IS NULL"))
-
-    await engine.dispose()
+    await test_engine.dispose()
