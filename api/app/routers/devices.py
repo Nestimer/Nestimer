@@ -1,9 +1,9 @@
 import secrets
 from datetime import time, datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,21 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/devices", tags=["devices"])
+
+
+async def _effective_bonus_until(db: AsyncSession, device: Device) -> Optional[datetime]:
+    """Bonus window as reported to the parent apps (`DeviceOut.bonus_until`): the
+    child's window when this device has a child, falling back to the device's own
+    (pre-migration) value only when the child's is None. Same non-exclusive fallback
+    shape as `/agent/config` — grant-bonus writes to the child now, so a stale device
+    row must never shadow it, and a stale device row must never be reported as live
+    once the child has (or clears) its own window."""
+    if device.child_id:
+        result = await db.execute(select(Child.bonus_until).where(Child.id == device.child_id))
+        bu = result.scalar_one_or_none()
+        if bu is not None:
+            return bu
+    return device.bonus_until
 
 
 def parse_time(s: str) -> time:
@@ -96,7 +111,7 @@ async def create_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
-        bonus_until=device.bonus_until,
+        bonus_until=await _effective_bonus_until(db, device),
     )
 
 
@@ -138,7 +153,7 @@ async def get_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
-        bonus_until=device.bonus_until,
+        bonus_until=await _effective_bonus_until(db, device),
     )
 
 
@@ -172,7 +187,7 @@ async def update_device(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
-        bonus_until=device.bonus_until,
+        bonus_until=await _effective_bonus_until(db, device),
     )
 
 
@@ -229,6 +244,10 @@ async def get_policy(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # GET that can still write: _child_id_for_device may lazily create and persist a
+    # Child for a device that predates the migration, and _resolve_policy may adopt a
+    # legacy device-keyed row under it — both need a commit to survive past this
+    # request, even though this handler is otherwise a plain read.
     device = await _verify_device_owner(db, device_id, user.id)
     child_id = await _child_id_for_device(db, device)
 
@@ -352,7 +371,7 @@ async def regenerate_secret(
         agent_version=device.agent_version,
         last_seen=device.last_seen,
         created_at=device.created_at,
-        bonus_until=device.bonus_until,
+        bonus_until=await _effective_bonus_until(db, device),
     )
 
 
@@ -408,19 +427,29 @@ async def list_activities(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # GET that can still write: _child_id_for_device may lazily create and persist a
+    # Child for a device that predates the migration, so this list is complete on the
+    # very first call rather than only after some later PUT/POST resolves it.
     device = await _verify_device_owner(db, device_id, user.id)
     child_id = await _child_id_for_device(db, device)
 
+    # Union the child-keyed rows with this device's own device-keyed rows, rather than
+    # only falling back when the child list is empty: once Task 6 lets a parent move a
+    # device onto a child that already has activities, an else-branch would silently
+    # drop this device's own legacy rows from the list — still enforced by the agent,
+    # but no longer visible or deletable here. De-duplicate by id since a row that
+    # already carries both keys would otherwise match both halves of the OR.
     result = await db.execute(
-        select(Activity).where(Activity.child_id == child_id).order_by(Activity.day_of_week, Activity.start_time)
+        select(Activity)
+        .where(or_(Activity.child_id == child_id, Activity.device_id == device_id))
+        .order_by(Activity.day_of_week, Activity.start_time)
     )
-    activities = result.scalars().all()
-    if not activities:
-        # Legacy rows created before this device was ever resolved to a child.
-        result = await db.execute(
-            select(Activity).where(Activity.device_id == device_id).order_by(Activity.day_of_week, Activity.start_time)
-        )
-        activities = result.scalars().all()
+    seen = set()
+    activities = []
+    for a in result.scalars().all():
+        if a.id not in seen:
+            seen.add(a.id)
+            activities.append(a)
 
     await db.commit()
     return [activity_to_out(a) for a in activities]

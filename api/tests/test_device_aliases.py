@@ -10,12 +10,14 @@ through the exact session `client`'s app is using — the same `_run_on_app_db` 
 already used in test_shared_budget.py and test_children_api.py.
 """
 import uuid
+from datetime import time
 
 import pytest
 from sqlalchemy import text
 
 from app.database import get_db, _backfill_children
 from app.main import app
+from app.models.models import Activity
 
 from .conftest import register_user, create_device
 
@@ -108,6 +110,28 @@ async def test_bonus_granted_on_one_device_reaches_the_other(client):
     assert resp.json()["bonus_until"] is not None
 
 
+async def test_grant_bonus_is_visible_on_fresh_get_and_on_the_sibling(client):
+    """DeviceOut.bonus_until must be sourced from the child, not the stale device
+    column grant-bonus no longer writes — otherwise a fresh GET (a second parent
+    device, another browser tab, a reload a few seconds later) shows no bonus while
+    the child's Mac is genuinely unlocked."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac")
+    phone = await create_device(client, token, name="Phone")
+    await _put_devices_on_one_child(mac["id"], phone["id"])
+
+    await client.post(
+        f"/api/v1/devices/{mac['id']}/grant-bonus", json={"minutes": 30}, headers=headers
+    )
+
+    resp = await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)
+    assert resp.json()["bonus_until"] is not None, "a fresh GET on the granting device must still show it"
+
+    resp = await client.get(f"/api/v1/devices/{phone['id']}", headers=headers)
+    assert resp.json()["bonus_until"] is not None, "the sibling device must report the same child-wide bonus"
+
+
 async def test_activity_created_on_one_device_is_visible_from_the_other(client):
     """An English class belongs to the child, not to a laptop."""
     token = await register_user(client)
@@ -124,6 +148,76 @@ async def test_activity_created_on_one_device_is_visible_from_the_other(client):
 
     resp = await client.get(f"/api/v1/devices/{phone['id']}/activities", headers=headers)
     assert [a["name"] for a in resp.json()] == ["English"]
+
+
+async def test_sibling_devices_agent_config_enforces_activity_from_other_device(client):
+    """A cross-device schedule the parent UI promises must actually be enforced on the
+    sibling — not just visible in its parent-facing activities list. /agent/config for
+    the phone must include the activity created via the Mac."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac")
+    phone = await create_device(client, token, name="Phone")
+    await _put_devices_on_one_child(mac["id"], phone["id"])
+
+    await client.post(
+        f"/api/v1/devices/{mac['id']}/activities",
+        json={"name": "English", "day_of_week": 1, "start_time": "17:00", "end_time": "18:00"},
+        headers=headers,
+    )
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {phone['api_token']}"}
+    )
+    names = [a["name"] for a in resp.json()["activities"]]
+    assert names == ["English"], "the sibling's agent must enforce the schedule created on the other device"
+
+
+async def test_agent_falls_back_to_devices_own_activity_when_child_has_none(client):
+    """A device whose child exists but has no activities of its own must still be
+    governed by its own legacy device-keyed activities — never fail open into 'no
+    schedule' just because nothing has given the child one yet."""
+    token = await register_user(client)
+    mac = await create_device(client, token, name="Mac")
+
+    # Simulate a legacy activity that predates this device ever being resolved to a
+    # child (device-keyed only), then give the device a child that has no activities
+    # of its own — exercising the exact fallback path, not just "no child at all".
+    async def _do(conn):
+        await conn.execute(
+            Activity.__table__.insert().values(
+                id=str(uuid.uuid4()),
+                device_id=mac["id"],
+                child_id=None,
+                name="Legacy",
+                day_of_week=1,
+                start_time=time(15, 0),
+                end_time=time(16, 0),
+                buffer_before_minutes=5,
+                buffer_after_minutes=5,
+                enabled=True,
+            )
+        )
+        owner_id = (
+            await conn.execute(text("SELECT owner_id FROM devices WHERE id = :id"), {"id": mac["id"]})
+        ).scalar_one()
+        child_id = str(uuid.uuid4())
+        await conn.execute(
+            text("INSERT INTO children (id, owner_id, name) VALUES (:id, :owner_id, :name)"),
+            {"id": child_id, "owner_id": owner_id, "name": "Alex"},
+        )
+        await conn.execute(
+            text("UPDATE devices SET child_id = :child_id WHERE id = :id"),
+            {"child_id": child_id, "id": mac["id"]},
+        )
+
+    await _run_on_app_db(_do)
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {mac['api_token']}"}
+    )
+    names = [a["name"] for a in resp.json()["activities"]]
+    assert names == ["Legacy"], "must fall back to the device's own activities, not fail open into no schedule"
 
 
 async def test_config_is_byte_identical_across_the_migration(client):

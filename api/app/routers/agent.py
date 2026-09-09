@@ -150,10 +150,24 @@ async def get_config(
     ds, de = get_effective_downtime(policy, agent_weekday)
     limit = get_effective_limit(policy, agent_weekday)
 
-    # Load all enabled activities for this device
-    result = await db.execute(
-        select(Activity).where(Activity.device_id == device.id, Activity.enabled == True)
-    )
+    # Activities live on the child now; fall back to the device's own (pre-migration)
+    # activities when the child has none of its own — same non-exclusive shape as the
+    # policy fallback above. A device with no child skips straight to its own rows
+    # (today's behaviour, unchanged); a device whose child has activities gets those
+    # instead of whatever this one device happens to carry, so a schedule created on
+    # a sibling device is actually enforced here, not just visible in the parent UI.
+    activities_rows = []
+    if device.child_id:
+        result = await db.execute(
+            select(Activity).where(Activity.child_id == device.child_id, Activity.enabled == True)
+        )
+        activities_rows = result.scalars().all()
+    if not activities_rows:
+        result = await db.execute(
+            select(Activity).where(Activity.device_id == device.id, Activity.enabled == True)
+        )
+        activities_rows = result.scalars().all()
+
     activities = [
         ActivityOut(
             id=a.id,
@@ -165,7 +179,7 @@ async def get_config(
             buffer_after_minutes=a.buffer_after_minutes,
             enabled=a.enabled,
         )
-        for a in result.scalars().all()
+        for a in activities_rows
     ]
 
     # Single commit for last_seen + version update
