@@ -252,5 +252,27 @@ class TOTPVerifyResponse(BaseModel):
     granted_minutes: int = 0
 
 
+# --- Children ---
+class ChildCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ChildUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+
+class ChildOut(BaseModel):
+    id: str
+    name: str
+    bonus_until: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    device_ids: list[str] = Field(default_factory=list)
+
+    @field_serializer("bonus_until", "created_at")
+    def _serialize_dt(self, v: Optional[datetime]) -> Optional[str]:
+        v = _ensure_utc(v)
+        return v.isoformat() if v else None
+
+
 # Resolve forward reference
 AgentConfig.model_rebuild()

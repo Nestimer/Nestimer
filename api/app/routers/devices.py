@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, create_agent_token
 from ..database import get_db
-from ..models.models import User, Device, Policy, UsageLog, Activity
+from ..models.models import User, Device, Policy, UsageLog, Activity, Child
 from ..schemas import (
     DeviceCreate, DeviceUpdate, DeviceOut, DeviceListOut,
     PolicyUpdate, PolicyOut,
@@ -68,10 +68,21 @@ async def create_device(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Create or get child
+    result = await db.execute(
+        select(Child).where(Child.owner_id == user.id, Child.name == data.child_name)
+    )
+    child = result.scalar_one_or_none()
+    if not child:
+        child = Child(owner_id=user.id, name=data.child_name)
+        db.add(child)
+        await db.flush()
+
     device = Device(
         owner_id=user.id,
         name=data.name,
         child_name=data.child_name,
+        child_id=child.id,
         api_token="placeholder",
         shared_secret=secrets.token_hex(20),
     )
