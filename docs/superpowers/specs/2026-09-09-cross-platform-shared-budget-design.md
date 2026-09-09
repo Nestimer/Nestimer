@@ -1,7 +1,7 @@
 # Cross-platform shared time budget (Mac + Android + iPhone)
 
 **Date:** 2026-09-09
-**Status:** Approved design, not yet implemented
+**Status:** Implemented on `feat/shared-time-budget` (backend, web dashboard, macOS agent). Android and iOS remain future work.
 
 ## Problem
 
@@ -103,6 +103,24 @@ than a delta, so:
 
 No delta protocol, no double-counting, no reconciliation logic.
 
+**The catch, found only in the final whole-branch review.** "Each device stays
+authoritative for its own counter" is an assumption about the AGENT, and the agent
+broke it the moment `used_minutes_today` changed meaning. Agent 2.9 reconciles its
+local counter against `used_minutes_today` and then reports that value back as its own
+total — so once two devices share a child, each device writes the child's SUM into its
+own row and the counters compound: 30+20 becomes 50+70 becomes 120+190, both Macs
+locking within a few sync rounds and staying locked.
+
+Two defences, both required:
+
+- `POST /agent/usage` clamps an accepted total to `previous + elapsed_since_last_report
+  + slack`. A counter can only grow with wall-clock time. This is what protects a device
+  still running 2.9, and it is why the clamp lives on the server rather than only in the
+  new agent. Offline catch-up is unaffected: `last_updated` advances only on a real
+  report, so a device silent for three hours may legitimately report ~180 minutes.
+- The agent reconciles against and reports `device_used_minutes` — its OWN counter — and
+  derives the child total as `used_minutes_today - device_used_minutes + local`.
+
 ### Remaining-time formula (evaluated on the client)
 
 ```
@@ -135,7 +153,20 @@ rather than this device's total.
 
 This is what makes already-installed agents work. Agent 2.9 in the field reads
 `used_minutes_today` and compares it against `screen_time_limit_minutes`; once the
-backend aggregates, it honours the shared budget **with no agent update pushed**.
+backend aggregates, it honours the shared budget with no agent update pushed.
+
+**Qualified by the write-back defect above.** A 2.9 agent enforces the shared budget
+correctly, but it also echoes the child's total back into its own usage row. The server
+clamp keeps that linear and recoverable instead of compounding, but on a MERGED child an
+un-updated 2.9 agent still inflates the counter at several times wall-clock speed — a
+120-minute budget is gone in roughly 15-20 real minutes. A child with a single device is
+completely unaffected, because the echo is a no-op there.
+
+So the promise holds for the migration itself (strictly 1:1, one device per child) but
+NOT for the merge step. Hard precondition: do not attach a second device to any child
+until every one of that child's Macs is confirmed on the new agent — check
+`agent_version` and a recent `last_seen`, not merely that `push-agent-update.sh` exited
+successfully.
 
 Two additive optional fields:
 
@@ -158,11 +189,14 @@ another consumer of the existing `/agent/config` + `/agent/usage` with
 
 ### Parent API
 
-Adds `/children` (CRUD, device assignment, merge). Policy and activities move to
-`/children/{id}/...`.
+Adds `/children` (CRUD, device assignment, merge).
 
-`/devices/{id}/policy`, `/devices/{id}/activities` and `/devices/{id}/bonus` remain as
-aliases that resolve a device to its child. The parent iOS app ships through
+Policy and activities move to the child in the DATA MODEL, but not in the URL space:
+`/devices/{id}/policy`, `/devices/{id}/activities` and `/devices/{id}/grant-bonus` stay
+the only path to them, resolving the device to its child. No `/children/{id}/policy`
+endpoint is added.
+
+The reason is the same one that makes the aliases necessary at all. The parent iOS app ships through
 TestFlight and cannot be updated in lockstep with the backend, and the web dashboard
 deploys separately. Breaking them on a backend deploy is the fastest way to lose
 control of the child's Mac on a weeknight.
