@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
-from ..models.models import Device, Policy, UsageLog, Activity
+from ..models.models import Device, Policy, UsageLog, Activity, Child
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import verify_totp
 from ..rate_limit import totp_limiter
@@ -93,8 +93,16 @@ async def get_config(
         result = await db.execute(select(Policy).where(Policy.device_id == device.id))
         policy = result.scalar_one_or_none()
 
+    # Bonus window lives on the child; fall back to the device's own (pre-migration)
+    # window only when the child doesn't have one — same non-exclusive shape as the
+    # policy fallback above.
+    bu = None
+    if device.child_id:
+        result = await db.execute(select(Child.bonus_until).where(Child.id == device.child_id))
+        bu = result.scalar_one_or_none()
+    if bu is None:
+        bu = device.bonus_until  # pre-migration fallback
     # SQLite returns naive datetimes even for tz-aware columns — coerce to UTC.
-    bu = device.bonus_until
     if bu is not None and bu.tzinfo is None:
         bu = bu.replace(tzinfo=timezone.utc)
     bonus_until = bu if bu and bu > now else None

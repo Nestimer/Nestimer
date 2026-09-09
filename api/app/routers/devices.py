@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, create_agent_token
 from ..database import get_db
-from ..models.models import User, Device, Policy, UsageLog, Activity
+from ..models.models import User, Device, Policy, UsageLog, Activity, Child
 from ..schemas import (
     DeviceCreate, DeviceUpdate, DeviceOut, DeviceListOut,
     PolicyUpdate, PolicyOut,
@@ -193,6 +193,35 @@ async def delete_device(
     return {"ok": True}
 
 
+async def _child_id_for_device(db: AsyncSession, device: Device) -> str:
+    """Resolve a device to its child, creating one if the row predates the migration."""
+    if device.child_id:
+        return device.child_id
+    child = Child(owner_id=device.owner_id, name=device.child_name or "Child")
+    db.add(child)
+    await db.flush()
+    device.child_id = child.id
+    return child.id
+
+
+async def _resolve_policy(db: AsyncSession, child_id: str, device_id: str) -> Policy | None:
+    """Find the child's policy, falling back to (and adopting under the child) a
+    pre-existing device-keyed row for a device resolved to a child for the first time
+    just now. Mirrors the non-exclusive fallback chain `/agent/config` uses — never
+    drop a device's real policy just because its child doesn't have one of its own yet.
+    """
+    result = await db.execute(select(Policy).where(Policy.child_id == child_id))
+    policy = result.scalar_one_or_none()
+    if policy is not None:
+        return policy
+
+    result = await db.execute(select(Policy).where(Policy.device_id == device_id))
+    policy = result.scalar_one_or_none()
+    if policy is not None:
+        policy.child_id = child_id
+    return policy
+
+
 # --- Policy ---
 @router.get("/{device_id}/policy", response_model=PolicyOut)
 async def get_policy(
@@ -200,17 +229,16 @@ async def get_policy(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Device).where(Device.id == device_id, Device.owner_id == user.id)
-    )
-    device = result.scalar_one_or_none()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
 
-    result = await db.execute(select(Policy).where(Policy.device_id == device_id))
-    policy = result.scalar_one_or_none()
-    if not policy:
-        raise HTTPException(status_code=404, detail="Policy not found")
+    policy = await _resolve_policy(db, child_id, device_id)
+    if policy is None:
+        policy = Policy(child_id=child_id)
+        db.add(policy)
+
+    await db.commit()
+    await db.refresh(policy)
 
     return policy_to_out(policy)
 
@@ -222,15 +250,10 @@ async def update_policy(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Device).where(Device.id == device_id, Device.owner_id == user.id)
-    )
-    device = result.scalar_one_or_none()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
 
-    result = await db.execute(select(Policy).where(Policy.device_id == device_id))
-    policy = result.scalar_one_or_none()
+    policy = await _resolve_policy(db, child_id, device_id)
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
@@ -293,10 +316,13 @@ async def grant_bonus(
     Calling again replaces the previous window (does not stack).
     """
     device = await _verify_device_owner(db, device_id, user.id)
-    device.bonus_until = datetime.now(timezone.utc) + timedelta(minutes=data.minutes)
+    child_id = await _child_id_for_device(db, device)
+
+    result = await db.execute(select(Child).where(Child.id == child_id))
+    child = result.scalar_one()
+    child.bonus_until = datetime.now(timezone.utc) + timedelta(minutes=data.minutes)
     await db.commit()
-    await db.refresh(device)
-    return GrantBonusResponse(bonus_until=device.bonus_until)
+    return GrantBonusResponse(bonus_until=child.bonus_until)
 
 
 @router.post("/{device_id}/regenerate-secret", response_model=DeviceOut)
@@ -354,17 +380,50 @@ async def _verify_device_owner(db: AsyncSession, device_id: str, user_id: str) -
     return device
 
 
+async def _resolve_activity(
+    db: AsyncSession, activity_id: str, child_id: str, device_id: str
+) -> Activity | None:
+    """Find one activity by id, scoped to the child first and falling back to (and
+    adopting under the child) a pre-existing device-keyed row — same non-exclusive
+    fallback shape as `_resolve_policy`."""
+    result = await db.execute(
+        select(Activity).where(Activity.id == activity_id, Activity.child_id == child_id)
+    )
+    activity = result.scalar_one_or_none()
+    if activity is not None:
+        return activity
+
+    result = await db.execute(
+        select(Activity).where(Activity.id == activity_id, Activity.device_id == device_id)
+    )
+    activity = result.scalar_one_or_none()
+    if activity is not None:
+        activity.child_id = child_id
+    return activity
+
+
 @router.get("/{device_id}/activities", response_model=List[ActivityOut])
 async def list_activities(
     device_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_device_owner(db, device_id, user.id)
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
+
     result = await db.execute(
-        select(Activity).where(Activity.device_id == device_id).order_by(Activity.day_of_week, Activity.start_time)
+        select(Activity).where(Activity.child_id == child_id).order_by(Activity.day_of_week, Activity.start_time)
     )
-    return [activity_to_out(a) for a in result.scalars().all()]
+    activities = result.scalars().all()
+    if not activities:
+        # Legacy rows created before this device was ever resolved to a child.
+        result = await db.execute(
+            select(Activity).where(Activity.device_id == device_id).order_by(Activity.day_of_week, Activity.start_time)
+        )
+        activities = result.scalars().all()
+
+    await db.commit()
+    return [activity_to_out(a) for a in activities]
 
 
 @router.post("/{device_id}/activities", response_model=ActivityOut)
@@ -374,9 +433,11 @@ async def create_activity(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_device_owner(db, device_id, user.id)
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
     activity = Activity(
         device_id=device_id,
+        child_id=child_id,
         name=data.name,
         day_of_week=data.day_of_week,
         start_time=parse_time(data.start_time),
@@ -399,11 +460,9 @@ async def update_activity(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_device_owner(db, device_id, user.id)
-    result = await db.execute(
-        select(Activity).where(Activity.id == activity_id, Activity.device_id == device_id)
-    )
-    activity = result.scalar_one_or_none()
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
+    activity = await _resolve_activity(db, activity_id, child_id, device_id)
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
@@ -434,11 +493,9 @@ async def delete_activity(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_device_owner(db, device_id, user.id)
-    result = await db.execute(
-        select(Activity).where(Activity.id == activity_id, Activity.device_id == device_id)
-    )
-    activity = result.scalar_one_or_none()
+    device = await _verify_device_owner(db, device_id, user.id)
+    child_id = await _child_id_for_device(db, device)
+    activity = await _resolve_activity(db, activity_id, child_id, device_id)
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
     await db.delete(activity)
