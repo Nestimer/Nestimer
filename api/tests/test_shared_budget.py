@@ -928,3 +928,68 @@ async def test_moving_a_device_does_not_carry_the_old_childs_schedules_onto_a_ch
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["activities"] == []
+
+
+async def test_moving_the_only_device_to_a_new_child_keeps_the_parents_limit(client):
+    """Alex has one Mac D and a parent-set 30 min/day. The parent creates Bob (no policy
+    row -- `create_child` deliberately makes none), moves D onto Bob, and later adds a
+    second Mac G to Bob.
+
+    The move leaves Alex deviceless, so there is nobody to hand D's policy row to and the
+    hand-off is gated off; D keeps owning the row and Bob is left with no policy of its
+    own. D still reads 30 through the device-keyed fallback -- correct so far. But adding
+    G then makes `create_device` find no policy for Bob and insert a FRESH DEFAULT
+    (enabled, 120), which D now resolves child-first: the parent's explicit 30 silently
+    becomes 120, with no signal anywhere in the UI.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alex")
+
+    resp = await client.put(
+        f"/api/v1/devices/{d['id']}/policy",
+        json={"screen_time_enabled": True, "screen_time_limit_minutes": 30},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.post("/api/v1/children", json={"name": "Bob"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    bob_id = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {d['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30, (
+        "the move alone must not change the limit"
+    )
+
+    # A second Mac joins Bob. This is the step that used to conjure a default policy.
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "G", "child_name": "Bob", "child_id": bob_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    g = resp.json()
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {d['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30, (
+        "adding a sibling must not replace the parent's explicit limit with a default"
+    )
+
+    # And the new sibling shares that same limit, not a default of its own.
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30

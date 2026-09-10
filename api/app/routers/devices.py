@@ -350,6 +350,33 @@ async def update_device(
                 )
                 if result.scalar_one_or_none() is not None:
                     await _detach_devices_policy(db, device.id)
+                else:
+                    # The old child is left with no devices at all, so there is nobody to
+                    # hand the row to -- and skipping outright left the DESTINATION child
+                    # with no policy row, because the create-or-adopt below cannot run
+                    # while this device still owns one (Policy.device_id is unique).
+                    #
+                    # That gap is quiet but expensive. The device keeps reading its own
+                    # rules through the device-keyed fallback, so the move itself is
+                    # correct -- but the moment a SECOND device joins the destination
+                    # child, `create_device` finds no policy for that child and inserts a
+                    # fresh default (enabled, 120 minutes). This device then resolves
+                    # child-first onto that default and the limit the parent explicitly
+                    # set is gone, with no signal anywhere in the UI: a measured 30 -> 120.
+                    #
+                    # Re-key the row onto the destination child instead. Safe precisely
+                    # here and nowhere else: the old child is now deviceless, so no Mac
+                    # loses enforcement (which is what makes the unconditional re-key in
+                    # `_resolve_policy` catastrophic and this one harmless), and it only
+                    # runs when the destination has no row of its own, so the unique
+                    # constraint on Policy.child_id cannot be violated. `owned.device_id`
+                    # stays on this device, so the pre-child rollback anchor survives.
+                    result = await db.execute(
+                        select(Policy).where(Policy.child_id == data.child_id)
+                    )
+                    if result.scalar_one_or_none() is None:
+                        owned.child_id = data.child_id
+                        await db.flush()
 
             # Policy.device_id is unique, so this can only run once the device owns no
             # row — either it never did, or the hand-off above just freed it.
