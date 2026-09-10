@@ -761,3 +761,110 @@ async def test_moving_the_policy_owning_device_leaves_the_old_child_locked(clien
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["screen_time_limit_minutes"] != 999
+
+
+async def test_moving_a_device_does_not_leak_activities_to_the_new_childs_siblings(client):
+    """Alice's Mac D carries seven all-day "Homework" windows. Bob has two Macs, F and
+    G, and no schedules at all. Moving D onto Bob must not hand G those windows.
+
+    `/agent/config` resolves activities child-first, and an ACTIVE activity unlocks the
+    screen and pauses counting -- so re-keying D's rows onto Bob made G unlockable all
+    day, every day, without the parent touching G at all.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    f = await create_device(client, token, name="F", child_name="Bob")
+    bob_id = f["child_id"]
+
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "G", "child_name": "Bob", "child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+    g = resp.json()
+
+    for day in range(7):
+        resp = await client.post(
+            f"/api/v1/devices/{d['id']}/activities",
+            json={"name": "Homework", "day_of_week": day,
+                  "start_time": "00:00", "end_time": "23:59"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], "precondition: G has no schedules"
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "moving a device must not hand its schedules to the destination child's other Macs"
+    )
+
+
+async def test_moving_a_device_leaves_child_level_schedules_with_their_child(client):
+    """`POST /children/{id}/activities` stamps the child's OLDEST device onto the row so
+    a pre-child API can still see it. That stamp must not make a shared, child-owned
+    schedule follow that one device on a move: the old child's remaining Mac would lose
+    a schedule the parent set at the child level, and the new child's Macs would gain it.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    alice_id = d["child_id"]
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "E", "child_name": "Alice", "child_id": alice_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    e = resp.json()
+
+    bob_mac = await create_device(client, token, name="F", child_name="Bob")
+    bob_id = bob_mac["child_id"]
+
+    # A child-level schedule, stamped onto Alice's oldest device (D) by the API.
+    resp = await client.post(
+        f"/api/v1/children/{alice_id}/activities",
+        json={"name": "Homework", "day_of_week": 0,
+              "start_time": "16:00", "end_time": "17:00"},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {e['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()["activities"]] == ["Homework"], (
+        "the old child's remaining Mac must still enforce the child-level schedule"
+    )
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {bob_mac['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "the destination child's Mac must not inherit another child's schedule"
+    )
+
+    # And the row is still listed (and therefore editable) under the child that owns it.
+    resp = await client.get(f"/api/v1/children/{alice_id}/activities", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()] == ["Homework"]

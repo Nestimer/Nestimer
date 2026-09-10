@@ -266,27 +266,47 @@ async def update_device(
         device.child_name = child.name
         if data.child_id != device.child_id:
             device.child_id = data.child_id
-            # Re-key this device's own activities onto the new child. Without this,
-            # a device's legacy child-keyed activity rows would still carry the OLD
-            # child_id: `/agent/config` and the activity list both resolve child-first
-            # (falling back to device_id only when the child has NO activities at
-            # all), so the moment the new child has any activity of its own, this
-            # device's rows would silently stop being enforced while still showing up
-            # (unenforced) in this device's own parent-facing list. Re-keying keeps
-            # "what the parent sees for this device" and "what the agent enforces for
-            # this device" the same list, regardless of which child it's attached to.
+            # Re-key ONLY genuine legacy device-keyed rows (child_id IS NULL) onto the
+            # new child. Those really do belong to the device -- nothing else points at
+            # them -- and without a child_id they would be invisible to the child-first
+            # lookup in `/agent/config` on either side of the move.
             #
-            # Side effect (intentional, not a bug): a SIBLING device still on the old
-            # child that was inheriting this activity only through the child-first
-            # lookup (i.e. it has no device-keyed row of its own for it) loses that
-            # activity the moment it's re-keyed away. The activity belongs to the
-            # device that's moving, not to the old child in general, so this is the
-            # correct outcome — but it is a real, visible change for that sibling.
+            # A row that already carries a child_id must keep it. Re-keying those drags
+            # the OLD child's schedules onto every OTHER Mac of the destination child:
+            # `/agent/config` resolves activities child-first, and an active activity
+            # UNLOCKS the screen and pauses counting, so a sibling that had no schedule
+            # at all silently becomes unlockable during every window the moved device
+            # carried. It is worse for genuinely child-level schedules, which
+            # `POST /children/{id}/activities` stamps with the child's oldest device:
+            # that stamp made a shared, child-owned schedule follow one device on a move,
+            # so the old child's remaining Macs LOST it and the new child's GAINED it.
             await db.execute(
                 Activity.__table__.update()
-                .where(Activity.device_id == device.id)
+                .where(Activity.device_id == device.id, Activity.child_id.is_(None))
                 .values(child_id=data.child_id)
             )
+
+            # For the rows that stay with their own child, re-point device_id at another
+            # device of THAT child, so the pre-child device-keyed fallback still reaches
+            # them there. Same shape as delete_device, including the no-sibling case:
+            # nothing to re-point to, so the stamp is left alone rather than nulled (the
+            # old child has no devices left at that point anyway).
+            result = await db.execute(
+                select(Activity).where(
+                    Activity.device_id == device.id,
+                    Activity.child_id.isnot(None),
+                    Activity.child_id != data.child_id,
+                )
+            )
+            for activity in result.scalars().all():
+                sibling_result = await db.execute(
+                    select(Device.id).where(
+                        Device.child_id == activity.child_id, Device.id != device.id
+                    ).limit(1)
+                )
+                sibling_id = sibling_result.scalar_one_or_none()
+                if sibling_id:
+                    activity.device_id = sibling_id
 
             # Make sure the device lands on a child that HAS a policy, and that the
             # policy is reachable by device_id. Moving a device to a child created via
