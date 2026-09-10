@@ -238,7 +238,33 @@ struct DeviceDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     Divider().padding(.leading, 16)
-                    infoRow(label: "Child", value: device.childName)
+                    if vm.allChildren.isEmpty {
+                        // Couldn't load the children list -- fall back to a plain, read-only
+                        // row rather than blocking the rest of the device screen.
+                        infoRow(label: "Child", value: device.childName)
+                    } else {
+                        HStack {
+                            Text("Child")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Picker("Child", selection: Binding(
+                                get: { device.childId ?? "" },
+                                set: { newId in Task { await vm.moveToChild(newId) } }
+                            )) {
+                                ForEach(vm.allChildren) { child in
+                                    Text(child.name).tag(child.id)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        Text("Moving this device merges it onto that child's shared daily limit and usage.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    }
                     Divider().padding(.leading, 16)
                     HStack {
                         Text("Daily cap")

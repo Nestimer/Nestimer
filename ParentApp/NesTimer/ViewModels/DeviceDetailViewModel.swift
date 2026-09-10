@@ -7,6 +7,7 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var device: Device?
     @Published var policy: Policy?
     @Published var usage: [UsageEntry] = []
+    @Published var allChildren: [Child] = []
     @Published var isLoading = false
     @Published var isSaving = false
     @Published var error: String?
@@ -38,7 +39,34 @@ class DeviceDetailViewModel: ObservableObject {
         } catch {
             self.error = error.localizedDescription
         }
+        // A failing /children request must not block the rest of the device screen --
+        // the child picker just becomes unavailable, everything else still works.
+        await loadChildren()
         isLoading = false
+    }
+
+    func loadChildren() async {
+        allChildren = (try? await api.listChildren()) ?? []
+    }
+
+    /// Moves the device onto a different child -- this is what merges two devices onto
+    /// one shared daily budget. The server re-keys the device's child_id (and its own
+    /// activities) and makes sure the destination child has a policy, but it does NOT
+    /// touch this device's own daily_cap_minutes column. What DOES change is the
+    /// *effective* policy (screen time limit etc.), which /devices/{id}/policy resolves
+    /// from the device's current child_id -- so refetch it after the move, or the "Today"
+    /// card keeps showing the old child's limit until the next full reload.
+    func moveToChild(_ childId: String) async {
+        do {
+            var update = DeviceUpdateRequest()
+            update.childId = childId
+            device = try await api.updateDevice(deviceId, update: update)
+            if let newPolicy = try? await api.getPolicy(deviceId: deviceId) {
+                policy = newPolicy
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     func updateDeviceName(name: String, childName: String) async {
