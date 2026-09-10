@@ -1413,7 +1413,7 @@ struct ChildRow: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 if let usedMinutes {
-                    Text(Self.durationText(usedMinutes))
+                    Text(durationText(usedMinutes))
                         .font(.headline)
                         .monospacedDigit()
                 }
@@ -1428,11 +1428,6 @@ struct ChildRow: View {
             }
         }
         .padding(.vertical, 4)
-    }
-
-    static func durationText(_ minutes: Double) -> String {
-        let total = Int(minutes.rounded())
-        return total < 60 ? "\(total)m" : "\(total / 60)h \(total % 60)m"
     }
 }
 ```
@@ -1496,7 +1491,7 @@ to:
 - [ ] **Step 5: Build both platforms**
 
 Run the two `xcodebuild` commands from Task 7 Step 4.
-Expected: both fail with `cannot find 'ChildDetailView' in scope` — it does not exist until Task 11. To verify everything else compiles, temporarily replace the `.navigationDestination` body with `Text(child.name)`, build, confirm `** BUILD SUCCEEDED **` twice, then restore it.
+Expected: `** BUILD SUCCEEDED **` twice. `ChildDetailView` and `durationText` already exist — Task 11 runs before this task (see the execution-order note at the top of Task 11).
 
 - [ ] **Step 6: Commit**
 
@@ -1509,6 +1504,10 @@ git commit -m "feat: children list as the app's home screen"
 ---
 
 ### Task 11: `ChildDetailViewModel` and `ChildDetailView`
+
+> **Runs before Task 10.** `ChildrenListView` navigates to `ChildDetailView` and uses
+> `durationText`, both created here, so building Task 10 first would commit a tree that
+> does not compile. Execution order is 1-9, then 11, then 10, then 12-14.
 
 This is the largest task. It moves the shared sections off `DeviceDetailView` and gives them a home.
 
@@ -1535,6 +1534,13 @@ import SwiftUI
 
 func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
     Toggle(title, isOn: isOn)
+}
+
+/// "2h 04m" / "45m". Lives here rather than on a view so ChildrenListView and
+/// ChildDetailView can both use it without depending on each other.
+func durationText(_ minutes: Double) -> String {
+    let total = Int(minutes.rounded())
+    return total < 60 ? "\(total)m" : "\(total / 60)h \(total % 60)m"
 }
 ```
 
@@ -1702,11 +1708,11 @@ struct ChildDetailView: View {
             let limit = vm.policy?.screenTimeLimitMinutes
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(ChildRow.durationText(vm.todayMinutes))
+                    Text(durationText(vm.todayMinutes))
                         .font(.title2.weight(.semibold))
                         .monospacedDigit()
                     if let limit {
-                        Text("of \(ChildRow.durationText(Double(limit)))")
+                        Text("of \(durationText(Double(limit)))")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -1733,7 +1739,7 @@ struct ChildDetailView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(device.name)
-                            Text(device.dailyCapMinutes.map { "cap: \(ChildRow.durationText(Double($0)))" }
+                            Text(device.dailyCapMinutes.map { "cap: \(durationText(Double($0)))" }
                                  ?? "cap: none")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
