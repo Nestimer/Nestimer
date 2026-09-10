@@ -105,6 +105,12 @@ final class ChildDetailViewModel: ObservableObject {
                 policy = try await api.updateChildPolicy(childId: childId, update: next)
             } catch {
                 actionError = error.localizedDescription
+                // Clear anything that was merged in while this request was in flight.
+                // Leaving it armed would apply an edit the parent made minutes ago
+                // alongside the next, unrelated PUT -- every PolicyUpdate( site sends
+                // exactly one field, so this is the only way an untouched setting can
+                // change on the server.
+                pendingUpdate = nil
                 break
             }
         }
