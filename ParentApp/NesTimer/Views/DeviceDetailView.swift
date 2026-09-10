@@ -90,7 +90,19 @@ struct DeviceDetailView: View {
         } message: {
             if let pendingChildId,
                let target = vm.allChildren.first(where: { $0.id == pendingChildId }) {
-                Text("Moving this device merges it onto \(target.name)'s shared daily limit and usage.")
+                // Say everything a move actually does. It is not only a budget merge:
+                // usage is summed per child, so minutes already spent today are
+                // reallocated -- the old child's "used today" drops by this device's
+                // minutes and the new child's rises -- and schedules belong to the child,
+                // so this device swaps one child's activities for the other's.
+                let current = vm.device?.childName ?? "the current child"
+                Text("""
+                    Moving this device merges it onto \(target.name)'s shared daily limit \
+                    and usage. Time already used today moves with it: subtracted from \
+                    \(current)'s total for today, added to \(target.name)'s. \
+                    Scheduled activities stay with \(current) — this device will follow \
+                    \(target.name)'s schedule instead.
+                    """)
             }
         }
         // Attached OUTSIDE the `vm.policy != nil` gate above, so it renders whatever the
@@ -318,7 +330,7 @@ struct DeviceDetailView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        Text("Moving this device merges it onto that child's shared daily limit and usage.")
+                        Text("Moving this device merges it onto that child's shared daily limit and usage, moves the time already used today from one child's total to the other's, and swaps this device onto that child's scheduled activities.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 16)
