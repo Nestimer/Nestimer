@@ -71,6 +71,63 @@ actor APIClient {
         let _: [String: Bool] = try await request("DELETE", path: "/api/v1/devices/\(id)")
     }
 
+    // MARK: - Children
+
+    func listChildren() async throws -> [Child] {
+        try await get("/api/v1/children")
+    }
+
+    func createChild(name: String) async throws -> Child {
+        try await post("/api/v1/children", body: ChildCreateRequest(name: name))
+    }
+
+    @discardableResult
+    func renameChild(_ id: String, name: String) async throws -> Child {
+        try await request("PATCH", path: "/api/v1/children/\(id)",
+                          body: ChildUpdateRequest(name: name))
+    }
+
+    func deleteChild(_ id: String) async throws {
+        let _: [String: Bool] = try await request("DELETE", path: "/api/v1/children/\(id)")
+    }
+
+    func getChildUsage(childId: String, days: Int = 7) async throws -> [UsageEntry] {
+        try await get("/api/v1/children/\(childId)/usage?days=\(days)")
+    }
+
+    func getChildPolicy(childId: String) async throws -> Policy {
+        try await get("/api/v1/children/\(childId)/policy")
+    }
+
+    func updateChildPolicy(childId: String, update: PolicyUpdate) async throws -> Policy {
+        try await request("PUT", path: "/api/v1/children/\(childId)/policy", body: update)
+    }
+
+    @discardableResult
+    func grantChildBonus(childId: String, minutes: Int) async throws -> GrantBonusResponse {
+        try await post("/api/v1/children/\(childId)/grant-bonus",
+                       body: GrantBonusRequest(minutes: minutes))
+    }
+
+    func listChildActivities(childId: String) async throws -> [Activity] {
+        try await get("/api/v1/children/\(childId)/activities")
+    }
+
+    func createChildActivity(childId: String, activity: ActivityCreate) async throws -> Activity {
+        try await post("/api/v1/children/\(childId)/activities", body: activity)
+    }
+
+    func updateChildActivity(childId: String, activityId: String,
+                             update: ActivityUpdate) async throws -> Activity {
+        try await request("PUT", path: "/api/v1/children/\(childId)/activities/\(activityId)",
+                          body: update)
+    }
+
+    func deleteChildActivity(childId: String, activityId: String) async throws {
+        let _: [String: Bool] = try await request(
+            "DELETE", path: "/api/v1/children/\(childId)/activities/\(activityId)")
+    }
+
     // MARK: - Policy
 
     func getPolicy(deviceId: String) async throws -> Policy {
@@ -155,6 +212,10 @@ actor APIClient {
             throw APIError.unauthorized
         }
 
+        if http.statusCode == 404 {
+            throw APIError.notFound
+        }
+
         guard (200...299).contains(http.statusCode) else {
             if let error = try? decoder.decode(ErrorResponse.self, from: data) {
                 throw APIError.server(error.detail)
@@ -176,6 +237,7 @@ enum APIError: LocalizedError {
     case unauthorized
     case httpError(Int)
     case server(String)
+    case notFound
 
     var errorDescription: String? {
         switch self {
@@ -184,6 +246,7 @@ enum APIError: LocalizedError {
         case .unauthorized: return "Session expired, please sign in again"
         case .httpError(let code): return "Server error: \(code)"
         case .server(let msg): return msg
+        case .notFound: return "Not found"
         }
     }
 }
