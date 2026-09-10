@@ -337,21 +337,43 @@ async def delete_device(
         )
         sibling_id = result.scalar_one_or_none()
         if sibling_id:
-            # The sibling may already own its own device-keyed Policy row, stamped back
-            # when it was created on a DIFFERENT child and never re-keyed when it was
-            # later moved onto this child (update_device leaves that re-keying out of
-            # scope on purpose). That row is now an orphan: its child_id points at a
-            # child nothing points to any more, and Policy.device_id is unique, so the
-            # UPDATE below would violate that constraint. Drop the orphan first -- the
-            # row we are about to hand the sibling is the real, currently-enforced one.
-            await db.execute(delete(Policy).where(Policy.device_id == sibling_id))
+            # A device can own its own Policy/Activity rows from BEFORE it was merged
+            # onto this child -- stale, still keyed to whatever child it used to
+            # belong to (update_device leaves that re-keying out of scope on purpose
+            # for Policy). Only the row that actually carries THIS child's id is the
+            # live one the agent enforces. Moving a stale row onto the sibling would
+            # silently make it authoritative for the wrong child; leaving the live one
+            # behind to cascade-delete is the exact bug this task exists to fix. So:
+            # only act on the side (this device, or the sibling) that genuinely holds
+            # the live policy -- never assume it's this device just because this
+            # device happens to be the one being deleted.
+            result = await db.execute(select(Policy).where(Policy.device_id == device.id))
+            device_policy = result.scalar_one_or_none()
+            if device_policy is not None and device_policy.child_id == device.child_id:
+                # This device holds the child's live policy. Policy.child_id is unique,
+                # so any row the sibling separately owns under its own device_id is
+                # provably a stale orphan (from before the SIBLING was merged onto this
+                # child) -- drop it first so the re-point below doesn't collide with
+                # Policy.device_id's unique constraint.
+                await db.execute(delete(Policy).where(Policy.device_id == sibling_id))
+                await db.execute(
+                    update(Policy).where(Policy.id == device_policy.id)
+                    .values(device_id=sibling_id)
+                )
+            # else: this device either has no policy row of its own, or its row is a
+            # stale orphan from a child it used to belong to -- either way the live
+            # policy (if the sibling holds it) is untouched, and letting this device's
+            # row cascade-delete with it is correct.
+
+            # Same reasoning for Activity: only re-point rows that belong to THIS
+            # child. A device's stale activities from a child it used to belong to
+            # must never be moved onto the sibling -- `list_activities` matches by
+            # device_id as well as child_id, so a moved stale row would surface
+            # (misattributed) under the sibling's child.
             await db.execute(
-                update(Policy).where(Policy.device_id == device.id)
-                .values(device_id=sibling_id)
-            )
-            await db.execute(
-                update(Activity).where(Activity.device_id == device.id)
-                .values(device_id=sibling_id)
+                update(Activity).where(
+                    Activity.device_id == device.id, Activity.child_id == device.child_id
+                ).values(device_id=sibling_id)
             )
             # Expire the in-session copies so the ORM does not cascade-delete rows it
             # still believes belong to this device.

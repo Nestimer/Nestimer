@@ -479,3 +479,38 @@ async def test_deleting_the_only_device_still_removes_its_policy(client):
 
     resp = await client.get(f"/api/v1/devices/{d1['id']}/policy", headers=h)
     assert resp.status_code == 404
+
+
+async def test_deleting_the_non_policy_holding_sibling_keeps_the_live_policy(client):
+    """Mirror of the policy-holder-deleted case: delete the sibling that does NOT carry
+    the child's live policy row.
+
+    d1 and d2 are each created independently (own child, own default policy). d1 is then
+    merged ONTO d2's child, so the shared child's live policy is the row d2 has always
+    owned (device_id=d2) -- d1 keeps its own now-orphaned policy row (still keyed to its
+    original child) untouched, exactly as update_device's re-keying comment describes.
+    Deleting d1 must not disturb d2's live policy: it is not the row that carries this
+    child's id, so it must never be deleted or re-pointed.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Bea")
+
+    resp = await client.patch(f"/api/v1/devices/{d1['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d2['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d2['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
