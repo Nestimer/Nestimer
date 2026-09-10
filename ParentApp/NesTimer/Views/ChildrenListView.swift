@@ -24,7 +24,7 @@ struct ChildrenListView: View {
 
     var body: some View {
         List(selection: $selection) {
-            if vm.childrenLoadFailed {
+            if vm.childrenLoadFailed && vm.children.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Children", systemImage: "exclamationmark.triangle")
                 } description: {
@@ -51,47 +51,25 @@ struct ChildrenListView: View {
             }
 
             ForEach(vm.children) { child in
-                NavigationLink(value: child) {
-                    ChildRow(child: child,
-                             devices: vm.devices(for: child),
-                             usedMinutes: vm.todayMinutes[child.id])
-                }
-                // NavigationLink(value:) carries a Child (for .navigationDestination(for:
-                // Child.self) below), but `selection` is keyed by id -- List needs an
-                // explicit tag matching the selection's type to associate this row with it.
-                .tag(child.id)
-                .swipeActions(edge: .trailing) {
-                    // DELETE /children/{id} returns 400 while the child still has
-                    // devices. Offering a button that can only fail is worse than not
-                    // offering it, so it appears only once the child is empty. Gated on
-                    // child.deviceIds (from the same /children response as the row
-                    // itself), not vm.devices(for:) -- that comes from a separate
-                    // /devices request that can fail or simply not have landed yet,
-                    // which would wrongly offer Delete for every child in the meantime.
-                    if child.deviceIds.isEmpty {
-                        Button("Delete", role: .destructive) {
-                            Task { await vm.deleteChild(child.id) }
-                        }
-                    }
-                    Button("Rename") {
+                ChildListRow(
+                    child: child,
+                    devices: vm.devices(for: child),
+                    usedMinutes: vm.todayMinutes[child.id],
+                    onRename: {
                         renameTarget = child
                         renameText = child.name
-                    }
-                    .tint(.blue)
-                }
-                .contextMenu {
-                    // Same actions as the swipe gestures, for macOS (right-click) and
-                    // iOS (long-press) where a swipe isn't the primary or only input.
-                    Button("Rename") {
-                        renameTarget = child
-                        renameText = child.name
-                    }
-                    if child.deviceIds.isEmpty {
-                        Button("Delete", role: .destructive) {
-                            Task { await vm.deleteChild(child.id) }
+                    },
+                    onDelete: {
+                        Task {
+                            await vm.deleteChild(child.id)
+                            // Otherwise the detail pane's .id() never changes, so it is
+                            // never rebuilt and keeps rendering the deleted child's
+                            // cached data -- including an "Add Device" path that would
+                            // POST a child_id that no longer exists.
+                            if selection == child.id { selection = nil }
                         }
                     }
-                }
+                )
             }
         }
         .navigationTitle("Children")
@@ -155,6 +133,62 @@ struct ChildrenListView: View {
         } message: {
             Text(vm.errorMessage ?? "")
         }
+    }
+}
+
+/// One sidebar row plus its swipe/context actions. Split out of ChildrenListView's body
+/// (rather than inlined in the ForEach) for two reasons: it keeps the platform-conditional
+/// navigation-vs-selectable-row split (see `rowContent`) from ballooning the type-checking
+/// cost of the enclosing List/ForEach/modifier chain -- inlined, the combination timed out
+/// the compiler -- and it gives that split a single, obviously-correct place to live.
+private struct ChildListRow: View {
+    let child: Child
+    let devices: [Device]
+    let usedMinutes: Double?
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        rowContent
+            .swipeActions(edge: .trailing) {
+                // DELETE /children/{id} returns 400 while the child still has devices.
+                // Offering a button that can only fail is worse than not offering it, so
+                // it appears only once the child is empty. Gated on child.deviceIds (from
+                // the same /children response as the row itself), not a separate
+                // /devices request that can fail or simply not have landed yet.
+                if child.deviceIds.isEmpty {
+                    Button("Delete", role: .destructive, action: onDelete)
+                }
+                Button("Rename", action: onRename)
+                    .tint(.blue)
+            }
+            .contextMenu {
+                // Same actions as the swipe gestures, for macOS (right-click) and iOS
+                // (long-press) where a swipe isn't the primary or only input.
+                Button("Rename", action: onRename)
+                if child.deviceIds.isEmpty {
+                    Button("Delete", role: .destructive, action: onDelete)
+                }
+            }
+    }
+
+    // Split explicitly by platform rather than relying on tag-vs-link precedence. On
+    // macOS the row is a plain selectable List row: no link means nothing can swallow the
+    // click and there is no dangling .navigationDestination(for: Child.self) call for a
+    // link to fail to find (that modifier is iOS-only). On iOS it stays the push link,
+    // whose value type (Child) intentionally no longer matches `selection`'s type
+    // (String), so it can no longer be folded into list selection and is unambiguously a
+    // push.
+    @ViewBuilder
+    private var rowContent: some View {
+        #if os(macOS)
+        ChildRow(child: child, devices: devices, usedMinutes: usedMinutes)
+            .tag(child.id)
+        #else
+        NavigationLink(value: child) {
+            ChildRow(child: child, devices: devices, usedMinutes: usedMinutes)
+        }
+        #endif
     }
 }
 
