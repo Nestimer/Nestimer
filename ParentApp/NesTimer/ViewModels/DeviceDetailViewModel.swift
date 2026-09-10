@@ -57,6 +57,18 @@ class DeviceDetailViewModel: ObservableObject {
         isSaving = false
     }
 
+    // Note: the brief's snippet used `errorMessage`, but this view model's error property
+    // (used by every other method here) is named `error` -- matching that instead.
+    func updateCap(_ minutes: Int?) async {
+        do {
+            var update = DeviceUpdateRequest()
+            update.dailyCapMinutes = minutes
+            device = try await APIClient.shared.updateDevice(deviceId, update: update)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     func updatePolicy(_ update: PolicyUpdate) async {
         // Merge with any pending update to avoid race conditions
         pendingUpdate = mergeUpdates(existing: pendingUpdate, new: update)

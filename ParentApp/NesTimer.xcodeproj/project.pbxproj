@@ -24,6 +24,8 @@
 		A10015 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015 /* TOTPGenerator.swift */; };
 		A10016 /* ChildrenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10016 /* ChildrenViewModel.swift */; };
 		A10017 /* FormRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10017 /* FormRows.swift */; };
+		A10018 /* ChildDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10018 /* ChildDetailViewModel.swift */; };
+		A10019 /* ChildDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10019 /* ChildDetailView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +46,8 @@
 		B10015 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
 		B10016 /* ChildrenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildrenViewModel.swift; sourceTree = "<group>"; };
 		B10017 /* FormRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormRows.swift; sourceTree = "<group>"; };
+		B10018 /* ChildDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailViewModel.swift; sourceTree = "<group>"; };
+		B10019 /* ChildDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailView.swift; sourceTree = "<group>"; };
 		C10001 /* NesTimer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -95,6 +99,7 @@
 				B10006 /* DevicesViewModel.swift */,
 				B10007 /* DeviceDetailViewModel.swift */,
 				B10016 /* ChildrenViewModel.swift */,
+				B10018 /* ChildDetailViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -108,6 +113,7 @@
 				B10011 /* AddDeviceView.swift */,
 				B10012 /* UsageChartView.swift */,
 				B10017 /* FormRows.swift */,
+				B10019 /* ChildDetailView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -200,6 +206,8 @@
 				A10015 /* TOTPGenerator.swift in Sources */,
 				A10016 /* ChildrenViewModel.swift in Sources */,
 				A10017 /* FormRows.swift in Sources */,
+				A10018 /* ChildDetailViewModel.swift in Sources */,
+				A10019 /* ChildDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
