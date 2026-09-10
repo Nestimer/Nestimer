@@ -47,11 +47,29 @@ struct DeviceUpdateRequest: Encodable {
     var childId: String?
     var dailyCapMinutes: Int?
 
+    /// Fields to explicitly encode as JSON null (to clear overrides on the server).
+    var clearFields: Set<CodingKeys> = []
+
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
         case childId = "child_id"
         case dailyCapMinutes = "daily_cap_minutes"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        // Encode fields that have values
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(childName, forKey: .childName)
+        try container.encodeIfPresent(childId, forKey: .childId)
+        try container.encodeIfPresent(dailyCapMinutes, forKey: .dailyCapMinutes)
+
+        // Encode explicit nulls for fields that should be cleared
+        for key in clearFields {
+            try container.encodeNil(forKey: key)
+        }
     }
 }
 
@@ -244,6 +262,8 @@ struct UsageEntry: Decodable, Identifiable {
 
     var dayLabel: String {
         let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         guard let d = formatter.date(from: date) else { return date }
         formatter.locale = Locale(identifier: "en_US")
@@ -357,14 +377,6 @@ struct ChildCreateRequest: Encodable {
 
 struct ChildUpdateRequest: Encodable {
     var name: String?
-}
-
-struct DeviceCapUpdateRequest: Encodable {
-    var dailyCapMinutes: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case dailyCapMinutes = "daily_cap_minutes"
-    }
 }
 
 // MARK: - Helpers

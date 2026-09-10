@@ -30,7 +30,9 @@ final class ChildrenViewModel: ObservableObject {
         do {
             devices = try await api.listDevices()
         } catch {
-            errorMessage = "Could not load devices."
+            if errorMessage == nil {
+                errorMessage = "Could not load devices."
+            }
         }
 
         isLoading = false
@@ -52,6 +54,8 @@ final class ChildrenViewModel: ObservableObject {
 
     private static func todayString() -> String {
         let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date())
     }

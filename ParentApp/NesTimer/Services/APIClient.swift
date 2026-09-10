@@ -96,7 +96,7 @@ actor APIClient {
     }
 
     func getChildPolicy(childId: String) async throws -> Policy {
-        try await get("/api/v1/children/\(childId)/policy")
+        try await get("/api/v1/children/\(childId)/policy", notFoundIsExpected: true)
     }
 
     func updateChildPolicy(childId: String, update: PolicyUpdate) async throws -> Policy {
@@ -171,8 +171,8 @@ actor APIClient {
 
     // MARK: - Networking
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
-        try await request("GET", path: path)
+    private func get<T: Decodable>(_ path: String, notFoundIsExpected: Bool = false) async throws -> T {
+        try await request("GET", path: path, notFoundIsExpected: notFoundIsExpected)
     }
 
     private func post<T: Decodable, B: Encodable>(_ path: String, body: B, auth: Bool = true) async throws -> T {
@@ -183,7 +183,8 @@ actor APIClient {
         _ method: String,
         path: String,
         body: (any Encodable)? = nil,
-        auth: Bool = true
+        auth: Bool = true,
+        notFoundIsExpected: Bool = false
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -212,7 +213,7 @@ actor APIClient {
             throw APIError.unauthorized
         }
 
-        if http.statusCode == 404 {
+        if http.statusCode == 404, notFoundIsExpected {
             throw APIError.notFound
         }
 
