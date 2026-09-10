@@ -10,6 +10,11 @@ struct DeviceDetailView: View {
     @StateObject private var vm: DeviceDetailViewModel
     @State private var showEditName = false
     @State private var capMinutes: Int?
+    /// The cap value we last told the server about (either via a seed from .task/.refreshable
+    /// or a dispatched PATCH). onChange compares against this, not against vm.device, because
+    /// vm.device is stale while a PATCH is in flight -- comparing against it would let a
+    /// revert typed during that window be silently swallowed as a no-op.
+    @State private var lastSentCap: Int?
 
     init(deviceId: String) {
         self.deviceId = deviceId
@@ -52,10 +57,12 @@ struct DeviceDetailView: View {
         .refreshable {
             await vm.load()
             capMinutes = vm.device?.dailyCapMinutes
+            lastSentCap = capMinutes
         }
         .task {
             await vm.load()
             capMinutes = vm.device?.dailyCapMinutes
+            lastSentCap = capMinutes
         }
         .sheet(isPresented: $showEditName) {
             EditDeviceNameView(vm: vm)
@@ -245,10 +252,17 @@ struct DeviceDetailView: View {
                         }
                         .labelsHidden()
                         .onChange(of: capMinutes) { _, newValue in
-                            // .task/.refreshable seed capMinutes from the server after every
-                            // load, which fires this same onChange -- skip it when the value
-                            // already matches the server so a load doesn't echo a no-op PATCH.
-                            guard newValue != vm.device?.dailyCapMinutes else { return }
+                            // .task/.refreshable seed capMinutes from the server (and
+                            // lastSentCap along with it), which fires this same onChange --
+                            // skip it when the value already matches what we last sent so a
+                            // load doesn't echo a no-op PATCH. Comparing against lastSentCap
+                            // rather than vm.device?.dailyCapMinutes matters because vm.device
+                            // is stale while a PATCH is in flight: a revert typed during that
+                            // window (e.g. 60 -> 90 -> 60 before the first PATCH lands) must
+                            // still be recognized as a new value to send, not swallowed as a
+                            // no-op against the not-yet-updated server value.
+                            guard newValue != lastSentCap else { return }
+                            lastSentCap = newValue
                             Task { await vm.updateCap(newValue) }
                         }
                     }
