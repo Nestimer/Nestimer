@@ -372,3 +372,33 @@ async def test_childless_child_policy_is_404_and_creates_nothing(client):
 
     resp = await client.get(f"/api/v1/devices/{device['id']}/policy", headers=h)
     assert resp.status_code == 200, resp.text
+
+
+async def test_child_grant_bonus_applies_to_every_device(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+
+    resp = await client.post(f"/api/v1/children/{d1['child_id']}/grant-bonus",
+                             json={"minutes": 15}, headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["bonus_until"] is not None
+
+    for dev in (d1, d2):
+        resp = await client.get("/api/v1/agent/config",
+                                headers={"Authorization": f"Bearer {dev['api_token']}"})
+        assert resp.json()["bonus_until"] is not None, f"{dev['name']} did not see the bonus"
+
+
+async def test_child_grant_bonus_rejects_out_of_range(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    resp = await client.post(f"/api/v1/children/{d['child_id']}/grant-bonus",
+                             json={"minutes": 999}, headers=h)
+    assert resp.status_code == 422

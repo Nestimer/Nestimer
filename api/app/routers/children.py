@@ -1,4 +1,5 @@
 """Parent-facing endpoints for managing children."""
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import get_current_user
 from ..database import get_db
 from ..models.models import Child, Device, Policy, User, UsageLog
-from ..schemas import ChildCreate, ChildOut, ChildUpdate, PolicyOut, PolicyUpdate, UsageOut
+from ..schemas import (
+    ChildCreate, ChildOut, ChildUpdate, GrantBonusRequest, GrantBonusResponse,
+    PolicyOut, PolicyUpdate, UsageOut,
+)
 from .devices import _resolve_policy, policy_to_out, parse_time
 
 router = APIRouter(prefix="/children", tags=["children"])
@@ -192,3 +196,20 @@ async def update_child_policy(
     await db.commit()
     await db.refresh(policy)
     return policy_to_out(policy)
+
+
+@router.post("/{child_id}/grant-bonus", response_model=GrantBonusResponse)
+async def grant_child_bonus(
+    child_id: str,
+    data: GrantBonusRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bonus is inherently shared: `bonus_until` lives on the child, so the window
+    applies to every device that child owns. Calling again replaces the window rather
+    than extending it, matching `/devices/{id}/grant-bonus`.
+    """
+    child = await _verify_child_owner(db, child_id, user.id)
+    child.bonus_until = datetime.now(timezone.utc) + timedelta(minutes=data.minutes)
+    await db.commit()
+    return GrantBonusResponse(bonus_until=child.bonus_until)
