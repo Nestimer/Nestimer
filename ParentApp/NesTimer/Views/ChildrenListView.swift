@@ -8,9 +8,41 @@ struct ChildrenListView: View {
     @State private var renameTarget: Child?
     @State private var renameText = ""
 
+    /// Drives the macOS NavigationSplitView's detail column. Unused on iOS, where
+    /// ChildrenListView() is constructed with no selection and navigation is push-based
+    /// via .navigationDestination inside the caller's NavigationStack.
+    @Binding var selection: Child?
+
+    /// True only when the most recent load() call itself failed and left the list
+    /// empty -- as opposed to vm.errorMessage being set (and later cleared by dismissing
+    /// the alert below) by an unrelated create/rename/delete failure. Tracked locally
+    /// because ChildrenViewModel has one shared errorMessage for all of those, and this
+    /// screen needs the load failure to keep showing a retry state even after the alert
+    /// for it has been dismissed.
+    @State private var loadFailed = false
+
+    init(selection: Binding<Child?> = .constant(nil)) {
+        self._selection = selection
+    }
+
     var body: some View {
-        List {
-            if vm.children.isEmpty && !vm.isLoading {
+        List(selection: $selection) {
+            if loadFailed {
+                ContentUnavailableView {
+                    Label("Couldn't Load Children", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(vm.errorMessage ?? "Something went wrong.")
+                } actions: {
+                    Button("Retry") { Task { await loadChildren() } }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else if vm.children.isEmpty && vm.isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView("Loading...")
+                    Spacer()
+                }
+            } else if vm.children.isEmpty {
                 ContentUnavailableView {
                     Label("No Children", systemImage: "person.2")
                 } description: {
@@ -30,8 +62,12 @@ struct ChildrenListView: View {
                 .swipeActions(edge: .trailing) {
                     // DELETE /children/{id} returns 400 while the child still has
                     // devices. Offering a button that can only fail is worse than not
-                    // offering it, so it appears only once the child is empty.
-                    if vm.devices(for: child).isEmpty {
+                    // offering it, so it appears only once the child is empty. Gated on
+                    // child.deviceIds (from the same /children response as the row
+                    // itself), not vm.devices(for:) -- that comes from a separate
+                    // /devices request that can fail or simply not have landed yet,
+                    // which would wrongly offer Delete for every child in the meantime.
+                    if child.deviceIds.isEmpty {
                         Button("Delete", role: .destructive) {
                             Task { await vm.deleteChild(child.id) }
                         }
@@ -41,6 +77,19 @@ struct ChildrenListView: View {
                         renameText = child.name
                     }
                     .tint(.blue)
+                }
+                .contextMenu {
+                    // Same actions as the swipe gestures, for macOS (right-click) and
+                    // iOS (long-press) where a swipe isn't the primary or only input.
+                    Button("Rename") {
+                        renameTarget = child
+                        renameText = child.name
+                    }
+                    if child.deviceIds.isEmpty {
+                        Button("Delete", role: .destructive) {
+                            Task { await vm.deleteChild(child.id) }
+                        }
+                    }
                 }
             }
         }
@@ -65,8 +114,8 @@ struct ChildrenListView: View {
                 }
             }
         }
-        .refreshable { await vm.load() }
-        .task { await vm.load() }
+        .refreshable { await loadChildren() }
+        .task { await loadChildren() }
         .alert("New Child", isPresented: $showAddChild) {
             TextField("Name", text: $newChildName)
             Button("Cancel", role: .cancel) { newChildName = "" }
@@ -100,6 +149,11 @@ struct ChildrenListView: View {
             Text(vm.errorMessage ?? "")
         }
     }
+
+    private func loadChildren() async {
+        await vm.load()
+        loadFailed = vm.errorMessage != nil && vm.children.isEmpty
+    }
 }
 
 struct ChildRow: View {
@@ -125,13 +179,23 @@ struct ChildRow: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 if let usedMinutes {
-                    Text(durationText(usedMinutes))
-                        .font(.headline)
-                        .monospacedDigit()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(durationText(usedMinutes))
+                            .font(.headline)
+                            .monospacedDigit()
+                        Text("used today")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if onlineCount > 0 {
+                // Shown whenever the child has at least one device, even when none are
+                // online -- otherwise "all offline" and "no data yet" both render as
+                // nothing, and a parent can't tell the two apart.
+                if !devices.isEmpty {
                     HStack(spacing: 6) {
-                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                        Circle()
+                            .fill(onlineCount > 0 ? Color.green : Color.gray.opacity(0.4))
+                            .frame(width: 8, height: 8)
                         Text("\(onlineCount) online")
                             .font(.caption)
                             .foregroundStyle(.secondary)

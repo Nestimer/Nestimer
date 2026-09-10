@@ -58,8 +58,8 @@ actor APIClient {
         try await get("/api/v1/devices/\(id)")
     }
 
-    func createDevice(name: String, childName: String) async throws -> Device {
-        let body = CreateDeviceRequest(name: name, childName: childName)
+    func createDevice(name: String, childName: String, childId: String? = nil) async throws -> Device {
+        let body = CreateDeviceRequest(name: name, childName: childName, childId: childId)
         return try await post("/api/v1/devices", body: body)
     }
 

@@ -34,10 +34,15 @@ struct User: Decodable, Identifiable {
 struct CreateDeviceRequest: Encodable {
     let name: String
     let childName: String
+    /// Attach to an existing child instead of creating a new one. `child_name` is still
+    /// required by the API even when this is set (it falls back to the child's own name
+    /// server-side), so callers must keep sending a non-empty childName either way.
+    let childId: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
+        case childId = "child_id"
     }
 }
 

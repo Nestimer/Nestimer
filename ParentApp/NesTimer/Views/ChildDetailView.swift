@@ -4,6 +4,11 @@ struct ChildDetailView: View {
     let childId: String
     @StateObject private var vm: ChildDetailViewModel
     @State private var showAddActivity = false
+    @State private var showAddDevice = false
+    // AddDeviceView takes a DevicesViewModel; this screen has no reason to own a full
+    // device list, so it gets a throwaway instance solely to satisfy that initializer.
+    // The actual refresh after creation goes through vm.load() via onCreated below.
+    @StateObject private var addDeviceVM = DevicesViewModel()
 
     init(childId: String) {
         self.childId = childId
@@ -23,6 +28,9 @@ struct ChildDetailView: View {
                                 Label("No Devices", systemImage: "desktopcomputer")
                             } description: {
                                 Text("Add a device to this child to set limits")
+                            } actions: {
+                                Button("Add Device") { showAddDevice = true }
+                                    .buttonStyle(.borderedProminent)
                             }
                             .padding()
                             .background(.regularMaterial)
@@ -63,6 +71,14 @@ struct ChildDetailView: View {
         .sheet(isPresented: $showAddActivity) {
             AddActivityView(vm: vm)
         }
+        .sheet(isPresented: $showAddDevice) {
+            AddDeviceView(
+                vm: addDeviceVM,
+                childId: vm.child?.id,
+                lockedChildName: vm.child?.name,
+                onCreated: { Task { await vm.load() } }
+            )
+        }
     }
 
     // MARK: - Shared budget
@@ -102,9 +118,17 @@ struct ChildDetailView: View {
 
     private var devicesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Devices")
-                .font(.title2)
-                .fontWeight(.semibold)
+            HStack {
+                Text("Devices")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button { showAddDevice = true } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+            }
 
             VStack(spacing: 0) {
                 ForEach(vm.devices) { device in
