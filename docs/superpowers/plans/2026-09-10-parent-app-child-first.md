@@ -1852,7 +1852,7 @@ Add:
             update.childId = childId
             device = try await APIClient.shared.updateDevice(deviceId, update: update)
         } catch {
-            errorMessage = error.localizedDescription
+            error = error.localizedDescription   // DeviceDetailViewModel's property is `error`, not `errorMessage`
         }
     }
 ```
