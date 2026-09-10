@@ -347,8 +347,18 @@ struct DeviceDetailView: View {
                             // still be recognized as a new value to send, not swallowed as a
                             // no-op against the not-yet-updated server value.
                             guard newValue != lastSentCap else { return }
+                            let previous = lastSentCap
                             lastSentCap = newValue
-                            Task { await vm.updateCap(newValue) }
+                            Task {
+                                // Roll back on failure. lastSentCap records what the server
+                                // was told, so leaving a value there that never landed makes
+                                // the guard above swallow every retry of that same value --
+                                // the parent literally could not set that cap again without
+                                // first picking some other one.
+                                if await vm.updateCap(newValue) == false {
+                                    lastSentCap = previous
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, 16)

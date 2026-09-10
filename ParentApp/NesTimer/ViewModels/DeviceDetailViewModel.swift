@@ -102,7 +102,11 @@ class DeviceDetailViewModel: ObservableObject {
     // Picking "None" must send an explicit JSON null, not omit the field -- DeviceUpdateRequest
     // only encodes dailyCapMinutes when it's non-nil, and the server only clears a column when
     // the key is present in the request body. Route nil through clearFields instead.
-    func updateCap(_ minutes: Int?) async {
+    /// Returns whether the cap actually reached the server, so the view can roll back the
+    /// value it recorded as sent. Without that rollback its no-op guard swallows a retry of
+    /// the same value and the parent cannot set that cap at all.
+    @discardableResult
+    func updateCap(_ minutes: Int?) async -> Bool {
         do {
             var update = DeviceUpdateRequest()
             if let minutes {
@@ -111,8 +115,10 @@ class DeviceDetailViewModel: ObservableObject {
                 update.clearFields = [.dailyCapMinutes]
             }
             device = try await APIClient.shared.updateDevice(deviceId, update: update)
+            return true
         } catch {
             self.actionError = error.localizedDescription
+            return false
         }
     }
 
