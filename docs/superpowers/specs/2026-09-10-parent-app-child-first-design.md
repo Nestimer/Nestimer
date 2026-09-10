@@ -57,6 +57,14 @@ modified.**
 | `GET /children/{id}/policy` | The child's policy; 404 when none exists |
 | `PUT /children/{id}/policy` | Edits it; 404 when none exists — never creates a row |
 | `POST /children/{id}/grant-bonus` | Sets `child.bonus_until` |
+| `GET /children/{id}/activities` | The child's scheduled activities |
+| `POST /children/{id}/activities` | Creates one under the child |
+| `PUT /children/{id}/activities/{aid}` | Edits one |
+| `DELETE /children/{id}/activities/{aid}` | Removes one |
+
+Activities are child-scoped in the data model exactly as policy is (`Activity.child_id`,
+resolved child-first by `/agent/config`), so they carry the same "looks per-device but is
+shared" problem and move to the child screen alongside downtime and screen time.
 
 `GET /children/{id}/usage` must reproduce the aggregation already in `/agent/config`:
 
@@ -81,6 +89,32 @@ child's Mac stops locking altogether.**
 `PUT /children/{id}/policy` therefore returns 404 for a child with no devices. It must
 never `db.add(Policy(...))`. This is the single most important constraint in this
 document.
+
+### Prerequisite bug: device deletion destroys the child's settings
+
+`Device.policy` and `Device.activities` are declared `cascade="all, delete-orphan"`, and
+the child's single shared policy row carries one device's `device_id` (stamped by
+`create_device` and by the migration backfill). Deleting that device therefore deletes
+**the child's shared policy** and any activities stamped with that device's id.
+
+Verified against the test suite on 2026-09-10. Two Macs under one child, limit set to 90:
+
+| | Before deleting the sibling | After |
+|---|---|---|
+| `screen_time_limit_minutes` | 90 | 120 |
+| `screen_time_enabled` | True | True |
+
+Enforcement is not lost — `/agent/config` and `GET /devices/{id}/policy` both auto-create
+a policy when none exists — so the failure is silent rather than total: every customised
+value reverts to defaults and the child gains time, with nothing reported anywhere.
+
+This is pre-existing, deployed, and unreachable while every device has its own child
+1:1. Merging two devices under one child makes it reachable. It is therefore Task 1 of
+the plan and ships before the merge.
+
+The fix is to detach rather than cascade: before deleting a device, re-point a shared
+policy or activity at a surviving sibling device, and only delete rows that belong to no
+other device.
 
 ### Spec reversal
 
@@ -109,7 +143,7 @@ New `Child`: `id`, `name`, `bonusUntil`, `createdAt`, `deviceIds`.
 
 ```
 Views/ChildrenListView.swift    new   home; create / rename / delete
-Views/ChildDetailView.swift     new   shared budget, schedule, bonus, devices
+Views/ChildDetailView.swift     new   budget, downtime, activities, bonus, devices
 Views/DeviceDetailView.swift    edit  strip child-level sections
 ViewModels/ChildrenViewModel.swift    new
 ViewModels/ChildDetailViewModel.swift new
