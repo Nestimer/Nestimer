@@ -26,6 +26,7 @@
 		A10017 /* FormRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10017 /* FormRows.swift */; };
 		A10018 /* ChildDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10018 /* ChildDetailViewModel.swift */; };
 		A10019 /* ChildDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10019 /* ChildDetailView.swift */; };
+		A10020 /* ChildrenListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10020 /* ChildrenListView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		B10017 /* FormRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormRows.swift; sourceTree = "<group>"; };
 		B10018 /* ChildDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailViewModel.swift; sourceTree = "<group>"; };
 		B10019 /* ChildDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailView.swift; sourceTree = "<group>"; };
+		B10020 /* ChildrenListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildrenListView.swift; sourceTree = "<group>"; };
 		C10001 /* NesTimer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -114,6 +116,7 @@
 				B10012 /* UsageChartView.swift */,
 				B10017 /* FormRows.swift */,
 				B10019 /* ChildDetailView.swift */,
+				B10020 /* ChildrenListView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -208,6 +211,7 @@
 				A10017 /* FormRows.swift in Sources */,
 				A10018 /* ChildDetailViewModel.swift in Sources */,
 				A10019 /* ChildDetailView.swift in Sources */,
+				A10020 /* ChildrenListView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

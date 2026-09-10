@@ -6,9 +6,19 @@ struct ContentView: View {
     var body: some View {
         Group {
             if authVM.isAuthenticated {
-                NavigationStack {
-                    DevicesListView()
+                #if os(macOS)
+                NavigationSplitView {
+                    ChildrenListView()
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+                } detail: {
+                    Text("Select a child")
+                        .foregroundStyle(.secondary)
                 }
+                #else
+                NavigationStack {
+                    ChildrenListView()
+                }
+                #endif
             } else {
                 LoginView()
             }
