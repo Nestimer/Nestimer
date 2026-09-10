@@ -313,3 +313,62 @@ async def test_child_usage_is_scoped_to_its_owner(client):
     resp = await client.get(f"/api/v1/children/{d['child_id']}/usage",
                             headers={"Authorization": f"Bearer {token_b}"})
     assert resp.status_code == 404
+
+
+async def test_child_policy_round_trip(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    resp = await client.put(f"/api/v1/children/{d['child_id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 75,
+                                  "downtime_start": "21:30"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 75
+    assert resp.json()["downtime_start"] == "21:30"
+
+    resp = await client.get(f"/api/v1/children/{d['child_id']}/policy", headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["screen_time_limit_minutes"] == 75
+
+
+async def test_child_and_device_policy_routes_are_the_same_row(client):
+    """Two URLs, one policy -- they must never diverge."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    await client.put(f"/api/v1/children/{d['child_id']}/policy",
+                     json={"screen_time_limit_minutes": 55}, headers=h)
+
+    resp = await client.get(f"/api/v1/devices/{d['id']}/policy", headers=h)
+    assert resp.json()["screen_time_limit_minutes"] == 55
+
+
+async def test_childless_child_policy_is_404_and_creates_nothing(client):
+    """A Policy with device_id NULL breaks the rollback path -- never create one.
+
+    See create_child's comment: POST /devices skips policy creation when the child
+    already has one, so a device attaching later would never get device_id stamped.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.post("/api/v1/children", json={"name": "Bea"}, headers=h)
+    child_id = resp.json()["id"]
+
+    assert (await client.get(f"/api/v1/children/{child_id}/policy", headers=h)).status_code == 404
+    resp = await client.put(f"/api/v1/children/{child_id}/policy",
+                            json={"screen_time_limit_minutes": 60}, headers=h)
+    assert resp.status_code == 404
+
+    # A device attaching afterwards must still get a policy WITH device_id stamped.
+    resp = await client.post("/api/v1/devices",
+                             json={"name": "Later Mac", "child_name": "Bea",
+                                   "child_id": child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+    device = resp.json()
+
+    resp = await client.get(f"/api/v1/devices/{device['id']}/policy", headers=h)
+    assert resp.status_code == 200, resp.text

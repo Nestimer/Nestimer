@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models.models import Child, Device, User, UsageLog
-from ..schemas import ChildCreate, ChildOut, ChildUpdate, UsageOut
+from ..models.models import Child, Device, Policy, User, UsageLog
+from ..schemas import ChildCreate, ChildOut, ChildUpdate, PolicyOut, PolicyUpdate, UsageOut
+from .devices import _resolve_policy, policy_to_out, parse_time
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -132,3 +133,62 @@ async def get_child_usage(
         .limit(days)
     )
     return [UsageOut(date=row[0], total_minutes=float(row[1])) for row in result.all()]
+
+
+async def _child_policy(db: AsyncSession, child: Child) -> Policy | None:
+    """The child's policy, reusing the device route's resolver so the two URLs cannot
+    diverge. Tries each of the child's devices in turn so a legacy device-keyed row is
+    still found and adopted, exactly as `/devices/{id}/policy` would.
+    """
+    result = await db.execute(select(Device.id).where(Device.child_id == child.id))
+    for device_id in result.scalars().all():
+        policy = await _resolve_policy(db, child.id, device_id)
+        if policy is not None:
+            return policy
+    return None
+
+
+@router.get("/{child_id}/policy", response_model=PolicyOut)
+async def get_child_policy(
+    child_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    child = await _verify_child_owner(db, child_id, user.id)
+    policy = await _child_policy(db, child)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="This child has no devices yet")
+    await db.commit()  # _resolve_policy may have adopted a legacy row under the child
+    return policy_to_out(policy)
+
+
+@router.put("/{child_id}/policy", response_model=PolicyOut)
+async def update_child_policy(
+    child_id: str,
+    data: PolicyUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Never creates a Policy row. A child with no devices has no policy, and a row with
+    `device_id` NULL would leave a later-attaching device without one -- see the long
+    comment in `create_child`.
+    """
+    child = await _verify_child_owner(db, child_id, user.id)
+    policy = await _child_policy(db, child)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="This child has no devices yet")
+
+    time_fields = {
+        "downtime_start", "downtime_end",
+        "downtime_weekday_start", "downtime_weekday_end",
+        "downtime_weekend_start", "downtime_weekend_end",
+    }
+    for field_name in data.model_fields_set:
+        value = getattr(data, field_name)
+        if field_name in time_fields:
+            value = parse_time(value) if value is not None else None
+        setattr(policy, field_name, value)
+
+    await db.commit()
+    await db.refresh(policy)
+    return policy_to_out(policy)
