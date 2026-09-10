@@ -201,6 +201,19 @@ TestFlight and cannot be updated in lockstep with the backend, and the web dashb
 deploys separately. Breaking them on a backend deploy is the fastest way to lose
 control of the child's Mac on a weeknight.
 
+> **Amended 2026-09-10 — partially reversed.** `/children/{id}/policy`,
+> `/children/{id}/grant-bonus` and `/children/{id}/usage` were added after all; see
+> `2026-09-10-parent-app-child-first-design.md`.
+>
+> The constraint above still holds for what it was written about: policy must not *move*
+> out of the device URL space, and `/devices/{id}/policy`, `/devices/{id}/activities` and
+> `/devices/{id}/grant-bonus` remain unchanged and fully supported. What changed is that
+> *additive* child routes turned out not to carry the risk this paragraph describes —
+> clients that cannot be updated in lockstep keep using the device paths — and the
+> un-updatable client it was protecting, the parent iOS app, is the one being updated.
+>
+> Both paths share `_resolve_policy`, so they cannot diverge.
+
 ## Clients
 
 ### macOS agent
