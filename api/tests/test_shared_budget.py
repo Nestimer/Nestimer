@@ -465,20 +465,43 @@ async def test_deleting_one_shared_device_keeps_the_childs_activities(client):
     assert [a["name"] for a in resp.json()] == ["Homework"]
 
 
-async def test_deleting_the_only_device_still_removes_its_policy(client):
-    """The 1:1 case must keep behaving as it always has -- no orphan rows."""
+async def test_deleting_the_only_device_orphans_its_policy_row_without_deleting_it(client):
+    """The 1:1 case: no sibling exists to hand the policy to.
+
+    `GET /devices/{id}/policy` 404s once the device itself is gone regardless of
+    whether its Policy row survived underneath -- that 404 comes from
+    `_verify_device_owner` ("Device not found"), not from the policy lookup, so it
+    cannot tell us anything about the row. Query the `policies` table directly instead.
+
+    delete_device must never DELETE a Policy row (that is how a still-live policy for
+    some other child got destroyed in earlier attempts at this fix). With no other
+    device on this child to hand the row to, the correct outcome is that the row
+    survives, detached (device_id set to NULL), rather than being removed.
+    """
     token = await register_user(client)
     h = {"Authorization": f"Bearer {token}"}
 
     d1 = await create_device(client, token, name="Only Mac", child_name="Alex")
-    await client.put(f"/api/v1/devices/{d1['id']}/policy",
-                     json={"screen_time_limit_minutes": 45}, headers=h)
+    resp = await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                            json={"screen_time_limit_minutes": 45}, headers=h)
+    assert resp.status_code == 200, resp.text
 
     resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
     assert resp.status_code == 200, resp.text
 
     resp = await client.get(f"/api/v1/devices/{d1['id']}/policy", headers=h)
     assert resp.status_code == 404
+
+    async def _read_policy(conn):
+        return (await conn.execute(
+            text("SELECT device_id, screen_time_limit_minutes FROM policies WHERE child_id = :cid"),
+            {"cid": d1["child_id"]},
+        )).one_or_none()
+
+    row = await _run_on_app_db(_read_policy)
+    assert row is not None, "the policy row must survive the only device that ever owned it"
+    assert row.device_id is None, "with no sibling to hand it to, the row is detached, not deleted"
+    assert row.screen_time_limit_minutes == 45, "the configured value must not revert to the default"
 
 
 async def test_deleting_the_non_policy_holding_sibling_keeps_the_live_policy(client):
@@ -512,5 +535,82 @@ async def test_deleting_the_non_policy_holding_sibling_keeps_the_live_policy(cli
 
     resp = await client.get("/api/v1/agent/config",
                             headers={"Authorization": f"Bearer {d2['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_never_touches_another_childs_policy(client):
+    """A device's own Policy row and its own child_id can diverge: update_device
+    deliberately never re-keys a device's pre-existing Policy row when that device is
+    merged onto a different child. Deleting some OTHER device must never let that
+    divergence destroy a third child's still-live policy.
+
+    d3 owns its own Policy row (P3) from creation, so merging d3 onto d2's child does
+    not touch P3 -- Bea's live policy stays P2, owned by d2. Merging d2 onto d1's child
+    likewise leaves P2 (child_id=Bea) in place, owned by d2, even though d2 itself now
+    sits on Alex. Setting the limit through d3 (child-first resolution) lands on P2.
+    Deleting d1 must not reach P2 at all -- d1 never owned it and never shared a child
+    with it directly.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="D1", child_name="Alex")
+    d2 = await create_device(client, token, name="D2", child_name="Bea")
+    d3 = await create_device(client, token, name="D3", child_name="Cara")
+
+    resp = await client.patch(f"/api/v1/devices/{d3['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d3['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d3['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_that_holds_another_childs_policy_keeps_it(client):
+    """Same divergence as above, but this time the device being deleted is the one that
+    literally owns (device_id=) the still-live policy for a DIFFERENT child than the one
+    it currently sits on. Deleting it must re-point that row within ITS OWN child
+    (Bea, via d3), never destroy it just because the owning device is going away.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="D1", child_name="Alex")
+    d2 = await create_device(client, token, name="D2", child_name="Bea")
+    d3 = await create_device(client, token, name="D3", child_name="Cara")
+
+    resp = await client.patch(f"/api/v1/devices/{d3['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d3['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d2['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d3['api_token']}"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["screen_time_limit_minutes"] == 90
