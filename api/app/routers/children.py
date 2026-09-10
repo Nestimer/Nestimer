@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models.models import Child, Device, Policy, User, UsageLog
+from ..models.models import Activity, Child, Device, Policy, User, UsageLog
 from ..schemas import (
+    ActivityCreate, ActivityOut, ActivityUpdate,
     ChildCreate, ChildOut, ChildUpdate, GrantBonusRequest, GrantBonusResponse,
     PolicyOut, PolicyUpdate, UsageOut,
 )
-from .devices import _resolve_policy, policy_to_out, parse_time
+from .devices import _resolve_policy, activity_to_out, policy_to_out, parse_time
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -213,3 +214,96 @@ async def grant_child_bonus(
     child.bonus_until = datetime.now(timezone.utc) + timedelta(minutes=data.minutes)
     await db.commit()
     return GrantBonusResponse(bonus_until=child.bonus_until)
+
+
+@router.get("/{child_id}/activities", response_model=List[ActivityOut])
+async def list_child_activities(
+    child_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    child = await _verify_child_owner(db, child_id, user.id)
+    result = await db.execute(
+        select(Activity)
+        .where(Activity.child_id == child.id)
+        .order_by(Activity.day_of_week, Activity.start_time)
+    )
+    return [activity_to_out(a) for a in result.scalars().all()]
+
+
+@router.post("/{child_id}/activities", response_model=ActivityOut)
+async def create_child_activity(
+    child_id: str,
+    data: ActivityCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    child = await _verify_child_owner(db, child_id, user.id)
+
+    # Stamp a device id as well as the child id. An API rolled back to pre-child code
+    # reads activities by device_id alone; a row with device_id NULL would be invisible
+    # to it and the scheduled activity would silently stop suppressing the lock.
+    result = await db.execute(select(Device.id).where(Device.child_id == child.id).limit(1))
+    device_id = result.scalar_one_or_none()
+
+    activity = Activity(
+        device_id=device_id,
+        child_id=child.id,
+        name=data.name,
+        day_of_week=data.day_of_week,
+        start_time=parse_time(data.start_time),
+        end_time=parse_time(data.end_time),
+        buffer_before_minutes=data.buffer_before_minutes,
+        buffer_after_minutes=data.buffer_after_minutes,
+        enabled=data.enabled,
+    )
+    db.add(activity)
+    await db.commit()
+    await db.refresh(activity)
+    return activity_to_out(activity)
+
+
+async def _child_activity(db: AsyncSession, child: Child, activity_id: str) -> Activity:
+    result = await db.execute(
+        select(Activity).where(Activity.id == activity_id, Activity.child_id == child.id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activity
+
+
+@router.put("/{child_id}/activities/{activity_id}", response_model=ActivityOut)
+async def update_child_activity(
+    child_id: str,
+    activity_id: str,
+    data: ActivityUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    child = await _verify_child_owner(db, child_id, user.id)
+    activity = await _child_activity(db, child, activity_id)
+
+    for field_name in data.model_fields_set:
+        value = getattr(data, field_name)
+        if field_name in ("start_time", "end_time"):
+            value = parse_time(value) if value is not None else None
+        setattr(activity, field_name, value)
+
+    await db.commit()
+    await db.refresh(activity)
+    return activity_to_out(activity)
+
+
+@router.delete("/{child_id}/activities/{activity_id}")
+async def delete_child_activity(
+    child_id: str,
+    activity_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    child = await _verify_child_owner(db, child_id, user.id)
+    activity = await _child_activity(db, child, activity_id)
+    await db.delete(activity)
+    await db.commit()
+    return {"ok": True}

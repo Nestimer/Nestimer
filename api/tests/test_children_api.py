@@ -402,3 +402,76 @@ async def test_child_grant_bonus_rejects_out_of_range(client):
     resp = await client.post(f"/api/v1/children/{d['child_id']}/grant-bonus",
                              json={"minutes": 999}, headers=h)
     assert resp.status_code == 422
+
+
+async def test_child_activities_crud(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+    child_id = d["child_id"]
+
+    resp = await client.post(f"/api/v1/children/{child_id}/activities",
+                             json={"name": "Homework", "day_of_week": 1,
+                                   "start_time": "16:00", "end_time": "17:00"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    activity_id = resp.json()["id"]
+
+    resp = await client.get(f"/api/v1/children/{child_id}/activities", headers=h)
+    assert [a["name"] for a in resp.json()] == ["Homework"]
+
+    resp = await client.put(f"/api/v1/children/{child_id}/activities/{activity_id}",
+                            json={"name": "Piano"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "Piano"
+
+    resp = await client.delete(f"/api/v1/children/{child_id}/activities/{activity_id}",
+                               headers=h)
+    assert resp.status_code == 200, resp.text
+    assert (await client.get(f"/api/v1/children/{child_id}/activities", headers=h)).json() == []
+
+
+async def test_child_activity_is_visible_on_every_device(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+
+    await client.post(f"/api/v1/children/{d1['child_id']}/activities",
+                      json={"name": "Homework", "day_of_week": 1,
+                            "start_time": "16:00", "end_time": "17:00"}, headers=h)
+
+    for dev in (d1, d2):
+        resp = await client.get(f"/api/v1/devices/{dev['id']}/activities", headers=h)
+        assert [a["name"] for a in resp.json()] == ["Homework"], f"missing on {dev['name']}"
+
+
+async def test_child_activity_stamps_a_device_id(client):
+    """device_id NULL would be invisible to a rolled-back, device-keyed API."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    resp = await client.post(f"/api/v1/children/{d['child_id']}/activities",
+                             json={"name": "Homework", "day_of_week": 1,
+                                   "start_time": "16:00", "end_time": "17:00"}, headers=h)
+    activity_id = resp.json()["id"]
+
+    async def _check(conn):
+        row = await conn.execute(
+            text("SELECT device_id FROM activities WHERE id = :aid"), {"aid": activity_id}
+        )
+        return row.scalar_one()
+
+    assert await _run_on_app_db(_check) == d["id"]
+
+
+async def test_child_activities_are_scoped_to_their_owner(client):
+    token_a = await register_user(client, email="a@test.com")
+    token_b = await register_user(client, email="b@test.com")
+    d = await create_device(client, token_a, name="Mac", child_name="Alex")
+
+    resp = await client.get(f"/api/v1/children/{d['child_id']}/activities",
+                            headers={"Authorization": f"Bearer {token_b}"})
+    assert resp.status_code == 404
