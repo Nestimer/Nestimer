@@ -436,12 +436,14 @@ async def test_moving_a_device_leaves_its_child_keyed_activities_with_the_old_ch
     resp = await client.get(f"/api/v1/children/{phone_child_id}/activities", headers=headers)
     assert {a["name"] for a in resp.json()} == {"Piano"}
 
-    # It is still listed under the phone: nothing on the old child was left to re-point
-    # the legacy device stamp at, so it stays. Visible (and therefore deletable) here,
-    # but no longer enforced here — see the config assertion below.
+    # It is NOT listed under the phone any more. Nothing on the old child was left to
+    # re-point the legacy device stamp at, so the stamp is nulled rather than left on the
+    # departing device — leaving it there is an unlock leak, because /agent/config's
+    # device-keyed fallback would serve the old child's windows to this Mac whenever its
+    # new child has no schedules of its own.
     resp = await client.get(f"/api/v1/devices/{phone['id']}/activities", headers=headers)
     names = {a["name"] for a in resp.json()}
-    assert "Piano" in names
+    assert "Piano" not in names
 
     # What the phone actually enforces is its NEW child's schedule, not the old one's.
     resp = await client.get(

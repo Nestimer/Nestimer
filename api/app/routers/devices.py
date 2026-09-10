@@ -288,9 +288,22 @@ async def update_device(
 
             # For the rows that stay with their own child, re-point device_id at another
             # device of THAT child, so the pre-child device-keyed fallback still reaches
-            # them there. Same shape as delete_device, including the no-sibling case:
-            # nothing to re-point to, so the stamp is left alone rather than nulled (the
-            # old child has no devices left at that point anyway).
+            # them there. Same shape as delete_device.
+            #
+            # When that child has no other device, NULL the stamp instead of leaving it on
+            # the departing device. Leaving it is an unlock leak: `/agent/config` falls
+            # through the child-first lookup whenever the destination child has no
+            # activities of its own, hits the device-keyed fallback, and enforces the OLD
+            # child's schedules on a Mac whose new parent never set any -- standing unlock
+            # windows, silently granted. Reachable today: a child with schedules and one
+            # Mac, moved onto a child with none.
+            #
+            # Nulling an ACTIVITY's anchor is safe in a way that nulling a POLICY's is not,
+            # which is why the two are handled differently here. A policy invisible to
+            # rolled-back code sends that Mac down the no-policy branch and it stops
+            # locking. An activity invisible to rolled-back code is simply not enforced --
+            # one less unlock window, i.e. more locking. And the row is already unreachable
+            # at this point: its own child has no devices left to serve it to.
             result = await db.execute(
                 select(Activity).where(
                     Activity.device_id == device.id,
@@ -304,9 +317,7 @@ async def update_device(
                         Device.child_id == activity.child_id, Device.id != device.id
                     ).limit(1)
                 )
-                sibling_id = sibling_result.scalar_one_or_none()
-                if sibling_id:
-                    activity.device_id = sibling_id
+                activity.device_id = sibling_result.scalar_one_or_none()
 
             # Make sure the device lands on a child that HAS a policy, and that the
             # policy is reachable by device_id. Moving a device to a child created via

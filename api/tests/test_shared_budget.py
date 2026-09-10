@@ -868,3 +868,63 @@ async def test_moving_a_device_leaves_child_level_schedules_with_their_child(cli
     resp = await client.get(f"/api/v1/children/{alice_id}/activities", headers=h)
     assert resp.status_code == 200, resp.text
     assert [a["name"] for a in resp.json()] == ["Homework"]
+
+
+async def test_moving_a_device_does_not_carry_the_old_childs_schedules_onto_a_childless_destination(client):
+    """The old child has schedules and exactly ONE device; the destination child has no
+    schedules at all. Moving the device must not enforce the old child's windows on it.
+
+    Leaving the row's legacy `device_id` stamp on the departing device is enough to do
+    that: `/agent/config` resolves activities child-first, finds nothing for the
+    destination child, falls through to the device-keyed fallback, and enforces the OLD
+    child's schedules on a Mac whose new parent never set any -- standing unlock windows,
+    silently granted. Nulling the stamp costs nothing (the row's own child has no devices
+    left to serve it to) and an activity a rolled-back API cannot see is simply not
+    enforced, which is the safe direction.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    alex_mac = await create_device(client, token, name="Alex's Mac", child_name="Alex")
+    juliana_mac = await create_device(client, token, name="Juliana's Mac", child_name="Juliana")
+    juliana_id = juliana_mac["child_id"]
+
+    for day in range(3):
+        resp = await client.post(
+            f"/api/v1/devices/{alex_mac['id']}/activities",
+            json={"name": f"Class {day}", "day_of_week": day,
+                  "start_time": "00:00", "end_time": "23:59"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+
+    # Precondition: the destination child has no schedules of its own, which is exactly
+    # what makes /agent/config fall through to the device-keyed fallback.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {juliana_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == []
+
+    resp = await client.patch(
+        f"/api/v1/devices/{alex_mac['id']}", json={"child_id": juliana_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {alex_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "a moved Mac must not keep enforcing its old child's schedules"
+    )
+
+    # The destination child's other Mac gained nothing either.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {juliana_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == []
