@@ -2,8 +2,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update, func
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, update, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
@@ -14,7 +14,7 @@ from ..schemas import (
     ChildCreate, ChildOut, ChildUpdate, GrantBonusRequest, GrantBonusResponse,
     PolicyOut, PolicyUpdate, UsageOut,
 )
-from .devices import _resolve_policy, activity_to_out, policy_to_out, parse_time
+from .devices import _reject_null_policy_fields, _resolve_policy, activity_to_out, policy_to_out, parse_time
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -117,7 +117,7 @@ async def delete_child(
 @router.get("/{child_id}/usage", response_model=List[UsageOut])
 async def get_child_usage(
     child_id: str,
-    days: int = 7,
+    days: int = Query(7, ge=1, le=365),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -144,8 +144,18 @@ async def _child_policy(db: AsyncSession, child: Child) -> Policy | None:
     """The child's policy, reusing the device route's resolver so the two URLs cannot
     diverge. Tries each of the child's devices in turn so a legacy device-keyed row is
     still found and adopted, exactly as `/devices/{id}/policy` would.
+
+    Ordered by created_at, id: without a deterministic order, this loop and
+    `/devices/{id}/policy` can pick different devices -- and therefore different
+    policies -- for the same child, and each is a write-on-read (adoption), so whichever
+    lands first permanently decides what the whole child inherits. PostgreSQL heap order
+    can also shift after an UPDATE or VACUUM, so an unordered query could even pick
+    differently on different days for the very same request.
     """
-    result = await db.execute(select(Device.id).where(Device.child_id == child.id))
+    result = await db.execute(
+        select(Device.id).where(Device.child_id == child.id)
+        .order_by(Device.created_at, Device.id)
+    )
     for device_id in result.scalars().all():
         policy = await _resolve_policy(db, child.id, device_id)
         if policy is not None:
@@ -182,6 +192,8 @@ async def update_child_policy(
     policy = await _child_policy(db, child)
     if policy is None:
         raise HTTPException(status_code=404, detail="This child has no devices yet")
+
+    _reject_null_policy_fields(data)
 
     time_fields = {
         "downtime_start", "downtime_end",
@@ -223,12 +235,28 @@ async def list_child_activities(
     db: AsyncSession = Depends(get_db),
 ):
     child = await _verify_child_owner(db, child_id, user.id)
+
+    result = await db.execute(select(Device.id).where(Device.child_id == child.id))
+    device_ids = list(result.scalars().all())
+
+    # Union the child-keyed rows with rows keyed to any of this child's devices, rather
+    # than filtering on child_id alone -- mirrors `/devices/{id}/activities` (see its
+    # comment). A device-keyed row that has not been adopted under the child yet ("still
+    # enforced by the agent, but no longer visible or deletable here") must not become
+    # invisible on the route that is about to be the primary UI. De-duplicate by id since
+    # a row that already carries both keys would otherwise match both halves of the OR.
     result = await db.execute(
         select(Activity)
-        .where(Activity.child_id == child.id)
+        .where(or_(Activity.child_id == child.id, Activity.device_id.in_(device_ids)))
         .order_by(Activity.day_of_week, Activity.start_time)
     )
-    return [activity_to_out(a) for a in result.scalars().all()]
+    seen = set()
+    activities = []
+    for a in result.scalars().all():
+        if a.id not in seen:
+            seen.add(a.id)
+            activities.append(a)
+    return [activity_to_out(a) for a in activities]
 
 
 @router.post("/{child_id}/activities", response_model=ActivityOut)
@@ -242,9 +270,20 @@ async def create_child_activity(
 
     # Stamp a device id as well as the child id. An API rolled back to pre-child code
     # reads activities by device_id alone; a row with device_id NULL would be invisible
-    # to it and the scheduled activity would silently stop suppressing the lock.
-    result = await db.execute(select(Device.id).where(Device.child_id == child.id).limit(1))
+    # to it and the scheduled activity would silently stop suppressing the lock. A
+    # device-less child has nothing to stamp it with -- and nothing ever adopts an
+    # unstamped row later (create_device re-adopts device_id-NULL Policy rows, but has
+    # no equivalent for Activity), so this would be a permanent gap, not a transient
+    # one. 404, matching `PUT /children/{id}/policy`; the designed UI already shows
+    # "Add a device to set limits" for a device-less child and never offers this action.
+    result = await db.execute(
+        select(Device.id).where(Device.child_id == child.id)
+        .order_by(Device.created_at, Device.id)
+        .limit(1)
+    )
     device_id = result.scalar_one_or_none()
+    if device_id is None:
+        raise HTTPException(status_code=404, detail="This child has no devices yet")
 
     activity = Activity(
         device_id=device_id,
@@ -284,11 +323,26 @@ async def update_child_activity(
     child = await _verify_child_owner(db, child_id, user.id)
     activity = await _child_activity(db, child, activity_id)
 
-    for field_name in data.model_fields_set:
-        value = getattr(data, field_name)
-        if field_name in ("start_time", "end_time"):
-            value = parse_time(value) if value is not None else None
-        setattr(activity, field_name, value)
+    # Every Activity column is NOT NULL (unlike Policy's genuinely optional overrides),
+    # so this must use `is not None` guards rather than `model_fields_set`, mirroring
+    # `/devices/{id}/activities`'s `update_activity` -- there is no "clear it" meaning
+    # for an explicit null on any of these fields, and writing one either 500s
+    # immediately (IntegrityError) or commits a NULL that silently stops the activity
+    # from suppressing the lock (`enabled`) and then 500s every future read of it.
+    if data.name is not None:
+        activity.name = data.name
+    if data.day_of_week is not None:
+        activity.day_of_week = data.day_of_week
+    if data.start_time is not None:
+        activity.start_time = parse_time(data.start_time)
+    if data.end_time is not None:
+        activity.end_time = parse_time(data.end_time)
+    if data.buffer_before_minutes is not None:
+        activity.buffer_before_minutes = data.buffer_before_minutes
+    if data.buffer_after_minutes is not None:
+        activity.buffer_after_minutes = data.buffer_after_minutes
+    if data.enabled is not None:
+        activity.enabled = data.enabled
 
     await db.commit()
     await db.refresh(activity)

@@ -59,6 +59,29 @@ def format_time(t: time | None) -> str | None:
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
+# These back non-nullable DB columns (see PolicyOut) -- unlike the per-day and
+# weekend/weekday overrides, there is no "clear it" meaning for an explicit null here.
+# Writing one either silently mis-enforces the policy (the enabled flags, the downtime
+# window) or corrupts the row outright (screen_time_limit_minutes is NOT NULL), and the
+# very next read 500s: an IntegrityError on write for the always-NOT-NULL columns, or a
+# ResponseValidationError out of PolicyOut for the ones SQLite lets through as NULL.
+NON_NULLABLE_POLICY_FIELDS = {
+    "downtime_enabled", "downtime_start", "downtime_end",
+    "screen_time_enabled", "screen_time_limit_minutes",
+}
+
+
+def _reject_null_policy_fields(data: PolicyUpdate) -> None:
+    nulled = sorted(
+        f for f in data.model_fields_set
+        if f in NON_NULLABLE_POLICY_FIELDS and getattr(data, f) is None
+    )
+    if nulled:
+        raise HTTPException(
+            status_code=422,
+            detail=f"These fields cannot be null: {', '.join(nulled)}",
+        )
+
 
 def policy_to_out(policy: Policy) -> PolicyOut:
     return PolicyOut(
@@ -521,6 +544,8 @@ async def update_policy(
     policy = await _resolve_policy(db, child_id, device_id)
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+
+    _reject_null_policy_fields(data)
 
     # Use model_fields_set to distinguish "not sent" from "sent as null".
     # This allows clients to clear optional overrides by sending null.
