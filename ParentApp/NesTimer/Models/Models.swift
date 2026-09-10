@@ -44,10 +44,14 @@ struct CreateDeviceRequest: Encodable {
 struct DeviceUpdateRequest: Encodable {
     var name: String?
     var childName: String?
+    var childId: String?
+    var dailyCapMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
+        case childId = "child_id"
+        case dailyCapMinutes = "daily_cap_minutes"
     }
 }
 
@@ -61,6 +65,9 @@ struct Device: Decodable, Identifiable {
     let lastSeen: String?
     let createdAt: String?
     let bonusUntil: String?
+    let childId: String?
+    let platform: String?
+    let dailyCapMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -71,6 +78,9 @@ struct Device: Decodable, Identifiable {
         case lastSeen = "last_seen"
         case createdAt = "created_at"
         case bonusUntil = "bonus_until"
+        case childId = "child_id"
+        case platform
+        case dailyCapMinutes = "daily_cap_minutes"
     }
 
     private var lastSeenDate: Date? {
@@ -317,6 +327,43 @@ struct ActivityUpdate: Encodable {
         case endTime = "end_time"
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
+    }
+}
+
+// MARK: - Child
+
+struct Child: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let bonusUntil: String?
+    let createdAt: String?
+    let deviceIds: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case bonusUntil = "bonus_until"
+        case createdAt = "created_at"
+        case deviceIds = "device_ids"
+    }
+
+    var deviceCountText: String {
+        deviceIds.count == 1 ? "1 device" : "\(deviceIds.count) devices"
+    }
+}
+
+struct ChildCreateRequest: Encodable {
+    let name: String
+}
+
+struct ChildUpdateRequest: Encodable {
+    var name: String?
+}
+
+struct DeviceCapUpdateRequest: Encodable {
+    var dailyCapMinutes: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCapMinutes = "daily_cap_minutes"
     }
 }
 
