@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from sqlalchemy import text
 
@@ -275,3 +277,39 @@ async def test_moving_a_sibling_device_to_a_new_child_keeps_it_policed(client):
         )).scalars().all()
 
     assert list(await _run_on_app_db(_policy_for_child_y)) == [device_b["id"]]
+
+
+async def test_child_usage_sums_across_devices(client):
+    """The child's usage must equal what /agent/config counts for the same child."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+
+    today = date.today().isoformat()
+    for dev, minutes in ((d1, 20.0), (d2, 12.5)):
+        resp = await client.post(
+            "/api/v1/agent/usage",
+            json={"date": today, "total_minutes": minutes},
+            headers={"Authorization": f"Bearer {dev['api_token']}"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await client.get(f"/api/v1/children/{d1['child_id']}/usage", headers=h)
+    assert resp.status_code == 200, resp.text
+    rows = resp.json()
+    assert [r["date"] for r in rows] == [today]
+    assert rows[0]["total_minutes"] == pytest.approx(32.5)
+
+
+async def test_child_usage_is_scoped_to_its_owner(client):
+    token_a = await register_user(client, email="a@test.com")
+    token_b = await register_user(client, email="b@test.com")
+    d = await create_device(client, token_a, name="Mac", child_name="Alex")
+
+    resp = await client.get(f"/api/v1/children/{d['child_id']}/usage",
+                            headers={"Authorization": f"Bearer {token_b}"})
+    assert resp.status_code == 404

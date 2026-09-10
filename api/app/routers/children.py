@@ -2,13 +2,13 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models.models import Child, Device, User
-from ..schemas import ChildCreate, ChildOut, ChildUpdate
+from ..models.models import Child, Device, User, UsageLog
+from ..schemas import ChildCreate, ChildOut, ChildUpdate, UsageOut
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -106,3 +106,29 @@ async def delete_child(
     await db.delete(child)
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/{child_id}/usage", response_model=List[UsageOut])
+async def get_child_usage(
+    child_id: str,
+    days: int = 7,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-day totals across every device this child owns.
+
+    Mirrors the aggregation `/agent/config` uses for the shared counter, so the number a
+    parent sees and the number the agent enforces against cannot disagree.
+    """
+    child = await _verify_child_owner(db, child_id, user.id)
+
+    result = await db.execute(
+        select(UsageLog.date, func.sum(UsageLog.total_minutes))
+        .select_from(UsageLog)
+        .join(Device, Device.id == UsageLog.device_id)
+        .where(Device.child_id == child.id)
+        .group_by(UsageLog.date)
+        .order_by(UsageLog.date.desc())
+        .limit(days)
+    )
+    return [UsageOut(date=row[0], total_minutes=float(row[1])) for row in result.all()]
