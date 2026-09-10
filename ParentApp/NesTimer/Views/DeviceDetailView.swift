@@ -15,6 +15,12 @@ struct DeviceDetailView: View {
     /// vm.device is stale while a PATCH is in flight -- comparing against it would let a
     /// revert typed during that window be silently swallowed as a no-op.
     @State private var lastSentCap: Int?
+    /// The child the picker's confirmation dialog is asking about -- set as soon as a new
+    /// selection is tapped, cleared on confirm or cancel. Nothing is sent to the server until
+    /// the parent confirms; on cancel the Picker's binding just re-reads vm.device?.childId,
+    /// which hasn't changed, so it reverts on its own.
+    @State private var pendingChildId: String?
+    @State private var showMoveConfirmation = false
 
     init(deviceId: String) {
         self.deviceId = deviceId
@@ -66,6 +72,26 @@ struct DeviceDetailView: View {
         }
         .sheet(isPresented: $showEditName) {
             EditDeviceNameView(vm: vm)
+        }
+        .confirmationDialog(
+            "Move device?",
+            isPresented: $showMoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Move", role: .destructive) {
+                if let pendingChildId {
+                    Task { await vm.moveToChild(pendingChildId) }
+                }
+                pendingChildId = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingChildId = nil
+            }
+        } message: {
+            if let pendingChildId,
+               let target = vm.allChildren.first(where: { $0.id == pendingChildId }) {
+                Text("Moving this device merges it onto \(target.name)'s shared daily limit and usage.")
+            }
         }
     }
 
@@ -243,19 +269,35 @@ struct DeviceDetailView: View {
                         // row rather than blocking the rest of the device screen.
                         infoRow(label: "Child", value: device.childName)
                     } else {
+                        // A device backfilled lazily server-side (or whose child was deleted)
+                        // can have a childId that's nil or absent from allChildren. A menu
+                        // Picker can't represent "no selection" -- it renders the first row as
+                        // checked -- so without this, tapping that apparently-selected row would
+                        // silently move the device onto a child the parent never chose. Make
+                        // the "unknown child" state an explicit, disabled placeholder instead.
+                        let hasKnownChild = device.childId.map { id in
+                            vm.allChildren.contains { $0.id == id }
+                        } ?? false
                         HStack {
                             Text("Child")
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Picker("Child", selection: Binding(
-                                get: { device.childId ?? "" },
-                                set: { newId in Task { await vm.moveToChild(newId) } }
+                                get: { hasKnownChild ? device.childId! : "" },
+                                set: { newId in
+                                    pendingChildId = newId
+                                    showMoveConfirmation = true
+                                }
                             )) {
+                                if !hasKnownChild {
+                                    Text("Not assigned").tag("")
+                                }
                                 ForEach(vm.allChildren) { child in
                                     Text(child.name).tag(child.id)
                                 }
                             }
                             .labelsHidden()
+                            .disabled(!hasKnownChild)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
