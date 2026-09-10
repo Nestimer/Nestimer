@@ -303,10 +303,29 @@ async def create_child_activity(
 
 
 async def _child_activity(db: AsyncSession, child: Child, activity_id: str) -> Activity:
+    """Find one activity by id, scoped to the child first and falling back to (and
+    adopting under the child) a pre-existing device-keyed row belonging to one of this
+    child's devices -- same non-exclusive fallback shape as devices.py's
+    `_resolve_activity`, generalised from a single device_id to the child's whole device
+    set. Without this, a legacy row (device_id set, child_id NULL) that `list_child_
+    activities`'s union now surfaces would be listed but not editable or deletable here,
+    even though `/devices/{id}/activities` can already reach and adopt it.
+    """
     result = await db.execute(
         select(Activity).where(Activity.id == activity_id, Activity.child_id == child.id)
     )
     activity = result.scalar_one_or_none()
+    if activity is None:
+        result = await db.execute(select(Device.id).where(Device.child_id == child.id))
+        device_ids = list(result.scalars().all())
+        result = await db.execute(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.device_id.in_(device_ids)
+            )
+        )
+        activity = result.scalar_one_or_none()
+        if activity is not None:
+            activity.child_id = child.id
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
     return activity
@@ -357,6 +376,9 @@ async def delete_child_activity(
     db: AsyncSession = Depends(get_db),
 ):
     child = await _verify_child_owner(db, child_id, user.id)
+    # `_child_activity` may adopt a legacy device-keyed row by setting `child_id` on it;
+    # that pending change and the delete below are flushed together by this one commit,
+    # so the adoption is never left unpersisted even though the row is about to go away.
     activity = await _child_activity(db, child, activity_id)
     await db.delete(activity)
     await db.commit()

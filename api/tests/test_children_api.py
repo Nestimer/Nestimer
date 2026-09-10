@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 from sqlalchemy import delete, text
@@ -6,7 +6,7 @@ from sqlalchemy import delete, text
 from .conftest import register_user, create_device
 from app.main import app
 from app.database import get_db
-from app.models.models import Policy
+from app.models.models import Activity, Policy
 
 pytestmark = pytest.mark.anyio
 
@@ -332,6 +332,23 @@ async def test_child_usage_is_scoped_to_its_owner(client):
     assert resp.status_code == 404
 
 
+async def test_child_usage_days_is_validated(client):
+    """?days=-1 returns everything on SQLite and 500s on PostgreSQL if unvalidated."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    for days in (-1, 0, 366):
+        resp = await client.get(f"/api/v1/children/{d['child_id']}/usage",
+                                params={"days": days}, headers=h)
+        assert resp.status_code == 422, f"days={days} should be rejected"
+
+    for days in (1, 365):
+        resp = await client.get(f"/api/v1/children/{d['child_id']}/usage",
+                                params={"days": days}, headers=h)
+        assert resp.status_code == 200, f"days={days} should be accepted"
+
+
 async def test_child_policy_round_trip(client):
     token = await register_user(client)
     h = {"Authorization": f"Bearer {token}"}
@@ -628,6 +645,50 @@ async def test_child_activity_stamps_a_device_id(client):
         return row.scalar_one()
 
     assert await _run_on_app_db(_check) == d["id"]
+
+
+async def test_child_activity_legacy_device_keyed_row_is_listed_and_editable(client):
+    """A row that predates the child migration (device_id set, child_id NULL) must not
+    become visible-but-untouchable once the child-first list surfaces it. GET must list
+    it (the Min1 union), and PUT/DELETE must adopt-and-succeed on it (the same
+    fallback-and-adopt shape /devices/{id}/activities already has), not 404.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    d = await create_device(client, token, name="Mac", child_name="Alex")
+
+    async def _insert_legacy(session):
+        session.add(Activity(
+            device_id=d["id"], child_id=None, name="Legacy", day_of_week=2,
+            start_time=time(15, 0), end_time=time(16, 0),
+        ))
+
+    await _run_on_app_session(_insert_legacy)
+
+    resp = await client.get(f"/api/v1/children/{d['child_id']}/activities", headers=h)
+    assert resp.status_code == 200
+    names = [a["name"] for a in resp.json()]
+    assert "Legacy" in names, "a legacy device-keyed row must be listed on the child route"
+    legacy_id = next(a["id"] for a in resp.json() if a["name"] == "Legacy")
+
+    resp = await client.put(f"/api/v1/children/{d['child_id']}/activities/{legacy_id}",
+                            json={"name": "Renamed"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "Renamed"
+
+    async def _child_id_of(conn):
+        row = await conn.execute(
+            text("SELECT child_id FROM activities WHERE id = :aid"), {"aid": legacy_id}
+        )
+        return row.scalar_one()
+
+    assert await _run_on_app_db(_child_id_of) == d["child_id"], (
+        "editing the legacy row must adopt it under the child"
+    )
+
+    resp = await client.delete(f"/api/v1/children/{d['child_id']}/activities/{legacy_id}",
+                               headers=h)
+    assert resp.status_code == 200, resp.text
 
 
 async def test_child_activities_are_scoped_to_their_owner(client):
