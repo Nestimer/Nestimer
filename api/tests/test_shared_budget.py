@@ -694,3 +694,70 @@ async def test_deleting_a_device_in_a_three_way_policy_cycle_succeeds(client):
     assert {r.child_id for r in rows} == {a_child_id, b_child_id, c_child_id}, (
         "all three policy rows must survive the cycle, each still carrying its own child_id"
     )
+
+
+async def test_moving_the_policy_owning_device_leaves_the_old_child_locked(client):
+    """Alice has two Macs: D (created first, so it owns the shared Policy row) and E.
+
+    Moving D onto a freshly created child must not take Alice's policy row with it.
+    `Policy.child_id` is unique, so re-keying it MOVES the key rather than adding one:
+    Alice would be left with zero policy rows, `/agent/config` would find nothing by
+    child_id and nothing by device_id, and E would take the no-policy branch
+    (screen_time_enabled=False, limit=999) and stop locking -- permanently, and with
+    nothing in the UI saying which Mac happened to own the row.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    alice_id = d["child_id"]
+
+    resp = await client.post(
+        "/api/v1/devices",
+        json={"name": "E", "child_name": "Alice", "child_id": alice_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    e = resp.json()
+
+    resp = await client.put(
+        f"/api/v1/devices/{d['id']}/policy",
+        json={"screen_time_enabled": True, "screen_time_limit_minutes": 90},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.post("/api/v1/children", json={"name": "Bob"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    bob_id = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The parent app refetches the policy immediately after a move (moveToChild), which
+    # is the read that used to re-key Alice's row onto Bob.
+    resp = await client.get(f"/api/v1/devices/{d['id']}/policy", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {e['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    config = resp.json()
+    assert config["screen_time_enabled"] is True, (
+        "the Mac left behind on the old child must still enforce screen time"
+    )
+    assert config["screen_time_limit_minutes"] == 90, (
+        "and with the real limit, not the no-policy branch's 999"
+    )
+
+    # The moved device must land on a real policy of its own, not on Alice's row.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {d['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] != 999

@@ -297,11 +297,31 @@ async def update_device(
             # (screen_time_enabled=False, downtime_enabled=False), i.e. that Mac stops
             # locking. Same create-or-adopt shape as create_device, and for the same
             # rollback reason: device_id is the only route back for pre-child code.
-            # Only when this device owns no policy row of its own: if it does, both the
-            # child-first lookup and the device-keyed fallback already reach a real policy,
-            # and Policy.device_id is unique so a second row naming this device would be
-            # rejected outright. (Re-keying that owned row's child_id is deliberately out
-            # of scope here.)
+            #
+            # Hand off first: the row this device owns may still be the live policy for
+            # the child it is LEAVING, whose remaining devices reach it only through
+            # `Policy.device_id`. `_detach_devices_policy` moves it to one of those
+            # siblings without ever deleting it, which both keeps the old child enforced
+            # and frees this device to take a policy on its new child. Gated on that
+            # child actually still having another device: in the ordinary merge direction
+            # (the old child is left with none) there is nobody to hand it to and the
+            # detach would just null `device_id`, throwing away the pre-child rollback
+            # anchor for nothing. In that case this device keeps its own row and the
+            # create-or-adopt below is skipped — its old rules stay in force via the
+            # device-keyed fallback, which fails closed.
+            result = await db.execute(select(Policy).where(Policy.device_id == device.id))
+            owned = result.scalar_one_or_none()
+            if owned is not None and owned.child_id is not None:
+                result = await db.execute(
+                    select(Device.id)
+                    .where(Device.child_id == owned.child_id, Device.id != device.id)
+                    .limit(1)
+                )
+                if result.scalar_one_or_none() is not None:
+                    await _detach_devices_policy(db, device.id)
+
+            # Policy.device_id is unique, so this can only run once the device owns no
+            # row — either it never did, or the hand-off above just freed it.
             result = await db.execute(select(Policy).where(Policy.device_id == device.id))
             if result.scalar_one_or_none() is None:
                 result = await db.execute(
@@ -485,10 +505,21 @@ async def _child_id_for_device(db: AsyncSession, device: Device) -> str:
 
 
 async def _resolve_policy(db: AsyncSession, child_id: str, device_id: str) -> Policy | None:
-    """Find the child's policy, falling back to (and adopting under the child) a
-    pre-existing device-keyed row for a device resolved to a child for the first time
-    just now. Mirrors the non-exclusive fallback chain `/agent/config` uses — never
-    drop a device's real policy just because its child doesn't have one of its own yet.
+    """Find the child's policy, falling back to (and, for a genuine pre-migration row,
+    adopting under the child) a pre-existing device-keyed row for a device resolved to a
+    child for the first time just now. Mirrors the non-exclusive fallback chain
+    `/agent/config` uses — never drop a device's real policy just because its child
+    doesn't have one of its own yet.
+
+    The adoption is deliberately restricted to rows whose `child_id` IS NULL — the only
+    case it exists for. `Policy.child_id` is unique, so writing it on a row that already
+    names a child does not ADD a key, it MOVES one: that child is left with zero policy
+    rows, `/agent/config` finds nothing by child_id and nothing by device_id, and every
+    remaining Mac of theirs takes the no-policy branch (screen_time_enabled=False,
+    limit=999) and stops locking, permanently. Reachable from a plain read: a parent
+    moving the device that happens to own the row, then this endpoint refetching the
+    policy for its new child. A row that already carries a child_id belongs to that
+    child; a device sitting on some other child just reads it, it does not take it.
     """
     result = await db.execute(select(Policy).where(Policy.child_id == child_id))
     policy = result.scalar_one_or_none()
@@ -497,7 +528,7 @@ async def _resolve_policy(db: AsyncSession, child_id: str, device_id: str) -> Po
 
     result = await db.execute(select(Policy).where(Policy.device_id == device_id))
     policy = result.scalar_one_or_none()
-    if policy is not None:
+    if policy is not None and policy.child_id is None:
         policy.child_id = child_id
     return policy
 
