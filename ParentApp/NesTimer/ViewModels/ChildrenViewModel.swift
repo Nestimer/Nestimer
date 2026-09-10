@@ -8,6 +8,13 @@ final class ChildrenViewModel: ObservableObject {
     @Published var todayMinutes: [String: Double] = [:]
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// True only when the /children request itself failed (and so `children` is stale or
+    /// empty) -- as opposed to errorMessage being set by a failed /devices request (children
+    /// still loaded fine) or by an unrelated create/rename/delete failure. Recomputed by
+    /// EVERY load(), including the ones createChild/renameChild/deleteChild trigger directly,
+    /// so a view driving its "couldn't load" state off this can't go stale the way a
+    /// view-local flag recomputed only by the view's own wrapper could.
+    @Published var childrenLoadFailed = false
 
     private let api = APIClient.shared
 
@@ -18,6 +25,7 @@ final class ChildrenViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        childrenLoadFailed = false
 
         // Loaded independently and on purpose. This is the screen a parent opens to check
         // on their child's machines, so a failing /children request must not leave it
@@ -26,6 +34,7 @@ final class ChildrenViewModel: ObservableObject {
             children = try await api.listChildren()
         } catch {
             errorMessage = "Could not load children."
+            childrenLoadFailed = true
         }
         do {
             devices = try await api.listDevices()
