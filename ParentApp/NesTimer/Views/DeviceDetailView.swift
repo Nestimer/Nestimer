@@ -240,7 +240,7 @@ struct DeviceDetailView: View {
                         Picker("Daily cap", selection: $capMinutes) {
                             Text("None").tag(Optional<Int>.none)
                             ForEach([30, 60, 90, 120, 180, 240], id: \.self) { m in
-                                Text("\(m / 60)h \(m % 60)m").tag(Optional(m))
+                                Text(formatMinutes(m)).tag(Optional(m))
                             }
                         }
                         .labelsHidden()

@@ -99,7 +99,7 @@ func infoRow(label: String, value: String) -> some View {
     .padding(.vertical, 12)
 }
 
-/// "2h 04m" / "45m". Lives here rather than on a view so ChildrenListView and
+/// "2h 4m" / "45m". Lives here rather than on a view so ChildrenListView and
 /// ChildDetailView can both use it without depending on each other.
 func durationText(_ minutes: Double) -> String {
     let total = Int(minutes.rounded())

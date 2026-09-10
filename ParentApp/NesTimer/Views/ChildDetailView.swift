@@ -11,27 +11,52 @@ struct ChildDetailView: View {
     }
 
     var body: some View {
-        Form {
-            sharedBudgetSection
-            devicesSection
+        Group {
+            if vm.child != nil {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        sharedBudgetSection
+                        devicesSection
 
-            if vm.hasNoDevices {
-                Section {
-                    ContentUnavailableView {
-                        Label("No Devices", systemImage: "desktopcomputer")
-                    } description: {
-                        Text("Add a device to this child to set limits")
+                        if vm.hasNoDevices {
+                            Section {
+                                ContentUnavailableView {
+                                    Label("No Devices", systemImage: "desktopcomputer")
+                                } description: {
+                                    Text("Add a device to this child to set limits")
+                                }
+                            }
+                        } else if vm.policy != nil {
+                            // Sections 3-5, moved from DeviceDetailView
+                            downtimeSection
+                            screenTimeSection
+                            activitiesSection
+                            bonusSection
+                        }
                     }
+                    .padding()
                 }
-            } else if vm.policy != nil {
-                // Sections 3-5, moved from DeviceDetailView
-                downtimeSection
-                screenTimeSection
-                activitiesSection
-                bonusSection
+            } else if let error = vm.errorMessage {
+                ContentUnavailableView {
+                    Label("Error", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                    Button("Retry") { Task { await vm.load() } }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 8)
+                }
+            } else {
+                ProgressView("Loading...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 500, minHeight: 600)
+        #endif
         .navigationTitle(vm.child?.name ?? "Child")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.large)
+        #endif
         .task { await vm.load() }
         .refreshable { await vm.load() }
         .sheet(isPresented: $showAddActivity) {
@@ -497,6 +522,8 @@ struct ChildDetailView: View {
             .background(.regularMaterial)
             .cornerRadius(16)
         }
+        .onAppear { vm.startBonusCountdown() }
+        .onDisappear { vm.stopBonusCountdown() }
     }
 }
 
