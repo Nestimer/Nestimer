@@ -614,3 +614,83 @@ async def test_deleting_a_device_that_holds_another_childs_policy_keeps_it(clien
                             headers={"Authorization": f"Bearer {d3['api_token']}"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_in_a_policy_cycle_succeeds(client):
+    """Two devices, each still owning its own pre-merge Policy row, patched onto each
+    OTHER's child: P_A's only same-child candidate is B, and P_B's only same-child
+    candidate is A, so each would need the other freed first. Deleting either device
+    must not raise (the unique constraint on Policy.device_id) and must not delete
+    either policy row -- both must survive, still carrying their original child_id.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    a = await create_device(client, token, name="A", child_name="C2")
+    b = await create_device(client, token, name="B", child_name="C1")
+    a_child_id = a["child_id"]
+    b_child_id = b["child_id"]
+
+    resp = await client.patch(f"/api/v1/devices/{a['id']}",
+                              json={"child_id": b_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{b['id']}",
+                              json={"child_id": a_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{a['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    async def _read_policies(conn):
+        return (await conn.execute(
+            text("SELECT child_id FROM policies WHERE child_id IN (:c1, :c2)"),
+            {"c1": a_child_id, "c2": b_child_id},
+        )).all()
+
+    rows = await _run_on_app_db(_read_policies)
+    assert {r.child_id for r in rows} == {a_child_id, b_child_id}, (
+        "both policy rows must survive the cycle, each still carrying its own child_id"
+    )
+
+
+async def test_deleting_a_device_in_a_three_way_policy_cycle_succeeds(client):
+    """Same shape as the two-device cycle, but three devices deep: A->B->C->A, each
+    still owning its own pre-merge Policy row after being patched onto the next one's
+    child. Deleting A must not raise and must not delete any of the three policy rows.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    a = await create_device(client, token, name="A", child_name="CA")
+    b = await create_device(client, token, name="B", child_name="CB")
+    c = await create_device(client, token, name="C", child_name="CC")
+    a_child_id = a["child_id"]
+    b_child_id = b["child_id"]
+    c_child_id = c["child_id"]
+
+    resp = await client.patch(f"/api/v1/devices/{a['id']}",
+                              json={"child_id": b_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{b['id']}",
+                              json={"child_id": c_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{c['id']}",
+                              json={"child_id": a_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{a['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    async def _read_policies(conn):
+        return (await conn.execute(
+            text("SELECT child_id FROM policies WHERE child_id IN (:c1, :c2, :c3)"),
+            {"c1": a_child_id, "c2": b_child_id, "c3": c_child_id},
+        )).all()
+
+    rows = await _run_on_app_db(_read_policies)
+    assert {r.child_id for r in rows} == {a_child_id, b_child_id, c_child_id}, (
+        "all three policy rows must survive the cycle, each still carrying its own child_id"
+    )

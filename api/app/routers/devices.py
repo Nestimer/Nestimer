@@ -329,9 +329,27 @@ async def _detach_devices_policy(db: AsyncSession, device_id: str, _seen: set | 
 
     If a same-child candidate device already owns a Policy row of its own,
     Policy.device_id's unique constraint forbids also pointing this row at it --
-    recursively free that candidate up the same way first. `_seen` guards against
-    revisiting a device already in progress on this call stack (defensive; the data
-    should never actually cycle).
+    recursively free that candidate up the same way first.
+
+    `_seen` is not a defensive impossibility guard -- cycles are reachable through
+    ordinary API use, with just two devices and two PATCHes, precisely because
+    update_device never re-keys a device's pre-existing Policy row on merge (the same
+    divergence this whole function exists to handle, applied in both directions at
+    once):
+
+        POST /devices {name: A, child_name: C2}   -> A.child=C2, P_A(child=C2, device=A)
+        POST /devices {name: B, child_name: C1}   -> B.child=C1, P_B(child=C1, device=B)
+        PATCH A {child_id: C1}                    -> A.child=C1, P_A untouched (child=C2)
+        PATCH B {child_id: C2}                    -> B.child=C2, P_B untouched (child=C1)
+
+    Now P_A's only candidate (for C2) is B, and P_B's only candidate (for C1) is A --
+    each needs the other freed first. `_seen` breaks the cycle: a candidate already on
+    this call stack cannot be recursed into (that would be a silent no-op, since the
+    top-of-function guard would return immediately without freeing anything), so it is
+    never selected as `free` in the first place -- it falls back to `device_id = None`
+    instead. The NULL anchor is not permanent: create_device's adopt branch and
+    update_device both re-anchor a `device_id IS NULL` policy the next time a device
+    attaches to that child.
 
     Every mutation below is followed by an explicit `db.flush()`. A plain attribute
     assignment is only queued in the session's unit of work; when several of these
@@ -369,12 +387,21 @@ async def _detach_devices_policy(db: AsyncSession, device_id: str, _seen: set | 
     busy = {row[0] for row in result.all()}
     free = next((c for c in candidates if c not in busy), None)
     if free is None:
-        # Every candidate already owns a Policy row of its own -- free the first one up
-        # (recursively) and hand this row to it.
-        free = candidates[0]
-        await _detach_devices_policy(db, free, _seen)
+        # Every candidate already owns a Policy row of its own. Only recurse into one
+        # NOT already in _seen -- one that IS in _seen is on this call stack right now
+        # (a cycle), so recursing into it would be a silent no-op and it would stay
+        # busy. Never assign to a candidate the recursion did not actually free.
+        freeable = next((c for c in candidates if c not in _seen), None)
+        if freeable is not None:
+            await _detach_devices_policy(db, freeable, _seen)
+            free = freeable
 
-    policy.device_id = free
+    if free is None:
+        # A cycle closed with nothing left to free -- detach rather than risk the
+        # unique constraint. The row survives; see the cycle note above.
+        policy.device_id = None
+    else:
+        policy.device_id = free
     await db.flush()
 
 
