@@ -23,6 +23,7 @@
 		A10014 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10014 /* Keychain.swift */; };
 		A10015 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015 /* TOTPGenerator.swift */; };
 		A10016 /* ChildrenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10016 /* ChildrenViewModel.swift */; };
+		A10017 /* FormRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10017 /* FormRows.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		B10014 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		B10015 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
 		B10016 /* ChildrenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildrenViewModel.swift; sourceTree = "<group>"; };
+		B10017 /* FormRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormRows.swift; sourceTree = "<group>"; };
 		C10001 /* NesTimer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -105,6 +107,7 @@
 				B10010 /* DeviceDetailView.swift */,
 				B10011 /* AddDeviceView.swift */,
 				B10012 /* UsageChartView.swift */,
+				B10017 /* FormRows.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -196,6 +199,7 @@
 				A10014 /* Keychain.swift in Sources */,
 				A10015 /* TOTPGenerator.swift in Sources */,
 				A10016 /* ChildrenViewModel.swift in Sources */,
+				A10017 /* FormRows.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
