@@ -39,16 +39,31 @@ final class ChildrenViewModel: ObservableObject {
         await loadTodayMinutes()
     }
 
-    /// One request per child. Failures here are deliberately silent: the list is still
-    /// usable without today's figure, and this is the screen a parent opens to check on
-    /// their child's machines.
+    /// One request per child, fanned out concurrently via TaskGroup so the whole batch
+    /// costs one round trip's latency instead of N sequential ones -- load() has already
+    /// published `children` and set isLoading = false by the time this runs, so figures
+    /// simply pop in as each request completes. Failures here are deliberately silent per
+    /// child: the list is still usable without that child's figure, and this is the
+    /// screen a parent opens to check on their child's machines.
     private func loadTodayMinutes() async {
         let today = Self.todayString()
-        for child in children {
-            guard let rows = try? await api.getChildUsage(childId: child.id, days: 1) else {
-                continue
+        let ids = children.map(\.id)
+        let api = self.api // captured by value into the child tasks below, not `self`
+
+        await withTaskGroup(of: (id: String, minutes: Double?).self) { group in
+            for id in ids {
+                group.addTask {
+                    guard let rows = try? await api.getChildUsage(childId: id, days: 1) else {
+                        return (id, nil)
+                    }
+                    return (id, rows.first(where: { $0.date == today })?.totalMinutes ?? 0)
+                }
             }
-            todayMinutes[child.id] = rows.first(where: { $0.date == today })?.totalMinutes ?? 0
+            for await result in group {
+                if let minutes = result.minutes {
+                    todayMinutes[result.id] = minutes
+                }
+            }
         }
     }
 

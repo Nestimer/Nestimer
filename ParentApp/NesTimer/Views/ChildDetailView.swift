@@ -74,8 +74,7 @@ struct ChildDetailView: View {
         .sheet(isPresented: $showAddDevice) {
             AddDeviceView(
                 vm: addDeviceVM,
-                childId: vm.child?.id,
-                lockedChildName: vm.child?.name,
+                attachTo: vm.child.map { AddDeviceView.AttachTarget(id: $0.id, name: $0.name) },
                 onCreated: { Task { await vm.load() } }
             )
         }

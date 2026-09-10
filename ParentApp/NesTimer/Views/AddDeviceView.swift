@@ -3,13 +3,18 @@ import SwiftUI
 struct AddDeviceView: View {
     @ObservedObject var vm: DevicesViewModel
 
-    /// When set, this sheet attaches the new device to an EXISTING child instead of
-    /// creating one from a typed name — the path used from ChildDetailView, where the
-    /// child is already chosen. `lockedChildName` is the child's real name; the API still
-    /// requires a non-empty `child_name` even when `child_id` is set (it uses the child's
-    /// own name server-side and ignores this value), so it must not be blank.
-    var childId: String? = nil
-    var lockedChildName: String? = nil
+    /// The existing child to attach the new device to — the path used from
+    /// ChildDetailView, where the child is already chosen. id and name are bundled into
+    /// one type, rather than two independent optional parameters, because the API
+    /// requires a non-empty `child_name` even when `child_id` is set (it uses the
+    /// child's own name server-side and ignores this value, but still rejects a blank
+    /// one) — "id set, name missing" would otherwise compile and 422 at the moment a
+    /// parent tries to register their child's Mac. This type makes that unrepresentable.
+    struct AttachTarget {
+        let id: String
+        let name: String
+    }
+    var attachTo: AttachTarget? = nil
     /// Fired the moment the device is created (while the success/token screen is showing),
     /// so the caller can refresh without waiting for the sheet to be dismissed.
     var onCreated: (() -> Void)? = nil
@@ -22,7 +27,7 @@ struct AddDeviceView: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
 
-    private var isChildLocked: Bool { childId != nil }
+    private var isChildLocked: Bool { attachTo != nil }
 
     var body: some View {
         NavigationStack {
@@ -114,12 +119,12 @@ struct AddDeviceView: View {
                             Task {
                                 isCreating = true
                                 errorMessage = nil
-                                if let childId {
+                                if let attachTo {
                                     do {
                                         let device = try await APIClient.shared.createDevice(
                                             name: deviceName,
-                                            childName: lockedChildName ?? "",
-                                            childId: childId
+                                            childName: attachTo.name,
+                                            childId: attachTo.id
                                         )
                                         createdDevice = device
                                         onCreated?()
