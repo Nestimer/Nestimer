@@ -51,6 +51,14 @@ final class ChildDetailViewModel: ObservableObject {
         do {
             let children = try await api.listChildren()
             child = children.first(where: { $0.id == childId })
+            guard child != nil else {
+                // Not thrown, so without this the view's gate (vm.child != nil) falls through
+                // to an endless spinner -- e.g. the child was deleted elsewhere and this screen
+                // still holds its stale id.
+                errorMessage = "Child not found"
+                isLoading = false
+                return
+            }
 
             let allDevices = try await api.listDevices()
             devices = allDevices.filter { $0.childId == childId }
@@ -152,9 +160,20 @@ final class ChildDetailViewModel: ObservableObject {
     /// DeviceDetailView got this for free from its TOTP timer republishing every second; this
     /// screen has no TOTP display, so it needs its own tick. Call start from bonusSection's
     /// onAppear and stop from onDisappear, mirroring DeviceDetailViewModel's TOTP timer.
+    ///
+    /// Idempotent (stops any existing timer first) since bonusSection's onAppear can fire more
+    /// than once without a matching onDisappear -- an unbalanced call would otherwise leak a
+    /// second 1 Hz timer for the app's lifetime. The timer itself runs the whole time the
+    /// section is visible (so it's ready the moment a bonus is granted), but only republishes
+    /// the view model on ticks where a bonus is actually counting down, so it doesn't wake the
+    /// view every second for nothing.
     func startBonusCountdown() {
+        stopBonusCountdown()
         bonusTickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.objectWillChange.send() }
+            Task { @MainActor in
+                guard let self, self.bonusRemainingSeconds != nil else { return }
+                self.objectWillChange.send()
+            }
         }
     }
 

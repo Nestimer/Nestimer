@@ -19,13 +19,14 @@ struct ChildDetailView: View {
                         devicesSection
 
                         if vm.hasNoDevices {
-                            Section {
-                                ContentUnavailableView {
-                                    Label("No Devices", systemImage: "desktopcomputer")
-                                } description: {
-                                    Text("Add a device to this child to set limits")
-                                }
+                            ContentUnavailableView {
+                                Label("No Devices", systemImage: "desktopcomputer")
+                            } description: {
+                                Text("Add a device to this child to set limits")
                             }
+                            .padding()
+                            .background(.regularMaterial)
+                            .cornerRadius(16)
                         } else if vm.policy != nil {
                             // Sections 3-5, moved from DeviceDetailView
                             downtimeSection
@@ -67,7 +68,11 @@ struct ChildDetailView: View {
     // MARK: - Shared budget
 
     private var sharedBudgetSection: some View {
-        Section("Today") {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Today")
+                .font(.title2)
+                .fontWeight(.semibold)
+
             let limit = vm.policy?.screenTimeLimitMinutes
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -87,33 +92,54 @@ struct ChildDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(16)
         }
     }
 
     // MARK: - Devices
 
     private var devicesSection: some View {
-        Section("Devices") {
-            ForEach(vm.devices) { device in
-                NavigationLink {
-                    DeviceDetailView(deviceId: device.id)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(device.name)
-                            Text(device.dailyCapMinutes.map { "cap: \(durationText(Double($0)))" }
-                                 ?? "cap: none")
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Devices")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 0) {
+                ForEach(vm.devices) { device in
+                    NavigationLink {
+                        DeviceDetailView(deviceId: device.id)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(device.name)
+                                    .foregroundStyle(.primary)
+                                Text(device.dailyCapMinutes.map { "cap: \(durationText(Double($0)))" }
+                                     ?? "cap: none")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Circle()
+                                .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
+                                .frame(width: 8, height: 8)
+                            Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        Circle()
-                            .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
-                            .frame(width: 8, height: 8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if device.id != vm.devices.last?.id {
+                        Divider().padding(.leading, 16)
                     }
                 }
             }
+            .background(.regularMaterial)
+            .cornerRadius(16)
         }
     }
 

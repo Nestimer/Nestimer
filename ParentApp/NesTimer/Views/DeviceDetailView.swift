@@ -245,6 +245,10 @@ struct DeviceDetailView: View {
                         }
                         .labelsHidden()
                         .onChange(of: capMinutes) { _, newValue in
+                            // .task/.refreshable seed capMinutes from the server after every
+                            // load, which fires this same onChange -- skip it when the value
+                            // already matches the server so a load doesn't echo a no-op PATCH.
+                            guard newValue != vm.device?.dailyCapMinutes else { return }
                             Task { await vm.updateCap(newValue) }
                         }
                     }
