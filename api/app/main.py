@@ -7,7 +7,7 @@ import os
 
 from .config import settings
 from .database import init_db
-from .routers import auth, devices, agent
+from .routers import auth, devices, agent, children
 
 
 @asynccontextmanager
@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
+app.include_router(children.router, prefix="/api/v1")
 
 
 @app.get("/health")

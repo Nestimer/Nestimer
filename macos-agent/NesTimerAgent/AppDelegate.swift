@@ -19,6 +19,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastPolicy: ServerPolicy?
     /// Timestamp of last successful sync.
     private var lastSyncTime: Date = .distantPast
+    /// Minutes the child spent on their OTHER devices, from the last server snapshot.
+    /// The local tracker only ever holds THIS device's own usage, so the child's shared
+    /// total is this plus the local counter — see `childUsedMinutes()`.
+    private var otherDevicesUsedMinutes: Double = 0
     /// Cached TOTP shared secret — stored in Keychain, not UserDefaults (child can't read).
     private var sharedSecret: String? {
         get { KeychainStore.get(key: "totp_shared_secret") }
@@ -138,25 +142,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Pause counting during scheduled activity, TOTP temp unlock, or parent-granted bonus
         if policyEnforcer.activeActivity != nil || policyEnforcer.isTemporaryUnlockActive || policyEnforcer.isBonusActive {
             let current = usageTracker.getUsedMinutesToday()
-            statusBar?.updateDisplay(usedMinutes: current)
+            statusBar?.updateDisplay(deviceUsedMinutes: current)
             return
         }
         let usedMinutes = usageTracker.tick()
-        statusBar?.updateDisplay(usedMinutes: usedMinutes)
+        statusBar?.updateDisplay(deviceUsedMinutes: usedMinutes)
+    }
+
+    /// The child's shared total: what they used on their other devices (last server
+    /// snapshot) plus this device's live local counter, which is fresher than the snapshot.
+    private func childUsedMinutes() -> Double {
+        otherDevicesUsedMinutes + usageTracker.getUsedMinutesToday()
     }
 
     private func performSync() async {
-        let usedMinutes = usageTracker.getUsedMinutesToday()
-
         do {
             // Fetch policy from server
             let policy = try await apiClient.fetchConfig(localDate: usageTracker.currentDateString())
 
+            // The local tracker holds THIS device's own usage and nothing else. Reconciling
+            // it against `usedMinutesToday` — the child's combined total across every device
+            // — and then reporting the result back as this device's total would make each
+            // device's usage row absorb the whole child's sum, which the next poll feeds back
+            // in again: two Macs on one child inflate each other (30+20 → 50 → 70 → 120 → …)
+            // until both lock permanently and only a manual database edit clears it.
+            // Reconcile against the per-device figure instead — falling back to
+            // `usedMinutesToday` on a server that reports no per-device breakdown at all,
+            // where that value already IS this device's own total (see
+            // `deviceUsedMinutesForReconciliation`).
+            let serverDeviceUsed = policy.deviceUsedMinutesForReconciliation
+            otherDevicesUsedMinutes = policy.otherDevicesUsed
+
             // On first sync, trust server value completely (local cache may be stale)
             if !initialSyncCompleted {
-                usageTracker.forceSetUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+                usageTracker.forceSetUsedMinutes(serverDeviceUsed, forDate: usageTracker.currentDateString())
                 initialSyncCompleted = true
-                NSLog("[NesTimerAgent] Initial sync — server says \(String(format: "%.1f", policy.usedMinutesToday))m used")
+                NSLog("[NesTimerAgent] Initial sync — server says \(String(format: "%.1f", serverDeviceUsed))m on this device, \(String(format: "%.1f", policy.usedMinutesToday))m across the child's devices")
                 // Fetch TOTP secret if not in Keychain yet
                 if sharedSecret == nil {
                     if let secret = try? await apiClient.fetchTOTPSecret() {
@@ -165,22 +186,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             } else {
-                // Normal sync — reconcile local and server
-                usageTracker.setUsedMinutes(policy.usedMinutesToday, forDate: usageTracker.currentDateString())
+                // Normal sync — reconcile local and server, on this device's own counter
+                usageTracker.setUsedMinutes(serverDeviceUsed, forDate: usageTracker.currentDateString())
             }
 
-            // Report our usage back (use fresh value after sync)
-            let syncedMinutes = usageTracker.getUsedMinutesToday()
+            // Report OUR OWN usage back (use fresh value after sync)
+            let localDeviceUsed = usageTracker.getUsedMinutesToday()
             try await apiClient.reportUsage(
                 date: usageTracker.currentDateString(),
-                totalMinutes: syncedMinutes
+                totalMinutes: localDeviceUsed
             )
 
-            // Enforce policy (lock/unlock, warnings)
-            let currentUsed = usageTracker.getUsedMinutesToday()
+            // Enforce policy (lock/unlock, warnings) against the child's shared total.
+            // `otherDevicesUsed` is already floored at 0 by ServerPolicy, so childUsed can
+            // never come out below this device's own usage even if the server snapshot and
+            // the local counter disagree; against a pre-shared-budget server it is 0 and
+            // `usedMinutesToday` (this device's own total there) is not double-counted.
+            let childUsed = childUsedMinutes()
             await MainActor.run {
-                policyEnforcer.evaluate(policy: policy, usedMinutesToday: currentUsed)
+                policyEnforcer.evaluate(
+                    policy: policy,
+                    usedMinutesToday: childUsed,
+                    deviceUsedMinutes: localDeviceUsed
+                )
                 statusBar?.updatePolicy(policy: policy)
+                statusBar?.otherDevicesUsedMinutes = otherDevicesUsedMinutes
                 statusBar?.activeActivityName = policyEnforcer.activeActivity?.name
                 statusBar?.activeActivityEndsAt = policyEnforcer.activeActivityEndsAt
             }
@@ -188,9 +218,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             lastPolicy = policy
             lastSyncTime = Date()
 
-            let remaining = Double(policy.screenTimeLimitMinutes) - currentUsed
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: childUsed,
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: localDeviceUsed
+            )
             let nextIn = Int(adaptiveSyncInterval())
-            NSLog("[NesTimerAgent] Sync OK — used: \(String(format: "%.1f", currentUsed))m, limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
+            NSLog("[NesTimerAgent] Sync OK — used: \(String(format: "%.1f", childUsed))m across devices (\(String(format: "%.1f", localDeviceUsed))m here), limit: \(policy.screenTimeLimitMinutes)m, remaining: \(String(format: "%.0f", remaining))m, next sync: \(nextIn)s")
         } catch {
             NSLog("[NesTimerAgent] Sync failed: \(error.localizedDescription)")
         }
@@ -207,7 +242,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Calculate remaining minutes from last policy
         if let policy = lastPolicy, policy.screenTimeEnabled {
-            let remaining = Double(policy.screenTimeLimitMinutes) - usageTracker.getUsedMinutesToday()
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: childUsedMinutes(),
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: usageTracker.getUsedMinutesToday()
+            )
             if remaining < 5 { return 10 }
             if remaining < 30 { return 20 }
         }

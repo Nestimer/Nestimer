@@ -13,7 +13,7 @@ End-to-end flow test: simulates the full parent + agent lifecycle.
 import pytest
 from datetime import datetime, timezone
 
-from .conftest import register_user
+from .conftest import register_user, simulate_elapsed_time
 
 pytestmark = pytest.mark.anyio
 
@@ -89,7 +89,9 @@ async def test_full_lifecycle(client):
     )
     assert resp.status_code == 200
 
-    # After 60 minutes
+    # After 60 minutes (the clock has to actually move: /agent/usage clamps a report to
+    # what could have accumulated since the device's previous one)
+    await simulate_elapsed_time(30)
     resp = await client.post(
         "/api/v1/agent/usage",
         json={"date": today, "total_minutes": 60.0},
@@ -116,6 +118,7 @@ async def test_full_lifecycle(client):
     assert resp.json()["used_minutes_today"] == 60.0
 
     # === STEP 7: Agent reports exceeding limit ===
+    await simulate_elapsed_time(35)
     resp = await client.post(
         "/api/v1/agent/usage",
         json={"date": today, "total_minutes": 95.0},  # > 90 minute limit

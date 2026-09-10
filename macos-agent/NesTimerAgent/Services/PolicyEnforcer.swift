@@ -7,6 +7,11 @@ class PolicyEnforcer {
     private let notifications: NotificationManager
     private let mediaController = MediaController()
     private var lastPolicyLimitMinutes: Int?
+    /// Last-seen device cap, as a double optional: `nil` (outer) means "no policy evaluated
+    /// yet", `.some(nil)` means "a policy was evaluated and it had no cap". This distinguishes
+    /// "never seen" from "seen and absent" so that a cap appearing (nil -> value) is detected
+    /// as a change just like a cap disappearing or moving.
+    private var lastDeviceCapMinutes: Int??
     /// Tracks which warning thresholds have been crossed (remaining went below this value).
     private var warningThresholdsCrossed: Set<Int> = []
     private var previousRemaining: Double?
@@ -75,7 +80,14 @@ class PolicyEnforcer {
     private(set) var activeActivityEndsAt: String?
 
     /// Evaluate rules and enforce lock/unlock. Must be called on main thread.
-    func evaluate(policy: ServerPolicy, usedMinutesToday: Double) {
+    ///
+    /// `usedMinutesToday` is the CHILD's total across all their devices; `deviceUsedMinutes`
+    /// is this device's own usage, for the per-device ceiling. Pass the agent's live local
+    /// counter for the latter when there is one — it is fresher than `policy.deviceUsedMinutes`,
+    /// which is a server snapshot up to one sync interval old. Omitting it falls back to that
+    /// snapshot.
+    func evaluate(policy: ServerPolicy, usedMinutesToday: Double, deviceUsedMinutes: Double? = nil) {
+        let deviceUsed = deviceUsedMinutes ?? policy.deviceUsedMinutes
         // 0. Check scheduled activities (highest priority — bypasses downtime + limit)
         let (active, endsAt) = findActiveActivity(in: policy.activities ?? [])
         activeActivity = active
@@ -105,12 +117,19 @@ class PolicyEnforcer {
             return
         }
 
-        // Reset warnings if policy limit changed (parent granted more time)
-        if let lastLimit = lastPolicyLimitMinutes, lastLimit != policy.screenTimeLimitMinutes {
+        // Reset warnings if policy limit OR device cap changed (parent granted more time,
+        // or raised/lowered/added/removed the per-device ceiling). lastDeviceCapMinutes is a
+        // double optional: the outer nil means "no policy evaluated yet" (never treated as a
+        // change), while `.some(nil)` means "evaluated and there was no cap" — this lets a cap
+        // appearing from nil be detected as a change, not just a cap moving between two values.
+        let capChanged = lastDeviceCapMinutes.map { $0 != policy.deviceCapMinutes } ?? false
+        if let lastLimit = lastPolicyLimitMinutes,
+           lastLimit != policy.screenTimeLimitMinutes || capChanged {
             warningThresholdsCrossed.removeAll()
             previousRemaining = nil
         }
         lastPolicyLimitMinutes = policy.screenTimeLimitMinutes
+        lastDeviceCapMinutes = policy.deviceCapMinutes
 
         // 1. Check downtime
         if policy.downtimeEnabled && isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd) {
@@ -121,13 +140,26 @@ class PolicyEnforcer {
 
         // 2. Check screen time limit
         if policy.screenTimeEnabled {
-            let limitMinutes = Double(policy.screenTimeLimitMinutes)
-            let remaining = limitMinutes - usedMinutesToday
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: usedMinutesToday,
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: deviceUsed
+            )
 
             // Lock when less than 1 minute remaining (menu shows 0m at this point)
             if remaining < 1 {
+                let source = RemainingTime.binding(
+                    limitMinutes: policy.screenTimeLimitMinutes,
+                    childUsedMinutes: usedMinutesToday,
+                    deviceCapMinutes: policy.deviceCapMinutes,
+                    deviceUsedMinutes: deviceUsed
+                )
                 notifications.showTimeExpired()
-                lockScreen.show(reason: .timeExpired)
+                // On a tie (both limits reach zero together), .binding reports .sharedBudget —
+                // deliberately, since the cap isn't what ran out first. Whoever binds strictly
+                // gets the specific message; a tie gets the honest "shared budget" framing.
+                lockScreen.show(reason: source == .deviceCap ? .deviceCapReached : .timeExpired)
                 previousRemaining = remaining
                 transitionToLocked()
                 return

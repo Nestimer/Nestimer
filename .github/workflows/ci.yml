@@ -60,6 +60,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Runs first: the agent's only executable tests take seconds, while the Release
+      # build below takes minutes. It guards the hand-written ServerPolicy decoder in
+      # particular — if that ever throws on a response omitting the optional
+      # device_used_minutes/device_cap_minutes fields, the child's Mac gets no config
+      # at all and goes unmanaged.
+      - name: Agent logic tests
+        run: bash macos-agent/NesTimerAgentTests/run-logic-tests.sh
+
       - name: Build Agent (Release)
         run: |
           xcodebuild -project macos-agent/NesTimerAgent.xcodeproj \
@@ -96,7 +104,7 @@ jobs:
           xcodebuild -project ParentApp/NesTimer.xcodeproj \
             -scheme NesTimer \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \

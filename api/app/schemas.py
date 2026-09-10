@@ -48,11 +48,15 @@ class UserOut(BaseModel):
 class DeviceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     child_name: str = Field(min_length=1, max_length=100)
+    child_id: Optional[str] = None            # attach to an existing child; a new one is created if omitted
+    platform: str = Field(default="macos", pattern="^(macos|android|ios)$")
 
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     child_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    child_id: Optional[str] = None
+    daily_cap_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
 
 
 class DeviceOut(BaseModel):
@@ -65,6 +69,9 @@ class DeviceOut(BaseModel):
     last_seen: Optional[datetime] = None
     created_at: datetime
     bonus_until: Optional[datetime] = None
+    child_id: Optional[str] = None
+    platform: str = "macos"
+    daily_cap_minutes: Optional[int] = None
 
     @field_serializer("last_seen", "created_at", "bonus_until")
     def _serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
@@ -78,6 +85,9 @@ class DeviceListOut(BaseModel):
     child_name: str
     agent_version: Optional[str] = None
     last_seen: Optional[datetime] = None
+    child_id: Optional[str] = None
+    platform: str = "macos"
+    daily_cap_minutes: Optional[int] = None
 
     @field_serializer("last_seen")
     def _serialize_last_seen(self, dt: Optional[datetime]) -> Optional[str]:
@@ -177,6 +187,8 @@ class AgentConfig(BaseModel):
     screen_time_enabled: bool
     screen_time_limit_minutes: int
     used_minutes_today: float
+    device_used_minutes: float = 0.0       # this device's own total for the day
+    device_cap_minutes: Optional[int] = None  # per-device ceiling; null = no ceiling
     activities: list["ActivityOut"] = Field(default_factory=list)
     bonus_until: Optional[datetime] = None  # parent-granted temporary unlock window
 
@@ -248,6 +260,28 @@ class TOTPVerifyRequest(BaseModel):
 class TOTPVerifyResponse(BaseModel):
     valid: bool
     granted_minutes: int = 0
+
+
+# --- Children ---
+class ChildCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ChildUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+
+class ChildOut(BaseModel):
+    id: str
+    name: str
+    bonus_until: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    device_ids: list[str] = Field(default_factory=list)
+
+    @field_serializer("bonus_until", "created_at")
+    def _serialize_dt(self, v: Optional[datetime]) -> Optional[str]:
+        v = _ensure_utc(v)
+        return v.isoformat() if v else None
 
 
 # Resolve forward reference

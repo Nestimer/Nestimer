@@ -76,3 +76,32 @@ async def create_device(client: AsyncClient, token: str, name="MacBook Test", ch
     )
     assert resp.status_code == 200
     return resp.json()
+
+
+async def simulate_elapsed_time(minutes: float) -> None:
+    """Backdate every usage row's `last_updated`, as if that many minutes had passed.
+
+    `POST /agent/usage` clamps a report to what the device could actually have
+    accumulated since its previous report (see `USAGE_REPORT_SLACK_MINUTES`): a counter
+    only grows with wall-clock time. A test that reports "30 minutes in" and then
+    "60 minutes in" milliseconds later is describing a jump no honest agent can make, so
+    it has to move the row's clock the way it claims the clock moved. This is the same
+    path a device that was off or offline for an hour takes when it comes back and
+    reports its catch-up total.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import text
+
+    override = app.dependency_overrides[get_db]
+    gen = override()
+    session = await gen.__anext__()
+    try:
+        conn = await session.connection()
+        await conn.execute(
+            text("UPDATE usage_logs SET last_updated = :ts"),
+            {"ts": datetime.now(timezone.utc) - timedelta(minutes=minutes)},
+        )
+        await session.commit()
+    finally:
+        await gen.aclose()

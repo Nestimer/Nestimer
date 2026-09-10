@@ -75,4 +75,9 @@ export const api = {
   createActivity: (deviceId, data) => request(`/devices/${deviceId}/activities`, { method: 'POST', body: JSON.stringify(data) }),
   updateActivity: (deviceId, activityId, data) => request(`/devices/${deviceId}/activities/${activityId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteActivity: (deviceId, activityId) => request(`/devices/${deviceId}/activities/${activityId}`, { method: 'DELETE' }),
+
+  // Children (shared daily budget — one budget per child, across all their devices)
+  listChildren: () => request('/children'),
+  createChild: (name) => request('/children', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameChild: (id, name) => request(`/children/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
 }

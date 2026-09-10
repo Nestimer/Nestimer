@@ -10,6 +10,10 @@ class StatusBarController {
     private var menu: NSMenu
     /// When true, shows DEV badge and Quit menu item.
     var devMode = false
+    /// Minutes the child spent on their OTHER devices, from the last server snapshot.
+    /// The usage tracker only holds this device's own usage, so the shared budget the
+    /// menu bar counts down against is this plus the tracker's value.
+    var otherDevicesUsedMinutes: Double = 0
     /// Currently active scheduled activity (e.g. "English") — shown in menu bar title.
     var activeActivityName: String?
     var activeActivityEndsAt: String?
@@ -25,7 +29,9 @@ class StatusBarController {
 
     // MARK: - Public
 
-    func updateDisplay(usedMinutes: Double) {
+    /// `deviceUsedMinutes` is THIS device's own usage; the child's shared total is that
+    /// plus `otherDevicesUsedMinutes`.
+    func updateDisplay(deviceUsedMinutes: Double) {
         guard let button = statusItem.button else { return }
 
         // If activity is active, show its name+end time and skip usage display
@@ -36,7 +42,12 @@ class StatusBarController {
         }
 
         if let policy = currentPolicy, policy.screenTimeEnabled {
-            let remaining = Double(policy.screenTimeLimitMinutes) - usedMinutes
+            let remaining = RemainingTime.minutes(
+                limitMinutes: policy.screenTimeLimitMinutes,
+                childUsedMinutes: otherDevicesUsedMinutes + deviceUsedMinutes,
+                deviceCapMinutes: policy.deviceCapMinutes,
+                deviceUsedMinutes: deviceUsedMinutes
+            )
             if remaining > 0 {
                 let h = Int(remaining) / 60
                 let m = Int(remaining) % 60
@@ -86,12 +97,20 @@ class StatusBarController {
 
         // Usage info
         if let tracker = usageTracker {
-            let used = tracker.getUsedMinutesToday()
+            let deviceUsed = tracker.getUsedMinutesToday()
+            // "Used: X of Y" counts the shared budget — the child's time on their other
+            // devices spends the same allowance as time spent here.
+            let used = otherDevicesUsedMinutes + deviceUsed
             let usedText = formatMinutes(Int(used))
 
             if let policy = currentPolicy {
                 if policy.screenTimeEnabled {
-                    let remaining = max(0, Double(policy.screenTimeLimitMinutes) - used)
+                    let remaining = RemainingTime.minutes(
+                        limitMinutes: policy.screenTimeLimitMinutes,
+                        childUsedMinutes: used,
+                        deviceCapMinutes: policy.deviceCapMinutes,
+                        deviceUsedMinutes: deviceUsed
+                    )
                     let limitText = formatMinutes(policy.screenTimeLimitMinutes)
 
                     let usageItem = NSMenuItem(

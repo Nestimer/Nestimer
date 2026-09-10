@@ -31,6 +31,39 @@ struct ServerPolicy: Codable {
     let activities: [ScheduledActivity]?
     /// Parent-granted bonus window (ISO8601 UTC). Decoded into `bonusUntilDate`.
     let bonusUntil: String?
+    /// This device's own usage today, exactly as the wire carried it — nil when the server
+    /// omitted the field, i.e. any server older than the shared-budget release. Nil is NOT
+    /// the same as 0: it means `usedMinutesToday` is this device's own total rather than the
+    /// child's combined one, so nothing may be subtracted out of it (see `otherDevicesUsed`).
+    private let deviceUsedMinutesReported: Double?
+    /// Per-device ceiling within the shared budget. Nil means no ceiling.
+    let deviceCapMinutes: Int?
+
+    /// This device's own usage today; 0 when the server doesn't report it.
+    var deviceUsedMinutes: Double { deviceUsedMinutesReported ?? 0 }
+
+    /// True when the server breaks usage down per device, i.e. `usedMinutesToday` is the
+    /// child's combined total across all their devices rather than just this one's.
+    var reportsDeviceUsage: Bool { deviceUsedMinutesReported != nil }
+
+    /// What the agent's local counter — which holds THIS device's own usage — must be
+    /// reconciled against. On a server that reports the per-device breakdown that is
+    /// `deviceUsedMinutes`; on an older one there is no breakdown and `usedMinutesToday`
+    /// IS this device's own total, so reconciling against `deviceUsedMinutes` (0 there)
+    /// would wipe the counter on the first sync and re-zero it on every one after —
+    /// UsageTracker reads a value that far below the local one as a parent reset — and
+    /// the child's screen time would never accumulate at all.
+    var deviceUsedMinutesForReconciliation: Double {
+        reportsDeviceUsage ? deviceUsedMinutes : usedMinutesToday
+    }
+
+    /// Usage the child racked up on their OTHER devices, per the server's snapshot.
+    /// Against a pre-shared-budget server (no per-device breakdown) this is 0 and
+    /// `usedMinutesToday` is treated as this device's own total — never double-counted.
+    var otherDevicesUsed: Double {
+        guard let own = deviceUsedMinutesReported else { return 0 }
+        return max(0, usedMinutesToday - own)
+    }
 
     init(
         downtimeEnabled: Bool,
@@ -40,7 +73,9 @@ struct ServerPolicy: Codable {
         screenTimeLimitMinutes: Int,
         usedMinutesToday: Double,
         activities: [ScheduledActivity]? = nil,
-        bonusUntil: String? = nil
+        bonusUntil: String? = nil,
+        deviceUsedMinutes: Double? = nil,
+        deviceCapMinutes: Int? = nil
     ) {
         self.downtimeEnabled = downtimeEnabled
         self.downtimeStart = downtimeStart
@@ -50,6 +85,8 @@ struct ServerPolicy: Codable {
         self.usedMinutesToday = usedMinutesToday
         self.activities = activities
         self.bonusUntil = bonusUntil
+        self.deviceUsedMinutesReported = deviceUsedMinutes
+        self.deviceCapMinutes = deviceCapMinutes
     }
 
     enum CodingKeys: String, CodingKey {
@@ -61,6 +98,26 @@ struct ServerPolicy: Codable {
         case usedMinutesToday = "used_minutes_today"
         case activities
         case bonusUntil = "bonus_until"
+        case deviceUsedMinutesReported = "device_used_minutes"
+        case deviceCapMinutes = "device_cap_minutes"
+    }
+
+    /// Custom decoder: `deviceUsedMinutes`/`deviceCapMinutes` are optional on the wire
+    /// because a server older than the shared-budget release omits them entirely.
+    /// Decoding must NOT throw in that case — a throw here would leave the device
+    /// unmanaged (PolicyEnforcer never runs) until the server is upgraded.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        downtimeEnabled = try c.decode(Bool.self, forKey: .downtimeEnabled)
+        downtimeStart = try c.decode(String.self, forKey: .downtimeStart)
+        downtimeEnd = try c.decode(String.self, forKey: .downtimeEnd)
+        screenTimeEnabled = try c.decode(Bool.self, forKey: .screenTimeEnabled)
+        screenTimeLimitMinutes = try c.decode(Int.self, forKey: .screenTimeLimitMinutes)
+        usedMinutesToday = try c.decode(Double.self, forKey: .usedMinutesToday)
+        activities = try c.decodeIfPresent([ScheduledActivity].self, forKey: .activities)
+        bonusUntil = try c.decodeIfPresent(String.self, forKey: .bonusUntil)
+        deviceUsedMinutesReported = try c.decodeIfPresent(Double.self, forKey: .deviceUsedMinutesReported)
+        deviceCapMinutes = try c.decodeIfPresent(Int.self, forKey: .deviceCapMinutes)
     }
 
     var bonusUntilDate: Date? {

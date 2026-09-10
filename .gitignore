@@ -24,3 +24,6 @@ mempalace.yaml
 .venv/
 api/.venv/
 ios-build/
+
+# SDD scratch (subagent-driven-development workspaces)
+.superpowers/

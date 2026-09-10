@@ -285,3 +285,208 @@ async def test_grant_bonus_requires_owner(client):
         headers={"Authorization": f"Bearer {intruder}"},
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Child assignment, platform and per-device cap
+# ---------------------------------------------------------------------------
+
+async def test_device_can_be_moved_to_another_child(client):
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac", child_name="Alex")
+    phone = await create_device(client, token, name="Phone", child_name="Sam")
+
+    child_id = (await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)).json()["child_id"]
+    resp = await client.patch(
+        f"/api/v1/devices/{phone['id']}", json={"child_id": child_id}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["child_id"] == child_id
+
+    # The denormalised child_name column must follow the child it's now attached
+    # to (Alex), not the name the phone was created under (Sam) — otherwise two
+    # devices on one child could disagree about that child's name in the parent UI.
+    resp = await client.get(f"/api/v1/devices/{phone['id']}", headers=headers)
+    assert resp.json()["child_name"] == "Alex"
+
+
+async def test_cannot_move_a_device_to_another_parents_child(client):
+    token_a = await register_user(client, email="a@test.com")
+    token_b = await register_user(client, email="b@test.com")
+    device_a = await create_device(client, token_a, name="Mac A")
+    device_b = await create_device(client, token_b, name="Mac B")
+
+    child_a = (await client.get(
+        f"/api/v1/devices/{device_a['id']}", headers={"Authorization": f"Bearer {token_a}"}
+    )).json()["child_id"]
+
+    resp = await client.patch(
+        f"/api/v1/devices/{device_b['id']}",
+        json={"child_id": child_a},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_cannot_create_device_with_another_parents_child(client):
+    """POST /devices must apply the same ownership check on child_id as PATCH does —
+    a client should never be able to attach a brand-new device to a child it doesn't
+    own by passing that child's id at creation time."""
+    token_a = await register_user(client, email="create-a@test.com")
+    token_b = await register_user(client, email="create-b@test.com")
+    device_a = await create_device(client, token_a, name="Mac A")
+
+    child_a = (await client.get(
+        f"/api/v1/devices/{device_a['id']}", headers={"Authorization": f"Bearer {token_a}"}
+    )).json()["child_id"]
+
+    resp = await client.post(
+        "/api/v1/devices",
+        json={"name": "Mac B", "child_name": "Doesn't matter", "child_id": child_a},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_daily_cap_can_be_set_and_cleared(client):
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac")
+
+    resp = await client.patch(
+        f"/api/v1/devices/{mac['id']}", json={"daily_cap_minutes": 60}, headers=headers
+    )
+    assert resp.json()["daily_cap_minutes"] == 60
+
+    resp = await client.patch(
+        f"/api/v1/devices/{mac['id']}", json={"daily_cap_minutes": None}, headers=headers
+    )
+    assert resp.json()["daily_cap_minutes"] is None
+
+
+async def test_unrelated_patch_does_not_clear_the_daily_cap(client):
+    """A PATCH that never mentions daily_cap_minutes must leave it alone — pins the
+    'absent field' half of the model_fields_set check, which set_and_cleared above
+    doesn't exercise (a regression to unconditionally assigning data.daily_cap_minutes
+    would pass both of that test's assertions while silently wiping the cap here)."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac")
+
+    resp = await client.patch(
+        f"/api/v1/devices/{mac['id']}", json={"daily_cap_minutes": 60}, headers=headers
+    )
+    assert resp.json()["daily_cap_minutes"] == 60
+
+    resp = await client.patch(
+        f"/api/v1/devices/{mac['id']}", json={"name": "Renamed"}, headers=headers
+    )
+    assert resp.json()["name"] == "Renamed"
+    assert resp.json()["daily_cap_minutes"] == 60, "an unrelated field update must not clear the cap"
+
+
+async def test_device_defaults_to_macos_platform(client):
+    token = await register_user(client)
+    device = await create_device(client, token, name="Mac")
+    assert device["platform"] == "macos"
+
+
+async def test_moving_device_rekeys_its_activities_to_the_new_child(client):
+    """A device's own scheduled activities must keep being enforced (and stay visible
+    in this device's activity list) after it moves to a different child — even once
+    that child has activities of its own. `_child_id_for_device`/`_resolve_activity`
+    resolve child-first, so a moved device's legacy child-keyed rows would otherwise
+    become invisible to /agent/config the moment the new child gets any activity of
+    its own, while still showing up (unenforced) in this device's parent-facing list."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mac = await create_device(client, token, name="Mac")
+    phone = await create_device(client, token, name="Phone")
+
+    # Give the phone (about to move) an activity of its own.
+    resp = await client.post(
+        f"/api/v1/devices/{phone['id']}/activities",
+        json={"name": "Piano", "day_of_week": 1, "start_time": "16:00", "end_time": "17:00"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    activity_id = resp.json()["id"]
+
+    # The destination child (mac's) already has an activity of its own.
+    mac_child_id = (await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)).json()["child_id"]
+    resp = await client.post(
+        f"/api/v1/devices/{mac['id']}/activities",
+        json={"name": "English", "day_of_week": 2, "start_time": "10:00", "end_time": "11:00"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    # Move the phone onto the mac's child.
+    resp = await client.patch(
+        f"/api/v1/devices/{phone['id']}", json={"child_id": mac_child_id}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    # The phone's own activity must still be listed under the phone...
+    resp = await client.get(f"/api/v1/devices/{phone['id']}/activities", headers=headers)
+    names = {a["name"] for a in resp.json()}
+    assert "Piano" in names
+
+    # ...and must still be enforced: /agent/config for the phone must include it now
+    # that the new child already has an activity of its own (the child-first lookup
+    # would otherwise hide a legacy device-keyed row here).
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {phone['api_token']}"}
+    )
+    config_names = {a["name"] for a in resp.json()["activities"]}
+    assert "Piano" in config_names, "moved device's own activity must still be enforced"
+
+
+async def test_moving_a_device_removes_the_activity_from_a_sibling_left_behind(client):
+    """Pins the intentional side effect of re-keying: a SIBLING device that stayed on
+    the old child and was only inheriting an activity through the child-first lookup
+    (no device-keyed row of its own for it) loses that activity the instant the owning
+    device moves away. The activity belongs to the device that moved, not to the old
+    child in general, so the sibling losing it is correct — but it is a real, visible
+    change and must be pinned by a test, not just asserted in a comment."""
+    token = await register_user(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    phone = await create_device(client, token, name="Phone")
+    sibling = await create_device(client, token, name="Sibling")
+    mac = await create_device(client, token, name="Mac")
+
+    old_child_id = (await client.get(f"/api/v1/devices/{phone['id']}", headers=headers)).json()["child_id"]
+    new_child_id = (await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)).json()["child_id"]
+
+    # Put the sibling on the phone's child, with no activity of its own.
+    resp = await client.patch(
+        f"/api/v1/devices/{sibling['id']}", json={"child_id": old_child_id}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    # The phone's own activity, inherited by the sibling via the child-first lookup.
+    resp = await client.post(
+        f"/api/v1/devices/{phone['id']}/activities",
+        json={"name": "Piano", "day_of_week": 1, "start_time": "16:00", "end_time": "17:00"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {sibling['api_token']}"}
+    )
+    assert {a["name"] for a in resp.json()["activities"]} == {"Piano"}, \
+        "sibling must inherit the activity through the child before the move"
+
+    # Move the phone (and its activity) to a different child.
+    resp = await client.patch(
+        f"/api/v1/devices/{phone['id']}", json={"child_id": new_child_id}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {sibling['api_token']}"}
+    )
+    assert resp.json()["activities"] == [], \
+        "the sibling left behind on the old child must no longer see the moved activity"
