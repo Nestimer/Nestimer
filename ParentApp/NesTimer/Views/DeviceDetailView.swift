@@ -93,6 +93,23 @@ struct DeviceDetailView: View {
                 Text("Moving this device merges it onto \(target.name)'s shared daily limit and usage.")
             }
         }
+        // Attached OUTSIDE the `vm.policy != nil` gate above, so it renders whatever the
+        // load state. The gate's `else if let error` branch is only reachable while
+        // `policy` is nil, and nothing ever resets `policy` to nil after a first
+        // successful load -- so every mutating control on this screen used to fail with no
+        // signal at all. A control that did not take effect must never look like one that did.
+        .alert(
+            "Change Not Saved",
+            isPresented: Binding(
+                get: { vm.actionError != nil },
+                set: { if !$0 { vm.actionError = nil } }
+            ),
+            presenting: vm.actionError
+        ) { _ in
+            Button("OK", role: .cancel) { vm.actionError = nil }
+        } message: { message in
+            Text(message)
+        }
     }
 
     // MARK: - Today's usage card
@@ -384,6 +401,10 @@ struct EditDeviceNameView: View {
     @State private var name: String = ""
     @State private var childName: String = ""
     @State private var isSaving = false
+    /// Failure text for the save attempt, consumed out of `vm.actionError` so the alert on
+    /// the screen behind doesn't also fire. An alert presented on a view that already has
+    /// a sheet up is not visible anyway, and the sheet is what the parent is looking at.
+    @State private var errorText: String?
 
     var body: some View {
         NavigationStack {
@@ -393,6 +414,15 @@ struct EditDeviceNameView: View {
                 }
                 Section("Child Name") {
                     TextField("Child name", text: $childName)
+                }
+                if let errorText {
+                    Section {
+                        Label(errorText, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    } header: {
+                        Text("Not Saved")
+                    }
                 }
             }
             .navigationTitle("Edit Device")
@@ -407,9 +437,16 @@ struct EditDeviceNameView: View {
                     Button("Save") {
                         Task {
                             isSaving = true
-                            await vm.updateDeviceName(name: name, childName: childName)
+                            let saved = await vm.updateDeviceName(name: name, childName: childName)
                             isSaving = false
-                            dismiss()
+                            // Dismiss only on success. A sheet that closes on failure
+                            // reads to the parent as confirmation that the rename stuck.
+                            if saved {
+                                dismiss()
+                            } else {
+                                errorText = vm.actionError
+                                vm.actionError = nil
+                            }
                         }
                     }
                     .disabled(name.isEmpty || childName.isEmpty || isSaving)

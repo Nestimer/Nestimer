@@ -10,7 +10,19 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var allChildren: [Child] = []
     @Published var isLoading = false
     @Published var isSaving = false
+
+    /// Failure of the initial load. Rendered by the view's `vm.policy == nil` branch as a
+    /// full-screen message with a Retry button.
     @Published var error: String?
+
+    /// Failure of a mutating action (a cap change, a move, a rename, a policy edit).
+    /// Deliberately separate from `error`: the load branch is only reachable while `policy`
+    /// is nil, so an action failure written there renders nothing at all once the screen
+    /// has loaded once -- which is how every mutating control on this screen used to fail
+    /// in total silence. This is parental-control software: a control that did not take
+    /// effect must never look like one that did. The view surfaces this as an alert
+    /// attached OUTSIDE the load gate, so it shows whatever the load state.
+    @Published var actionError: String?
     @Published var currentTOTPCode: String?
     @Published var totpSecondsRemaining: Int = 0
     private var totpTimer: Timer?
@@ -65,18 +77,23 @@ class DeviceDetailViewModel: ObservableObject {
                 policy = newPolicy
             }
         } catch {
-            self.error = error.localizedDescription
+            self.actionError = error.localizedDescription
         }
     }
 
-    func updateDeviceName(name: String, childName: String) async {
+    /// Returns whether the rename actually reached the server. The sheet dismisses only
+    /// on `true`: dismissing on failure reads to the parent as confirmation.
+    @discardableResult
+    func updateDeviceName(name: String, childName: String) async -> Bool {
         isSaving = true
+        defer { isSaving = false }
         do {
             device = try await api.updateDevice(deviceId, update: DeviceUpdateRequest(name: name, childName: childName))
+            return true
         } catch {
-            self.error = error.localizedDescription
+            self.actionError = error.localizedDescription
+            return false
         }
-        isSaving = false
     }
 
     // Note: the brief's snippet used `errorMessage`, but this view model's error property
@@ -95,7 +112,7 @@ class DeviceDetailViewModel: ObservableObject {
             }
             device = try await APIClient.shared.updateDevice(deviceId, update: update)
         } catch {
-            self.error = error.localizedDescription
+            self.actionError = error.localizedDescription
         }
     }
 
@@ -112,7 +129,7 @@ class DeviceDetailViewModel: ObservableObject {
             do {
                 policy = try await api.updatePolicy(deviceId: deviceId, update: update)
             } catch {
-                self.error = error.localizedDescription
+                self.actionError = error.localizedDescription
                 break
             }
         }

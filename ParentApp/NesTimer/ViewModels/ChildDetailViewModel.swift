@@ -8,7 +8,19 @@ final class ChildDetailViewModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var usage: [UsageEntry] = []
     @Published var isLoading = false
+
+    /// Failure of the initial load. Rendered by the view's `vm.child == nil` branch as a
+    /// full-screen message with a Retry button.
     @Published var errorMessage: String?
+
+    /// Failure of a mutating action (a limit change, a bonus grant, an activity edit...).
+    /// Deliberately separate from `errorMessage`: the load branch is only reachable while
+    /// `child` is nil, so an action failure written there renders nothing at all once the
+    /// screen has loaded once -- which is how every mutating control on this screen used
+    /// to fail in total silence. This is parental-control software: "I set a 30-minute
+    /// limit" must never quietly mean "I did not". The view surfaces this as an alert
+    /// attached OUTSIDE the load gate, so it shows whatever the load state.
+    @Published var actionError: String?
 
     /// True when the child has no devices, so no policy row exists. The API returns 404
     /// rather than creating one -- a Policy with device_id NULL would leave a device that
@@ -92,7 +104,7 @@ final class ChildDetailViewModel: ObservableObject {
             do {
                 policy = try await api.updateChildPolicy(childId: childId, update: next)
             } catch {
-                errorMessage = error.localizedDescription
+                actionError = error.localizedDescription
                 break
             }
         }
@@ -132,7 +144,7 @@ final class ChildDetailViewModel: ObservableObject {
             try await api.grantChildBonus(childId: childId, minutes: minutes)
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            actionError = error.localizedDescription
         }
         isGrantingBonus = false
     }
@@ -182,12 +194,18 @@ final class ChildDetailViewModel: ObservableObject {
         bonusTickTimer = nil
     }
 
-    func addActivity(_ activity: ActivityCreate) async {
+    /// Returns whether the activity was actually created. The sheet dismisses only on
+    /// `true`: dismissing on failure reads to the parent as confirmation that the
+    /// schedule exists when it does not.
+    @discardableResult
+    func addActivity(_ activity: ActivityCreate) async -> Bool {
         do {
             _ = try await api.createChildActivity(childId: childId, activity: activity)
             activities = (try? await api.listChildActivities(childId: childId)) ?? activities
+            return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionError = error.localizedDescription
+            return false
         }
     }
 
@@ -196,7 +214,7 @@ final class ChildDetailViewModel: ObservableObject {
             try await api.deleteChildActivity(childId: childId, activityId: activityId)
             activities.removeAll { $0.id == activityId }
         } catch {
-            errorMessage = error.localizedDescription
+            actionError = error.localizedDescription
         }
     }
 
@@ -214,7 +232,7 @@ final class ChildDetailViewModel: ObservableObject {
                 activities[idx] = updated
             }
         } catch {
-            errorMessage = error.localizedDescription
+            actionError = error.localizedDescription
         }
     }
 }

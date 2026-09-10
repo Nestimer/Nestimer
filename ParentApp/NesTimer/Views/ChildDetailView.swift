@@ -78,6 +78,23 @@ struct ChildDetailView: View {
                 onCreated: { Task { await vm.load() } }
             )
         }
+        // Attached OUTSIDE the `vm.child != nil` gate above, so it renders whatever the
+        // load state. The gate's `else if let error` branch is only reachable while
+        // `child` is nil, and nothing ever resets `child` to nil after a first successful
+        // load -- so every mutating control on this screen used to fail with no signal at
+        // all. A limit that did not save must never look like one that did.
+        .alert(
+            "Change Not Saved",
+            isPresented: Binding(
+                get: { vm.actionError != nil },
+                set: { if !$0 { vm.actionError = nil } }
+            ),
+            presenting: vm.actionError
+        ) { _ in
+            Button("OK", role: .cancel) { vm.actionError = nil }
+        } message: { message in
+            Text(message)
+        }
     }
 
     // MARK: - Shared budget
@@ -589,6 +606,11 @@ struct AddActivityView: View {
     @State private var bufferBefore = 5
     @State private var bufferAfter = 5
     @State private var isSaving = false
+    /// Failure text for the create attempt, consumed out of `vm.actionError` so the alert
+    /// on the screen behind doesn't also fire. An alert presented on a view that already
+    /// has a sheet up is not visible anyway, and the sheet is what the parent is looking
+    /// at -- so it has to say what happened itself.
+    @State private var errorText: String?
 
     private let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -614,6 +636,15 @@ struct AddActivityView: View {
                     Stepper("Before: \(bufferBefore) min", value: $bufferBefore, in: 0...60)
                     Stepper("After: \(bufferAfter) min", value: $bufferAfter, in: 0...60)
                 }
+                if let errorText {
+                    Section {
+                        Label(errorText, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    } header: {
+                        Text("Not Created")
+                    }
+                }
             }
             .navigationTitle("New Activity")
             #if os(iOS)
@@ -627,7 +658,7 @@ struct AddActivityView: View {
                     Button("Create") {
                         Task {
                             isSaving = true
-                            await vm.addActivity(ActivityCreate(
+                            let created = await vm.addActivity(ActivityCreate(
                                 name: name.isEmpty ? "Activity" : name,
                                 dayOfWeek: dayOfWeek,
                                 startTime: formatTime(startDate),
@@ -637,7 +668,16 @@ struct AddActivityView: View {
                                 enabled: true
                             ))
                             isSaving = false
-                            dismiss()
+                            // Dismiss only on success. A sheet that closes on failure
+                            // reads to the parent as confirmation that the schedule now
+                            // exists. On failure the form stays open, filled in, with the
+                            // reason shown above.
+                            if created {
+                                dismiss()
+                            } else {
+                                errorText = vm.actionError
+                                vm.actionError = nil
+                            }
                         }
                     }
                     .disabled(name.isEmpty || isSaving)
