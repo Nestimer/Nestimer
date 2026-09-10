@@ -390,3 +390,92 @@ async def test_a_lower_total_is_still_accepted(client):
         headers={"Authorization": f"Bearer {mac['api_token']}"},
     )
     assert resp.json()["used_minutes_today"] == 0.0
+
+
+async def test_deleting_one_shared_device_keeps_the_childs_policy(client):
+    """Two Macs under one child; delete the one the policy row points at.
+
+    Device.policy is cascade="all, delete-orphan" and the shared policy row carries a
+    single device's id, so without the fix the parent's settings are silently replaced
+    by defaults (90 -> 120) on the surviving Mac.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(f"/api/v1/devices/{d2['id']}/policy", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_agent_keeps_the_configured_limit_after_sibling_deleted(client):
+    """The agent never opens the policy screen, so it must see the real limit."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+    await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                     json={"screen_time_enabled": True,
+                           "screen_time_limit_minutes": 90}, headers=h)
+
+    await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d2['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_one_shared_device_keeps_the_childs_activities(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+
+    resp = await client.post(f"/api/v1/devices/{d1['id']}/activities",
+                             json={"name": "Homework", "day_of_week": 1,
+                                   "start_time": "16:00", "end_time": "17:00"},
+                             headers=h)
+    assert resp.status_code == 200, resp.text
+
+    await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+
+    resp = await client.get(f"/api/v1/devices/{d2['id']}/activities", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()] == ["Homework"]
+
+
+async def test_deleting_the_only_device_still_removes_its_policy(client):
+    """The 1:1 case must keep behaving as it always has -- no orphan rows."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Only Mac", child_name="Alex")
+    await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                     json={"screen_time_limit_minutes": 45}, headers=h)
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(f"/api/v1/devices/{d1['id']}/policy", headers=h)
+    assert resp.status_code == 404

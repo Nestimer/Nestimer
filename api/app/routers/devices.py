@@ -3,7 +3,7 @@ from datetime import time, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, or_
+from sqlalchemy import select, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -323,6 +323,40 @@ async def delete_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+
+    # Device.policy and Device.activities are cascade="all, delete-orphan", and a child's
+    # shared policy row carries exactly one device's id (stamped by create_device and by
+    # the migration backfill). Deleting that device would take the whole child's policy
+    # and activities with it, silently reverting the surviving Mac to default limits.
+    # Hand those rows to a sibling before the cascade can reach them.
+    if device.child_id:
+        result = await db.execute(
+            select(Device.id).where(
+                Device.child_id == device.child_id, Device.id != device.id
+            ).limit(1)
+        )
+        sibling_id = result.scalar_one_or_none()
+        if sibling_id:
+            # The sibling may already own its own device-keyed Policy row, stamped back
+            # when it was created on a DIFFERENT child and never re-keyed when it was
+            # later moved onto this child (update_device leaves that re-keying out of
+            # scope on purpose). That row is now an orphan: its child_id points at a
+            # child nothing points to any more, and Policy.device_id is unique, so the
+            # UPDATE below would violate that constraint. Drop the orphan first -- the
+            # row we are about to hand the sibling is the real, currently-enforced one.
+            await db.execute(delete(Policy).where(Policy.device_id == sibling_id))
+            await db.execute(
+                update(Policy).where(Policy.device_id == device.id)
+                .values(device_id=sibling_id)
+            )
+            await db.execute(
+                update(Activity).where(Activity.device_id == device.id)
+                .values(device_id=sibling_id)
+            )
+            # Expire the in-session copies so the ORM does not cascade-delete rows it
+            # still believes belong to this device.
+            await db.refresh(device)
+
     await db.delete(device)
     await db.commit()
     return {"ok": True}
