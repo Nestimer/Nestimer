@@ -10,7 +10,7 @@ struct NesTimerApp: App {
                 .environmentObject(authVM)
         }
         #if os(macOS)
-        .defaultSize(width: 500, height: 700)
+        .defaultSize(width: 900, height: 650)
         #endif
     }
 }

@@ -390,3 +390,606 @@ async def test_a_lower_total_is_still_accepted(client):
         headers={"Authorization": f"Bearer {mac['api_token']}"},
     )
     assert resp.json()["used_minutes_today"] == 0.0
+
+
+async def test_deleting_one_shared_device_keeps_the_childs_policy(client):
+    """Two Macs under one child; delete the one the policy row points at.
+
+    Device.policy is cascade="all, delete-orphan" and the shared policy row carries a
+    single device's id, so without the fix the parent's settings are silently replaced
+    by defaults (90 -> 120) on the surviving Mac.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(f"/api/v1/devices/{d2['id']}/policy", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_agent_keeps_the_configured_limit_after_sibling_deleted(client):
+    """The agent never opens the policy screen, so it must see the real limit."""
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+    await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                     json={"screen_time_enabled": True,
+                           "screen_time_limit_minutes": 90}, headers=h)
+
+    await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d2['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_one_shared_device_keeps_the_childs_activities(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Alex2")
+    await client.patch(f"/api/v1/devices/{d2['id']}",
+                       json={"child_id": d1["child_id"]}, headers=h)
+
+    resp = await client.post(f"/api/v1/devices/{d1['id']}/activities",
+                             json={"name": "Homework", "day_of_week": 1,
+                                   "start_time": "16:00", "end_time": "17:00"},
+                             headers=h)
+    assert resp.status_code == 200, resp.text
+
+    await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+
+    resp = await client.get(f"/api/v1/devices/{d2['id']}/activities", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()] == ["Homework"]
+
+
+async def test_deleting_the_only_device_orphans_its_policy_row_without_deleting_it(client):
+    """The 1:1 case: no sibling exists to hand the policy to.
+
+    `GET /devices/{id}/policy` 404s once the device itself is gone regardless of
+    whether its Policy row survived underneath -- that 404 comes from
+    `_verify_device_owner` ("Device not found"), not from the policy lookup, so it
+    cannot tell us anything about the row. Query the `policies` table directly instead.
+
+    delete_device must never DELETE a Policy row (that is how a still-live policy for
+    some other child got destroyed in earlier attempts at this fix). With no other
+    device on this child to hand the row to, the correct outcome is that the row
+    survives, detached (device_id set to NULL), rather than being removed.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Only Mac", child_name="Alex")
+    resp = await client.put(f"/api/v1/devices/{d1['id']}/policy",
+                            json={"screen_time_limit_minutes": 45}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(f"/api/v1/devices/{d1['id']}/policy", headers=h)
+    assert resp.status_code == 404
+
+    async def _read_policy(conn):
+        return (await conn.execute(
+            text("SELECT device_id, screen_time_limit_minutes FROM policies WHERE child_id = :cid"),
+            {"cid": d1["child_id"]},
+        )).one_or_none()
+
+    row = await _run_on_app_db(_read_policy)
+    assert row is not None, "the policy row must survive the only device that ever owned it"
+    assert row.device_id is None, "with no sibling to hand it to, the row is detached, not deleted"
+    assert row.screen_time_limit_minutes == 45, "the configured value must not revert to the default"
+
+
+async def test_deleting_the_non_policy_holding_sibling_keeps_the_live_policy(client):
+    """Mirror of the policy-holder-deleted case: delete the sibling that does NOT carry
+    the child's live policy row.
+
+    d1 and d2 are each created independently (own child, own default policy). d1 is then
+    merged ONTO d2's child, so the shared child's live policy is the row d2 has always
+    owned (device_id=d2) -- d1 keeps its own now-orphaned policy row (still keyed to its
+    original child) untouched, exactly as update_device's re-keying comment describes.
+    Deleting d1 must not disturb d2's live policy: it is not the row that carries this
+    child's id, so it must never be deleted or re-pointed.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="Mac One", child_name="Alex")
+    d2 = await create_device(client, token, name="Mac Two", child_name="Bea")
+
+    resp = await client.patch(f"/api/v1/devices/{d1['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d2['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d2['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_never_touches_another_childs_policy(client):
+    """A device's own Policy row and its own child_id can diverge: update_device
+    deliberately never re-keys a device's pre-existing Policy row when that device is
+    merged onto a different child. Deleting some OTHER device must never let that
+    divergence destroy a third child's still-live policy.
+
+    d3 owns its own Policy row (P3) from creation, so merging d3 onto d2's child does
+    not touch P3 -- Bea's live policy stays P2, owned by d2. Merging d2 onto d1's child
+    likewise leaves P2 (child_id=Bea) in place, owned by d2, even though d2 itself now
+    sits on Alex. Setting the limit through d3 (child-first resolution) lands on P2.
+    Deleting d1 must not reach P2 at all -- d1 never owned it and never shared a child
+    with it directly.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="D1", child_name="Alex")
+    d2 = await create_device(client, token, name="D2", child_name="Bea")
+    d3 = await create_device(client, token, name="D3", child_name="Cara")
+
+    resp = await client.patch(f"/api/v1/devices/{d3['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d3['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d1['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d3['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_that_holds_another_childs_policy_keeps_it(client):
+    """Same divergence as above, but this time the device being deleted is the one that
+    literally owns (device_id=) the still-live policy for a DIFFERENT child than the one
+    it currently sits on. Deleting it must re-point that row within ITS OWN child
+    (Bea, via d3), never destroy it just because the owning device is going away.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d1 = await create_device(client, token, name="D1", child_name="Alex")
+    d2 = await create_device(client, token, name="D2", child_name="Bea")
+    d3 = await create_device(client, token, name="D3", child_name="Cara")
+
+    resp = await client.patch(f"/api/v1/devices/{d3['id']}",
+                              json={"child_id": d2["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{d2['id']}",
+                              json={"child_id": d1["child_id"]}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.put(f"/api/v1/devices/{d3['id']}/policy",
+                            json={"screen_time_enabled": True,
+                                  "screen_time_limit_minutes": 90}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{d2['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/agent/config",
+                            headers={"Authorization": f"Bearer {d3['api_token']}"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 90
+
+
+async def test_deleting_a_device_in_a_policy_cycle_succeeds(client):
+    """Two devices, each still owning its own pre-merge Policy row, patched onto each
+    OTHER's child: P_A's only same-child candidate is B, and P_B's only same-child
+    candidate is A, so each would need the other freed first. Deleting either device
+    must not raise (the unique constraint on Policy.device_id) and must not delete
+    either policy row -- both must survive, still carrying their original child_id.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    a = await create_device(client, token, name="A", child_name="C2")
+    b = await create_device(client, token, name="B", child_name="C1")
+    a_child_id = a["child_id"]
+    b_child_id = b["child_id"]
+
+    resp = await client.patch(f"/api/v1/devices/{a['id']}",
+                              json={"child_id": b_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{b['id']}",
+                              json={"child_id": a_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{a['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    async def _read_policies(conn):
+        return (await conn.execute(
+            text("SELECT child_id FROM policies WHERE child_id IN (:c1, :c2)"),
+            {"c1": a_child_id, "c2": b_child_id},
+        )).all()
+
+    rows = await _run_on_app_db(_read_policies)
+    assert {r.child_id for r in rows} == {a_child_id, b_child_id}, (
+        "both policy rows must survive the cycle, each still carrying its own child_id"
+    )
+
+
+async def test_deleting_a_device_in_a_three_way_policy_cycle_succeeds(client):
+    """Same shape as the two-device cycle, but three devices deep: A->B->C->A, each
+    still owning its own pre-merge Policy row after being patched onto the next one's
+    child. Deleting A must not raise and must not delete any of the three policy rows.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    a = await create_device(client, token, name="A", child_name="CA")
+    b = await create_device(client, token, name="B", child_name="CB")
+    c = await create_device(client, token, name="C", child_name="CC")
+    a_child_id = a["child_id"]
+    b_child_id = b["child_id"]
+    c_child_id = c["child_id"]
+
+    resp = await client.patch(f"/api/v1/devices/{a['id']}",
+                              json={"child_id": b_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{b['id']}",
+                              json={"child_id": c_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(f"/api/v1/devices/{c['id']}",
+                              json={"child_id": a_child_id}, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.delete(f"/api/v1/devices/{a['id']}", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    async def _read_policies(conn):
+        return (await conn.execute(
+            text("SELECT child_id FROM policies WHERE child_id IN (:c1, :c2, :c3)"),
+            {"c1": a_child_id, "c2": b_child_id, "c3": c_child_id},
+        )).all()
+
+    rows = await _run_on_app_db(_read_policies)
+    assert {r.child_id for r in rows} == {a_child_id, b_child_id, c_child_id}, (
+        "all three policy rows must survive the cycle, each still carrying its own child_id"
+    )
+
+
+async def test_moving_the_policy_owning_device_leaves_the_old_child_locked(client):
+    """Alice has two Macs: D (created first, so it owns the shared Policy row) and E.
+
+    Moving D onto a freshly created child must not take Alice's policy row with it.
+    `Policy.child_id` is unique, so re-keying it MOVES the key rather than adding one:
+    Alice would be left with zero policy rows, `/agent/config` would find nothing by
+    child_id and nothing by device_id, and E would take the no-policy branch
+    (screen_time_enabled=False, limit=999) and stop locking -- permanently, and with
+    nothing in the UI saying which Mac happened to own the row.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    alice_id = d["child_id"]
+
+    resp = await client.post(
+        "/api/v1/devices",
+        json={"name": "E", "child_name": "Alice", "child_id": alice_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    e = resp.json()
+
+    resp = await client.put(
+        f"/api/v1/devices/{d['id']}/policy",
+        json={"screen_time_enabled": True, "screen_time_limit_minutes": 90},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.post("/api/v1/children", json={"name": "Bob"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    bob_id = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The parent app refetches the policy immediately after a move (moveToChild), which
+    # is the read that used to re-key Alice's row onto Bob.
+    resp = await client.get(f"/api/v1/devices/{d['id']}/policy", headers=h)
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {e['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    config = resp.json()
+    assert config["screen_time_enabled"] is True, (
+        "the Mac left behind on the old child must still enforce screen time"
+    )
+    assert config["screen_time_limit_minutes"] == 90, (
+        "and with the real limit, not the no-policy branch's 999"
+    )
+
+    # The moved device must land on a real policy of its own, not on Alice's row.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {d['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] != 999
+
+
+async def test_moving_a_device_does_not_leak_activities_to_the_new_childs_siblings(client):
+    """Alice's Mac D carries seven all-day "Homework" windows. Bob has two Macs, F and
+    G, and no schedules at all. Moving D onto Bob must not hand G those windows.
+
+    `/agent/config` resolves activities child-first, and an ACTIVE activity unlocks the
+    screen and pauses counting -- so re-keying D's rows onto Bob made G unlockable all
+    day, every day, without the parent touching G at all.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    f = await create_device(client, token, name="F", child_name="Bob")
+    bob_id = f["child_id"]
+
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "G", "child_name": "Bob", "child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+    g = resp.json()
+
+    for day in range(7):
+        resp = await client.post(
+            f"/api/v1/devices/{d['id']}/activities",
+            json={"name": "Homework", "day_of_week": day,
+                  "start_time": "00:00", "end_time": "23:59"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], "precondition: G has no schedules"
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "moving a device must not hand its schedules to the destination child's other Macs"
+    )
+
+
+async def test_moving_a_device_leaves_child_level_schedules_with_their_child(client):
+    """`POST /children/{id}/activities` stamps the child's OLDEST device onto the row so
+    a pre-child API can still see it. That stamp must not make a shared, child-owned
+    schedule follow that one device on a move: the old child's remaining Mac would lose
+    a schedule the parent set at the child level, and the new child's Macs would gain it.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alice")
+    alice_id = d["child_id"]
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "E", "child_name": "Alice", "child_id": alice_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    e = resp.json()
+
+    bob_mac = await create_device(client, token, name="F", child_name="Bob")
+    bob_id = bob_mac["child_id"]
+
+    # A child-level schedule, stamped onto Alice's oldest device (D) by the API.
+    resp = await client.post(
+        f"/api/v1/children/{alice_id}/activities",
+        json={"name": "Homework", "day_of_week": 0,
+              "start_time": "16:00", "end_time": "17:00"},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {e['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()["activities"]] == ["Homework"], (
+        "the old child's remaining Mac must still enforce the child-level schedule"
+    )
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {bob_mac['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "the destination child's Mac must not inherit another child's schedule"
+    )
+
+    # And the row is still listed (and therefore editable) under the child that owns it.
+    resp = await client.get(f"/api/v1/children/{alice_id}/activities", headers=h)
+    assert resp.status_code == 200, resp.text
+    assert [a["name"] for a in resp.json()] == ["Homework"]
+
+
+async def test_moving_a_device_does_not_carry_the_old_childs_schedules_onto_a_childless_destination(client):
+    """The old child has schedules and exactly ONE device; the destination child has no
+    schedules at all. Moving the device must not enforce the old child's windows on it.
+
+    Leaving the row's legacy `device_id` stamp on the departing device is enough to do
+    that: `/agent/config` resolves activities child-first, finds nothing for the
+    destination child, falls through to the device-keyed fallback, and enforces the OLD
+    child's schedules on a Mac whose new parent never set any -- standing unlock windows,
+    silently granted. Nulling the stamp costs nothing (the row's own child has no devices
+    left to serve it to) and an activity a rolled-back API cannot see is simply not
+    enforced, which is the safe direction.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    alex_mac = await create_device(client, token, name="Alex's Mac", child_name="Alex")
+    juliana_mac = await create_device(client, token, name="Juliana's Mac", child_name="Juliana")
+    juliana_id = juliana_mac["child_id"]
+
+    for day in range(3):
+        resp = await client.post(
+            f"/api/v1/devices/{alex_mac['id']}/activities",
+            json={"name": f"Class {day}", "day_of_week": day,
+                  "start_time": "00:00", "end_time": "23:59"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+
+    # Precondition: the destination child has no schedules of its own, which is exactly
+    # what makes /agent/config fall through to the device-keyed fallback.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {juliana_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == []
+
+    resp = await client.patch(
+        f"/api/v1/devices/{alex_mac['id']}", json={"child_id": juliana_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {alex_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == [], (
+        "a moved Mac must not keep enforcing its old child's schedules"
+    )
+
+    # The destination child's other Mac gained nothing either.
+    resp = await client.get(
+        "/api/v1/agent/config",
+        headers={"Authorization": f"Bearer {juliana_mac['api_token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activities"] == []
+
+
+async def test_moving_the_only_device_to_a_new_child_keeps_the_parents_limit(client):
+    """Alex has one Mac D and a parent-set 30 min/day. The parent creates Bob (no policy
+    row -- `create_child` deliberately makes none), moves D onto Bob, and later adds a
+    second Mac G to Bob.
+
+    The move leaves Alex deviceless, so there is nobody to hand D's policy row to and the
+    hand-off is gated off; D keeps owning the row and Bob is left with no policy of its
+    own. D still reads 30 through the device-keyed fallback -- correct so far. But adding
+    G then makes `create_device` find no policy for Bob and insert a FRESH DEFAULT
+    (enabled, 120), which D now resolves child-first: the parent's explicit 30 silently
+    becomes 120, with no signal anywhere in the UI.
+    """
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    d = await create_device(client, token, name="D", child_name="Alex")
+
+    resp = await client.put(
+        f"/api/v1/devices/{d['id']}/policy",
+        json={"screen_time_enabled": True, "screen_time_limit_minutes": 30},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.post("/api/v1/children", json={"name": "Bob"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    bob_id = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/devices/{d['id']}", json={"child_id": bob_id}, headers=h
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {d['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30, (
+        "the move alone must not change the limit"
+    )
+
+    # A second Mac joins Bob. This is the step that used to conjure a default policy.
+    resp = await client.post(
+        "/api/v1/devices", json={"name": "G", "child_name": "Bob", "child_id": bob_id},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    g = resp.json()
+
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {d['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30, (
+        "adding a sibling must not replace the parent's explicit limit with a default"
+    )
+
+    # And the new sibling shares that same limit, not a default of its own.
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {g['api_token']}"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen_time_limit_minutes"] == 30

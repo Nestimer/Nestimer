@@ -2,12 +2,32 @@ import SwiftUI
 
 struct AddDeviceView: View {
     @ObservedObject var vm: DevicesViewModel
+
+    /// The existing child to attach the new device to — the path used from
+    /// ChildDetailView, where the child is already chosen. id and name are bundled into
+    /// one type, rather than two independent optional parameters, because the API
+    /// requires a non-empty `child_name` even when `child_id` is set (it uses the
+    /// child's own name server-side and ignores this value, but still rejects a blank
+    /// one) — "id set, name missing" would otherwise compile and 422 at the moment a
+    /// parent tries to register their child's Mac. This type makes that unrepresentable.
+    struct AttachTarget {
+        let id: String
+        let name: String
+    }
+    var attachTo: AttachTarget? = nil
+    /// Fired the moment the device is created (while the success/token screen is showing),
+    /// so the caller can refresh without waiting for the sheet to be dismissed.
+    var onCreated: (() -> Void)? = nil
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var deviceName = ""
     @State private var childName = ""
     @State private var createdDevice: Device?
     @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    private var isChildLocked: Bool { attachTo != nil }
 
     var body: some View {
         NavigationStack {
@@ -64,11 +84,23 @@ struct AddDeviceView: View {
                     Section {
                         TextField("Alex's MacBook", text: $deviceName)
 
-                        TextField("Alex", text: $childName)
+                        if !isChildLocked {
+                            TextField("Alex", text: $childName)
+                        }
                     } header: {
                         Text("New Device")
                     } footer: {
-                        Text("Enter the Mac name and child's name")
+                        Text(isChildLocked
+                             ? "Enter the Mac's name"
+                             : "Enter the Mac name and child's name")
+                    }
+
+                    if let errorMessage {
+                        Section {
+                            Text(errorMessage)
+                                .foregroundStyle(.red)
+                                .font(.caption)
+                        }
                     }
                 }
             }
@@ -86,7 +118,22 @@ struct AddDeviceView: View {
                         Button {
                             Task {
                                 isCreating = true
-                                createdDevice = await vm.createDevice(name: deviceName, childName: childName)
+                                errorMessage = nil
+                                if let attachTo {
+                                    do {
+                                        let device = try await APIClient.shared.createDevice(
+                                            name: deviceName,
+                                            childName: attachTo.name,
+                                            childId: attachTo.id
+                                        )
+                                        createdDevice = device
+                                        onCreated?()
+                                    } catch {
+                                        errorMessage = error.localizedDescription
+                                    }
+                                } else {
+                                    createdDevice = await vm.createDevice(name: deviceName, childName: childName)
+                                }
                                 isCreating = false
                             }
                         } label: {
@@ -96,7 +143,7 @@ struct AddDeviceView: View {
                                 Text("Create")
                             }
                         }
-                        .disabled(deviceName.isEmpty || childName.isEmpty || isCreating)
+                        .disabled(deviceName.isEmpty || (!isChildLocked && childName.isEmpty) || isCreating)
                     }
                 }
             }

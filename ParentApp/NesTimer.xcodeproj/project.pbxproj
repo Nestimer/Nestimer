@@ -22,6 +22,11 @@
 		A10013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10013 /* Assets.xcassets */; };
 		A10014 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10014 /* Keychain.swift */; };
 		A10015 /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10015 /* TOTPGenerator.swift */; };
+		A10016 /* ChildrenViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10016 /* ChildrenViewModel.swift */; };
+		A10017 /* FormRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10017 /* FormRows.swift */; };
+		A10018 /* ChildDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10018 /* ChildDetailViewModel.swift */; };
+		A10019 /* ChildDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10019 /* ChildDetailView.swift */; };
+		A10020 /* ChildrenListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10020 /* ChildrenListView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +45,11 @@
 		B10013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10014 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		B10015 /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
+		B10016 /* ChildrenViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildrenViewModel.swift; sourceTree = "<group>"; };
+		B10017 /* FormRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormRows.swift; sourceTree = "<group>"; };
+		B10018 /* ChildDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailViewModel.swift; sourceTree = "<group>"; };
+		B10019 /* ChildDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildDetailView.swift; sourceTree = "<group>"; };
+		B10020 /* ChildrenListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChildrenListView.swift; sourceTree = "<group>"; };
 		C10001 /* NesTimer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NesTimer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -90,6 +100,8 @@
 				B10005 /* AuthViewModel.swift */,
 				B10006 /* DevicesViewModel.swift */,
 				B10007 /* DeviceDetailViewModel.swift */,
+				B10016 /* ChildrenViewModel.swift */,
+				B10018 /* ChildDetailViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -102,6 +114,9 @@
 				B10010 /* DeviceDetailView.swift */,
 				B10011 /* AddDeviceView.swift */,
 				B10012 /* UsageChartView.swift */,
+				B10017 /* FormRows.swift */,
+				B10019 /* ChildDetailView.swift */,
+				B10020 /* ChildrenListView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -192,6 +207,11 @@
 				A10012 /* UsageChartView.swift in Sources */,
 				A10014 /* Keychain.swift in Sources */,
 				A10015 /* TOTPGenerator.swift in Sources */,
+				A10016 /* ChildrenViewModel.swift in Sources */,
+				A10017 /* FormRows.swift in Sources */,
+				A10018 /* ChildDetailViewModel.swift in Sources */,
+				A10019 /* ChildDetailView.swift in Sources */,
+				A10020 /* ChildrenListView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

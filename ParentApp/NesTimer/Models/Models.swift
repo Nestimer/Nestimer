@@ -34,20 +34,47 @@ struct User: Decodable, Identifiable {
 struct CreateDeviceRequest: Encodable {
     let name: String
     let childName: String
+    /// Attach to an existing child instead of creating a new one. `child_name` is still
+    /// required by the API even when this is set (it falls back to the child's own name
+    /// server-side), so callers must keep sending a non-empty childName either way.
+    let childId: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
+        case childId = "child_id"
     }
 }
 
 struct DeviceUpdateRequest: Encodable {
     var name: String?
     var childName: String?
+    var childId: String?
+    var dailyCapMinutes: Int?
+
+    /// Fields to explicitly encode as JSON null (to clear overrides on the server).
+    var clearFields: Set<CodingKeys> = []
 
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
+        case childId = "child_id"
+        case dailyCapMinutes = "daily_cap_minutes"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        // Encode fields that have values
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(childName, forKey: .childName)
+        try container.encodeIfPresent(childId, forKey: .childId)
+        try container.encodeIfPresent(dailyCapMinutes, forKey: .dailyCapMinutes)
+
+        // Encode explicit nulls for fields that should be cleared
+        for key in clearFields {
+            try container.encodeNil(forKey: key)
+        }
     }
 }
 
@@ -61,6 +88,9 @@ struct Device: Decodable, Identifiable {
     let lastSeen: String?
     let createdAt: String?
     let bonusUntil: String?
+    let childId: String?
+    let platform: String?
+    let dailyCapMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name
@@ -71,6 +101,9 @@ struct Device: Decodable, Identifiable {
         case lastSeen = "last_seen"
         case createdAt = "created_at"
         case bonusUntil = "bonus_until"
+        case childId = "child_id"
+        case platform
+        case dailyCapMinutes = "daily_cap_minutes"
     }
 
     private var lastSeenDate: Date? {
@@ -234,6 +267,8 @@ struct UsageEntry: Decodable, Identifiable {
 
     var dayLabel: String {
         let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         guard let d = formatter.date(from: date) else { return date }
         formatter.locale = Locale(identifier: "en_US")
@@ -318,6 +353,35 @@ struct ActivityUpdate: Encodable {
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
     }
+}
+
+// MARK: - Child
+
+struct Child: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let bonusUntil: String?
+    let createdAt: String?
+    let deviceIds: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case bonusUntil = "bonus_until"
+        case createdAt = "created_at"
+        case deviceIds = "device_ids"
+    }
+
+    var deviceCountText: String {
+        deviceIds.count == 1 ? "1 device" : "\(deviceIds.count) devices"
+    }
+}
+
+struct ChildCreateRequest: Encodable {
+    let name: String
+}
+
+struct ChildUpdateRequest: Encodable {
+    var name: String?
 }
 
 // MARK: - Helpers

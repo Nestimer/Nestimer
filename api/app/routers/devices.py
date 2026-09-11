@@ -59,6 +59,29 @@ def format_time(t: time | None) -> str | None:
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
+# These back non-nullable DB columns (see PolicyOut) -- unlike the per-day and
+# weekend/weekday overrides, there is no "clear it" meaning for an explicit null here.
+# Writing one either silently mis-enforces the policy (the enabled flags, the downtime
+# window) or corrupts the row outright (screen_time_limit_minutes is NOT NULL), and the
+# very next read 500s: an IntegrityError on write for the always-NOT-NULL columns, or a
+# ResponseValidationError out of PolicyOut for the ones SQLite lets through as NULL.
+NON_NULLABLE_POLICY_FIELDS = {
+    "downtime_enabled", "downtime_start", "downtime_end",
+    "screen_time_enabled", "screen_time_limit_minutes",
+}
+
+
+def _reject_null_policy_fields(data: PolicyUpdate) -> None:
+    nulled = sorted(
+        f for f in data.model_fields_set
+        if f in NON_NULLABLE_POLICY_FIELDS and getattr(data, f) is None
+    )
+    if nulled:
+        raise HTTPException(
+            status_code=422,
+            detail=f"These fields cannot be null: {', '.join(nulled)}",
+        )
+
 
 def policy_to_out(policy: Policy) -> PolicyOut:
     return PolicyOut(
@@ -243,27 +266,58 @@ async def update_device(
         device.child_name = child.name
         if data.child_id != device.child_id:
             device.child_id = data.child_id
-            # Re-key this device's own activities onto the new child. Without this,
-            # a device's legacy child-keyed activity rows would still carry the OLD
-            # child_id: `/agent/config` and the activity list both resolve child-first
-            # (falling back to device_id only when the child has NO activities at
-            # all), so the moment the new child has any activity of its own, this
-            # device's rows would silently stop being enforced while still showing up
-            # (unenforced) in this device's own parent-facing list. Re-keying keeps
-            # "what the parent sees for this device" and "what the agent enforces for
-            # this device" the same list, regardless of which child it's attached to.
+            # Re-key ONLY genuine legacy device-keyed rows (child_id IS NULL) onto the
+            # new child. Those really do belong to the device -- nothing else points at
+            # them -- and without a child_id they would be invisible to the child-first
+            # lookup in `/agent/config` on either side of the move.
             #
-            # Side effect (intentional, not a bug): a SIBLING device still on the old
-            # child that was inheriting this activity only through the child-first
-            # lookup (i.e. it has no device-keyed row of its own for it) loses that
-            # activity the moment it's re-keyed away. The activity belongs to the
-            # device that's moving, not to the old child in general, so this is the
-            # correct outcome — but it is a real, visible change for that sibling.
+            # A row that already carries a child_id must keep it. Re-keying those drags
+            # the OLD child's schedules onto every OTHER Mac of the destination child:
+            # `/agent/config` resolves activities child-first, and an active activity
+            # UNLOCKS the screen and pauses counting, so a sibling that had no schedule
+            # at all silently becomes unlockable during every window the moved device
+            # carried. It is worse for genuinely child-level schedules, which
+            # `POST /children/{id}/activities` stamps with the child's oldest device:
+            # that stamp made a shared, child-owned schedule follow one device on a move,
+            # so the old child's remaining Macs LOST it and the new child's GAINED it.
             await db.execute(
                 Activity.__table__.update()
-                .where(Activity.device_id == device.id)
+                .where(Activity.device_id == device.id, Activity.child_id.is_(None))
                 .values(child_id=data.child_id)
             )
+
+            # For the rows that stay with their own child, re-point device_id at another
+            # device of THAT child, so the pre-child device-keyed fallback still reaches
+            # them there. Same shape as delete_device.
+            #
+            # When that child has no other device, NULL the stamp instead of leaving it on
+            # the departing device. Leaving it is an unlock leak: `/agent/config` falls
+            # through the child-first lookup whenever the destination child has no
+            # activities of its own, hits the device-keyed fallback, and enforces the OLD
+            # child's schedules on a Mac whose new parent never set any -- standing unlock
+            # windows, silently granted. Reachable today: a child with schedules and one
+            # Mac, moved onto a child with none.
+            #
+            # Nulling an ACTIVITY's anchor is safe in a way that nulling a POLICY's is not,
+            # which is why the two are handled differently here. A policy invisible to
+            # rolled-back code sends that Mac down the no-policy branch and it stops
+            # locking. An activity invisible to rolled-back code is simply not enforced --
+            # one less unlock window, i.e. more locking. And the row is already unreachable
+            # at this point: its own child has no devices left to serve it to.
+            result = await db.execute(
+                select(Activity).where(
+                    Activity.device_id == device.id,
+                    Activity.child_id.isnot(None),
+                    Activity.child_id != data.child_id,
+                )
+            )
+            for activity in result.scalars().all():
+                sibling_result = await db.execute(
+                    select(Device.id).where(
+                        Device.child_id == activity.child_id, Device.id != device.id
+                    ).limit(1)
+                )
+                activity.device_id = sibling_result.scalar_one_or_none()
 
             # Make sure the device lands on a child that HAS a policy, and that the
             # policy is reachable by device_id. Moving a device to a child created via
@@ -274,11 +328,58 @@ async def update_device(
             # (screen_time_enabled=False, downtime_enabled=False), i.e. that Mac stops
             # locking. Same create-or-adopt shape as create_device, and for the same
             # rollback reason: device_id is the only route back for pre-child code.
-            # Only when this device owns no policy row of its own: if it does, both the
-            # child-first lookup and the device-keyed fallback already reach a real policy,
-            # and Policy.device_id is unique so a second row naming this device would be
-            # rejected outright. (Re-keying that owned row's child_id is deliberately out
-            # of scope here.)
+            #
+            # Hand off first: the row this device owns may still be the live policy for
+            # the child it is LEAVING, whose remaining devices reach it only through
+            # `Policy.device_id`. `_detach_devices_policy` moves it to one of those
+            # siblings without ever deleting it, which both keeps the old child enforced
+            # and frees this device to take a policy on its new child. Gated on that
+            # child actually still having another device: in the ordinary merge direction
+            # (the old child is left with none) there is nobody to hand it to and the
+            # detach would just null `device_id`, throwing away the pre-child rollback
+            # anchor for nothing. In that case this device keeps its own row and the
+            # create-or-adopt below is skipped — its old rules stay in force via the
+            # device-keyed fallback, which fails closed.
+            result = await db.execute(select(Policy).where(Policy.device_id == device.id))
+            owned = result.scalar_one_or_none()
+            if owned is not None and owned.child_id is not None:
+                result = await db.execute(
+                    select(Device.id)
+                    .where(Device.child_id == owned.child_id, Device.id != device.id)
+                    .limit(1)
+                )
+                if result.scalar_one_or_none() is not None:
+                    await _detach_devices_policy(db, device.id)
+                else:
+                    # The old child is left with no devices at all, so there is nobody to
+                    # hand the row to -- and skipping outright left the DESTINATION child
+                    # with no policy row, because the create-or-adopt below cannot run
+                    # while this device still owns one (Policy.device_id is unique).
+                    #
+                    # That gap is quiet but expensive. The device keeps reading its own
+                    # rules through the device-keyed fallback, so the move itself is
+                    # correct -- but the moment a SECOND device joins the destination
+                    # child, `create_device` finds no policy for that child and inserts a
+                    # fresh default (enabled, 120 minutes). This device then resolves
+                    # child-first onto that default and the limit the parent explicitly
+                    # set is gone, with no signal anywhere in the UI: a measured 30 -> 120.
+                    #
+                    # Re-key the row onto the destination child instead. Safe precisely
+                    # here and nowhere else: the old child is now deviceless, so no Mac
+                    # loses enforcement (which is what makes the unconditional re-key in
+                    # `_resolve_policy` catastrophic and this one harmless), and it only
+                    # runs when the destination has no row of its own, so the unique
+                    # constraint on Policy.child_id cannot be violated. `owned.device_id`
+                    # stays on this device, so the pre-child rollback anchor survives.
+                    result = await db.execute(
+                        select(Policy).where(Policy.child_id == data.child_id)
+                    )
+                    if result.scalar_one_or_none() is None:
+                        owned.child_id = data.child_id
+                        await db.flush()
+
+            # Policy.device_id is unique, so this can only run once the device owns no
+            # row — either it never did, or the hand-off above just freed it.
             result = await db.execute(select(Policy).where(Policy.device_id == device.id))
             if result.scalar_one_or_none() is None:
                 result = await db.execute(
@@ -311,6 +412,100 @@ async def update_device(
     )
 
 
+async def _detach_devices_policy(db: AsyncSession, device_id: str, _seen: set | None = None) -> None:
+    """Move the Policy row `device_id` currently owns (if any) off of it -- NEVER by
+    deleting the row.
+
+    A device's own Policy row and its own child_id are independent columns that can
+    diverge: update_device deliberately does not re-key a device's pre-existing Policy
+    row when that device is merged onto a different child (see its comment on why).
+    So a device about to be deleted may own a Policy row that is still the live,
+    currently-enforced policy for some OTHER child that still has devices of its own --
+    "this device is being deleted" says nothing about that row's relevance. The only
+    safe destination for the row is therefore a device of ITS OWN child (policy.child_id),
+    never this device's current child_id.
+
+    If the row has no child_id at all, there is no "own child" to look on -- clear its
+    device_id and leave the row in place (still never deleted).
+
+    If a same-child candidate device already owns a Policy row of its own,
+    Policy.device_id's unique constraint forbids also pointing this row at it --
+    recursively free that candidate up the same way first.
+
+    `_seen` is not a defensive impossibility guard -- cycles are reachable through
+    ordinary API use, with just two devices and two PATCHes, precisely because
+    update_device never re-keys a device's pre-existing Policy row on merge (the same
+    divergence this whole function exists to handle, applied in both directions at
+    once):
+
+        POST /devices {name: A, child_name: C2}   -> A.child=C2, P_A(child=C2, device=A)
+        POST /devices {name: B, child_name: C1}   -> B.child=C1, P_B(child=C1, device=B)
+        PATCH A {child_id: C1}                    -> A.child=C1, P_A untouched (child=C2)
+        PATCH B {child_id: C2}                    -> B.child=C2, P_B untouched (child=C1)
+
+    Now P_A's only candidate (for C2) is B, and P_B's only candidate (for C1) is A --
+    each needs the other freed first. `_seen` breaks the cycle: a candidate already on
+    this call stack cannot be recursed into (that would be a silent no-op, since the
+    top-of-function guard would return immediately without freeing anything), so it is
+    never selected as `free` in the first place -- it falls back to `device_id = None`
+    instead. The NULL anchor is not permanent: create_device's adopt branch and
+    update_device both re-anchor a `device_id IS NULL` policy the next time a device
+    attaches to that child.
+
+    Every mutation below is followed by an explicit `db.flush()`. A plain attribute
+    assignment is only queued in the session's unit of work; when several of these
+    queue up across a recursive chain, SQLAlchemy is free to batch and reorder them at
+    flush time, which can apply a later step's UPDATE before an earlier step's has
+    landed and trip the very unique constraint this function exists to avoid. Flushing
+    immediately after each assignment makes the DB state match this function's logical
+    order at every step, not just at the end.
+    """
+    _seen = _seen if _seen is not None else set()
+    if device_id in _seen:
+        return
+    _seen.add(device_id)
+
+    result = await db.execute(select(Policy).where(Policy.device_id == device_id))
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        return
+
+    if policy.child_id is None:
+        policy.device_id = None
+        await db.flush()
+        return
+
+    result = await db.execute(
+        select(Device.id).where(Device.child_id == policy.child_id, Device.id != device_id)
+    )
+    candidates = [row[0] for row in result.all()]
+    if not candidates:
+        policy.device_id = None
+        await db.flush()
+        return
+
+    result = await db.execute(select(Policy.device_id).where(Policy.device_id.in_(candidates)))
+    busy = {row[0] for row in result.all()}
+    free = next((c for c in candidates if c not in busy), None)
+    if free is None:
+        # Every candidate already owns a Policy row of its own. Only recurse into one
+        # NOT already in _seen -- one that IS in _seen is on this call stack right now
+        # (a cycle), so recursing into it would be a silent no-op and it would stay
+        # busy. Never assign to a candidate the recursion did not actually free.
+        freeable = next((c for c in candidates if c not in _seen), None)
+        if freeable is not None:
+            await _detach_devices_policy(db, freeable, _seen)
+            free = freeable
+
+    if free is None:
+        # A cycle closed with nothing left to free -- detach rather than risk the
+        # unique constraint. The row survives; see the cycle note above.
+        policy.device_id = None
+    else:
+        policy.device_id = free
+    await db.flush()
+
+
 @router.delete("/{device_id}")
 async def delete_device(
     device_id: str,
@@ -323,6 +518,34 @@ async def delete_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+
+    # Device.policy and Device.activities are cascade="all, delete-orphan": when
+    # db.delete(device) below lazy-loads those relationships, any row still pointing at
+    # this device's id is deleted with it. Re-point everything that must survive BEFORE
+    # that happens -- the lazy load autoflushes our pending ORM changes first, so by the
+    # time it queries, nothing pointing at this device is left to find. (This is an ORM-
+    # level mechanism, identical on PostgreSQL; nothing SQLite-specific about it.)
+    await _detach_devices_policy(db, device.id)
+
+    # Activities have no uniqueness constraint on device_id, so there is no collision to
+    # avoid -- but a row this device owns for some OTHER live child must not be dropped
+    # just because this device is going away. Re-point each such row onto another device
+    # of the ACTIVITY's own child (not this device's current child_id, for the same
+    # divergence reason as Policy above). An activity with no such sibling, or no
+    # child_id at all, is truly orphaned and is left to cascade away -- that is correct.
+    result = await db.execute(select(Activity).where(Activity.device_id == device.id))
+    for activity in result.scalars().all():
+        if activity.child_id is None:
+            continue
+        sibling_result = await db.execute(
+            select(Device.id).where(
+                Device.child_id == activity.child_id, Device.id != device.id
+            ).limit(1)
+        )
+        sibling_id = sibling_result.scalar_one_or_none()
+        if sibling_id:
+            activity.device_id = sibling_id
+
     await db.delete(device)
     await db.commit()
     return {"ok": True}
@@ -340,10 +563,21 @@ async def _child_id_for_device(db: AsyncSession, device: Device) -> str:
 
 
 async def _resolve_policy(db: AsyncSession, child_id: str, device_id: str) -> Policy | None:
-    """Find the child's policy, falling back to (and adopting under the child) a
-    pre-existing device-keyed row for a device resolved to a child for the first time
-    just now. Mirrors the non-exclusive fallback chain `/agent/config` uses — never
-    drop a device's real policy just because its child doesn't have one of its own yet.
+    """Find the child's policy, falling back to (and, for a genuine pre-migration row,
+    adopting under the child) a pre-existing device-keyed row for a device resolved to a
+    child for the first time just now. Mirrors the non-exclusive fallback chain
+    `/agent/config` uses — never drop a device's real policy just because its child
+    doesn't have one of its own yet.
+
+    The adoption is deliberately restricted to rows whose `child_id` IS NULL — the only
+    case it exists for. `Policy.child_id` is unique, so writing it on a row that already
+    names a child does not ADD a key, it MOVES one: that child is left with zero policy
+    rows, `/agent/config` finds nothing by child_id and nothing by device_id, and every
+    remaining Mac of theirs takes the no-policy branch (screen_time_enabled=False,
+    limit=999) and stops locking, permanently. Reachable from a plain read: a parent
+    moving the device that happens to own the row, then this endpoint refetching the
+    policy for its new child. A row that already carries a child_id belongs to that
+    child; a device sitting on some other child just reads it, it does not take it.
     """
     result = await db.execute(select(Policy).where(Policy.child_id == child_id))
     policy = result.scalar_one_or_none()
@@ -352,7 +586,7 @@ async def _resolve_policy(db: AsyncSession, child_id: str, device_id: str) -> Po
 
     result = await db.execute(select(Policy).where(Policy.device_id == device_id))
     policy = result.scalar_one_or_none()
-    if policy is not None:
+    if policy is not None and policy.child_id is None:
         policy.child_id = child_id
     return policy
 
@@ -399,6 +633,8 @@ async def update_policy(
     policy = await _resolve_policy(db, child_id, device_id)
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+
+    _reject_null_policy_fields(data)
 
     # Use model_fields_set to distinguish "not sent" from "sent as null".
     # This allows clients to clear optional overrides by sending null.

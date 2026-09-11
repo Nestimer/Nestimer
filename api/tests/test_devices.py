@@ -392,13 +392,14 @@ async def test_device_defaults_to_macos_platform(client):
     assert device["platform"] == "macos"
 
 
-async def test_moving_device_rekeys_its_activities_to_the_new_child(client):
-    """A device's own scheduled activities must keep being enforced (and stay visible
-    in this device's activity list) after it moves to a different child — even once
-    that child has activities of its own. `_child_id_for_device`/`_resolve_activity`
-    resolve child-first, so a moved device's legacy child-keyed rows would otherwise
-    become invisible to /agent/config the moment the new child gets any activity of
-    its own, while still showing up (unenforced) in this device's parent-facing list."""
+async def test_moving_a_device_leaves_its_child_keyed_activities_with_the_old_child(client):
+    """Corrected ruling — this test previously asserted the opposite (that a move
+    re-keys the device's activities onto the destination child), and that turned out to
+    be unsafe. A schedule created through /devices/{id}/activities is stamped with that
+    device's CHILD and belongs to that child. /agent/config resolves activities
+    child-first and an ACTIVE activity unlocks the screen and pauses counting, so
+    re-keying handed every OTHER Mac of the destination child unlock windows their
+    parent never set. The moved device follows its new child's schedules instead."""
     token = await register_user(client)
     headers = {"Authorization": f"Bearer {token}"}
     mac = await create_device(client, token, name="Mac")
@@ -412,6 +413,9 @@ async def test_moving_device_rekeys_its_activities_to_the_new_child(client):
     )
     assert resp.status_code == 200
     activity_id = resp.json()["id"]
+    phone_child_id = (
+        await client.get(f"/api/v1/devices/{phone['id']}", headers=headers)
+    ).json()["child_id"]
 
     # The destination child (mac's) already has an activity of its own.
     mac_child_id = (await client.get(f"/api/v1/devices/{mac['id']}", headers=headers)).json()["child_id"]
@@ -428,28 +432,40 @@ async def test_moving_device_rekeys_its_activities_to_the_new_child(client):
     )
     assert resp.status_code == 200
 
-    # The phone's own activity must still be listed under the phone...
+    # The row keeps its old child's key, so the old child still owns it.
+    resp = await client.get(f"/api/v1/children/{phone_child_id}/activities", headers=headers)
+    assert {a["name"] for a in resp.json()} == {"Piano"}
+
+    # It is NOT listed under the phone any more. Nothing on the old child was left to
+    # re-point the legacy device stamp at, so the stamp is nulled rather than left on the
+    # departing device — leaving it there is an unlock leak, because /agent/config's
+    # device-keyed fallback would serve the old child's windows to this Mac whenever its
+    # new child has no schedules of its own.
     resp = await client.get(f"/api/v1/devices/{phone['id']}/activities", headers=headers)
     names = {a["name"] for a in resp.json()}
-    assert "Piano" in names
+    assert "Piano" not in names
 
-    # ...and must still be enforced: /agent/config for the phone must include it now
-    # that the new child already has an activity of its own (the child-first lookup
-    # would otherwise hide a legacy device-keyed row here).
+    # What the phone actually enforces is its NEW child's schedule, not the old one's.
     resp = await client.get(
         "/api/v1/agent/config", headers={"Authorization": f"Bearer {phone['api_token']}"}
     )
     config_names = {a["name"] for a in resp.json()["activities"]}
-    assert "Piano" in config_names, "moved device's own activity must still be enforced"
+    assert config_names == {"English"}, "the moved device follows its new child's schedules"
+
+    # And the destination child's other Mac gained nothing from the move.
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {mac['api_token']}"}
+    )
+    assert {a["name"] for a in resp.json()["activities"]} == {"English"}
 
 
-async def test_moving_a_device_removes_the_activity_from_a_sibling_left_behind(client):
-    """Pins the intentional side effect of re-keying: a SIBLING device that stayed on
-    the old child and was only inheriting an activity through the child-first lookup
-    (no device-keyed row of its own for it) loses that activity the instant the owning
-    device moves away. The activity belongs to the device that moved, not to the old
-    child in general, so the sibling losing it is correct — but it is a real, visible
-    change and must be pinned by a test, not just asserted in a comment."""
+async def test_moving_a_device_keeps_the_activity_with_a_sibling_left_behind(client):
+    """Corrected ruling — this test previously asserted the opposite (that the sibling
+    LOSES the activity), which was the visible side effect of re-keying activities on a
+    move. The activity belongs to the old child, not to the one device that happened to
+    be stamped on it, so a sibling still on that child must keep enforcing it. The
+    device's legacy device_id stamp is re-pointed at that sibling so a pre-child API can
+    still reach the row there."""
     token = await register_user(client)
     headers = {"Authorization": f"Bearer {token}"}
     phone = await create_device(client, token, name="Phone")
@@ -479,7 +495,7 @@ async def test_moving_a_device_removes_the_activity_from_a_sibling_left_behind(c
     assert {a["name"] for a in resp.json()["activities"]} == {"Piano"}, \
         "sibling must inherit the activity through the child before the move"
 
-    # Move the phone (and its activity) to a different child.
+    # Move the phone to a different child. The activity stays with the old child.
     resp = await client.patch(
         f"/api/v1/devices/{phone['id']}", json={"child_id": new_child_id}, headers=headers
     )
@@ -488,5 +504,17 @@ async def test_moving_a_device_removes_the_activity_from_a_sibling_left_behind(c
     resp = await client.get(
         "/api/v1/agent/config", headers={"Authorization": f"Bearer {sibling['api_token']}"}
     )
+    assert {a["name"] for a in resp.json()["activities"]} == {"Piano"}, \
+        "the sibling left behind on the old child must keep enforcing the activity"
+
+    # The device stamp followed the row to the sibling, so a pre-child device-keyed
+    # lookup still finds it on the child that owns it.
+    resp = await client.get(f"/api/v1/devices/{sibling['id']}/activities", headers=headers)
+    assert {a["name"] for a in resp.json()} == {"Piano"}
+
+    # And the destination child's Mac gained nothing.
+    resp = await client.get(
+        "/api/v1/agent/config", headers={"Authorization": f"Bearer {mac['api_token']}"}
+    )
     assert resp.json()["activities"] == [], \
-        "the sibling left behind on the old child must no longer see the moved activity"
+        "the destination child's other Mac must not inherit another child's schedule"

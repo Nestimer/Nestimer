@@ -8,8 +8,19 @@ import AppKit
 struct DeviceDetailView: View {
     let deviceId: String
     @StateObject private var vm: DeviceDetailViewModel
-    @State private var showAddActivity = false
     @State private var showEditName = false
+    @State private var capMinutes: Int?
+    /// The cap value we last told the server about (either via a seed from .task/.refreshable
+    /// or a dispatched PATCH). onChange compares against this, not against vm.device, because
+    /// vm.device is stale while a PATCH is in flight -- comparing against it would let a
+    /// revert typed during that window be silently swallowed as a no-op.
+    @State private var lastSentCap: Int?
+    /// The child the picker's confirmation dialog is asking about -- set as soon as a new
+    /// selection is tapped, cleared on confirm or cancel. Nothing is sent to the server until
+    /// the parent confirms; on cancel the Picker's binding just re-reads vm.device?.childId,
+    /// which hasn't changed, so it reverts on its own.
+    @State private var pendingChildId: String?
+    @State private var showMoveConfirmation = false
 
     init(deviceId: String) {
         self.deviceId = deviceId
@@ -18,15 +29,11 @@ struct DeviceDetailView: View {
 
     var body: some View {
         Group {
-            if let policy = vm.policy {
+            if vm.policy != nil {
                 ScrollView {
                     VStack(spacing: 20) {
                         todayCard
                         unlockCodeSection
-                        bonusSection
-                        downtimeSection(policy: policy)
-                        screenTimeSection(policy: policy)
-                        activitiesSection
                         usageHistorySection
                         deviceInfoSection
                     }
@@ -55,15 +62,65 @@ struct DeviceDetailView: View {
         #endif
         .refreshable {
             await vm.load()
+            capMinutes = vm.device?.dailyCapMinutes
+            lastSentCap = capMinutes
         }
         .task {
             await vm.load()
-        }
-        .sheet(isPresented: $showAddActivity) {
-            AddActivityView(vm: vm)
+            capMinutes = vm.device?.dailyCapMinutes
+            lastSentCap = capMinutes
         }
         .sheet(isPresented: $showEditName) {
             EditDeviceNameView(vm: vm)
+        }
+        .confirmationDialog(
+            "Move device?",
+            isPresented: $showMoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Move", role: .destructive) {
+                if let pendingChildId {
+                    Task { await vm.moveToChild(pendingChildId) }
+                }
+                pendingChildId = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingChildId = nil
+            }
+        } message: {
+            if let pendingChildId,
+               let target = vm.allChildren.first(where: { $0.id == pendingChildId }) {
+                // Say everything a move actually does. It is not only a budget merge:
+                // usage is summed per child, so minutes already spent today are
+                // reallocated -- the old child's "used today" drops by this device's
+                // minutes and the new child's rises -- and schedules belong to the child,
+                // so this device swaps one child's activities for the other's.
+                let current = vm.device?.childName ?? "the current child"
+                Text("""
+                    Moving this device merges it onto \(target.name)'s shared daily limit \
+                    and usage. Time already used today moves with it: subtracted from \
+                    \(current)'s total for today, added to \(target.name)'s. \
+                    Scheduled activities stay with \(current) — this device will follow \
+                    \(target.name)'s schedule instead.
+                    """)
+            }
+        }
+        // Attached OUTSIDE the `vm.policy != nil` gate above, so it renders whatever the
+        // load state. The gate's `else if let error` branch is only reachable while
+        // `policy` is nil, and nothing ever resets `policy` to nil after a first
+        // successful load -- so every mutating control on this screen used to fail with no
+        // signal at all. A control that did not take effect must never look like one that did.
+        .alert(
+            "Change Not Saved",
+            isPresented: Binding(
+                get: { vm.actionError != nil },
+                set: { if !$0 { vm.actionError = nil } }
+            ),
+            presenting: vm.actionError
+        ) { _ in
+            Button("OK", role: .cancel) { vm.actionError = nil }
+        } message: { message in
+            Text(message)
         }
     }
 
@@ -185,355 +242,6 @@ struct DeviceDetailView: View {
         .onDisappear { vm.stopTOTPGeneration() }
     }
 
-    // MARK: - Bonus
-
-    private var bonusSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Give Bonus Time")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            VStack(spacing: 12) {
-                Text("Temporarily unlock without changing the daily limit. The bonus does not count toward used time.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                HStack(spacing: 8) {
-                    ForEach([5, 10, 15], id: \.self) { mins in
-                        Button {
-                            Task { await vm.grantBonus(minutes: mins) }
-                        } label: {
-                            Text("+\(mins) min")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(vm.isGrantingBonus)
-                    }
-                }
-
-                if let remaining = vm.bonusRemainingSeconds {
-                    let m = remaining / 60
-                    let s = remaining % 60
-                    HStack {
-                        Image(systemName: "clock.badge.checkmark")
-                            .foregroundStyle(.green)
-                        Text("Bonus active — \(m):\(String(format: "%02d", s)) remaining")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .padding()
-            .background(.regularMaterial)
-            .cornerRadius(16)
-        }
-    }
-
-    // MARK: - Downtime
-
-    private func downtimeSection(policy: Policy) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Downtime")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            VStack(spacing: 0) {
-                toggleRow(
-                    title: "Downtime",
-                    subtitle: "Computer is locked during this time",
-                    icon: "moon.fill",
-                    iconColor: .indigo,
-                    isOn: policy.downtimeEnabled
-                ) { newValue in
-                    Task { await vm.setDowntimeEnabled(newValue) }
-                }
-
-                if policy.downtimeEnabled {
-                    Divider().padding(.leading, 44)
-
-                    HStack {
-                        Text("Default")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 44)
-                        Spacer()
-                    }
-                    .padding(.top, 4)
-
-                    timePickerRow(
-                        label: "Start",
-                        time: policy.downtimeStart
-                    ) { newTime in
-                        Task { await vm.setDowntimeStart(newTime) }
-                    }
-
-                    timePickerRow(
-                        label: "End",
-                        time: policy.downtimeEnd
-                    ) { newTime in
-                        Task { await vm.setDowntimeEnd(newTime) }
-                    }
-
-                    Divider().padding(.leading, 44)
-
-                    HStack {
-                        Text("Weekdays (Mon–Fri)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 44)
-                        Spacer()
-                        if policy.downtimeWeekdayStart != nil || policy.downtimeWeekdayEnd != nil {
-                            Button("Reset") {
-                                Task { await vm.clearDowntimeWeekdayOverride() }
-                            }
-                            .font(.caption)
-                            .padding(.trailing, 16)
-                        }
-                    }
-                    .padding(.top, 4)
-
-                    timePickerRow(
-                        label: "Start",
-                        time: policy.downtimeWeekdayStart ?? policy.downtimeStart
-                    ) { newTime in
-                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekdayStart: newTime)) }
-                    }
-
-                    timePickerRow(
-                        label: "End",
-                        time: policy.downtimeWeekdayEnd ?? policy.downtimeEnd
-                    ) { newTime in
-                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekdayEnd: newTime)) }
-                    }
-
-                    Divider().padding(.leading, 44)
-
-                    HStack {
-                        Text("Weekends (Sat–Sun)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 44)
-                        Spacer()
-                        if policy.downtimeWeekendStart != nil || policy.downtimeWeekendEnd != nil {
-                            Button("Reset") {
-                                Task { await vm.clearDowntimeWeekendOverride() }
-                            }
-                            .font(.caption)
-                            .padding(.trailing, 16)
-                        }
-                    }
-                    .padding(.top, 4)
-
-                    timePickerRow(
-                        label: "Start",
-                        time: policy.downtimeWeekendStart ?? policy.downtimeStart
-                    ) { newTime in
-                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekendStart: newTime)) }
-                    }
-
-                    timePickerRow(
-                        label: "End",
-                        time: policy.downtimeWeekendEnd ?? policy.downtimeEnd
-                    ) { newTime in
-                        Task { await vm.updatePolicy(PolicyUpdate(downtimeWeekendEnd: newTime)) }
-                    }
-                }
-            }
-            .background(.regularMaterial)
-            .cornerRadius(16)
-        }
-    }
-
-    // MARK: - Screen Time
-
-    private func screenTimeSection(policy: Policy) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Screen Time")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            VStack(spacing: 0) {
-                toggleRow(
-                    title: "Time Limit",
-                    subtitle: "Max per day outside downtime",
-                    icon: "hourglass",
-                    iconColor: .blue,
-                    isOn: policy.screenTimeEnabled
-                ) { newValue in
-                    Task { await vm.setScreenTimeEnabled(newValue) }
-                }
-
-                if policy.screenTimeEnabled {
-                    Divider().padding(.leading, 44)
-
-                    minutesPickerRow(
-                        label: "Weekdays",
-                        minutes: policy.screenTimeLimitMinutes
-                    ) { newMin in
-                        Task { await vm.setScreenTimeLimit(newMin) }
-                    }
-
-                    Divider().padding(.leading, 44)
-
-                    HStack(spacing: 0) {
-                        minutesPickerRow(
-                            label: "Weekends",
-                            minutes: policy.screenTimeWeekendLimitMinutes ?? policy.screenTimeLimitMinutes,
-                            placeholder: "Same as weekdays"
-                        ) { newMin in
-                            Task { await vm.setWeekendLimit(newMin) }
-                        }
-                        if policy.screenTimeWeekendLimitMinutes != nil {
-                            Button {
-                                Task { await vm.clearWeekendLimit() }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.trailing, 16)
-                        }
-                    }
-
-                    Divider().padding(.leading, 44)
-                    perDayPickerRows(policy: policy)
-                }
-            }
-            .background(.regularMaterial)
-            .cornerRadius(16)
-        }
-    }
-
-    // MARK: - Per-day limits
-
-    private func perDayPickerRows(policy: Policy) -> some View {
-        let days: [(label: String, index: Int, value: Int?)] = [
-            ("Mon", 0, policy.screenTimeMonMinutes),
-            ("Tue", 1, policy.screenTimeTueMinutes),
-            ("Wed", 2, policy.screenTimeWedMinutes),
-            ("Thu", 3, policy.screenTimeThuMinutes),
-            ("Fri", 4, policy.screenTimeFriMinutes),
-            ("Sat", 5, policy.screenTimeSatMinutes),
-            ("Sun", 6, policy.screenTimeSunMinutes),
-        ]
-        return VStack(spacing: 0) {
-            HStack {
-                Text("Per day overrides")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 44)
-                Spacer()
-            }
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-            ForEach(days, id: \.index) { day in
-                let fallback = (day.index >= 5 ? policy.screenTimeWeekendLimitMinutes : nil) ?? policy.screenTimeLimitMinutes
-                let current = day.value ?? fallback
-                HStack {
-                    Text(day.label)
-                        .foregroundStyle(day.value != nil ? .primary : .secondary)
-                        .font(.system(.body, design: .rounded))
-                        .frame(width: 40, alignment: .leading)
-                        .padding(.leading, 44)
-                    Spacer()
-                    if day.value != nil {
-                        Button {
-                            Task { await vm.clearDayLimit(day: day.index) }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Stepper(
-                        value: Binding(
-                            get: { current },
-                            set: { newMin in Task { await vm.setDayLimit(day: day.index, minutes: newMin) } }
-                        ),
-                        in: 15...720,
-                        step: 15
-                    ) {
-                        Text(formatMinutes(current))
-                            .font(.system(.body, design: .rounded))
-                            .fontWeight(day.value != nil ? .medium : .regular)
-                            .foregroundStyle(day.value != nil ? .primary : .secondary)
-                            .monospacedDigit()
-                    }
-                    .padding(.trailing, 16)
-                }
-                .padding(.vertical, 6)
-            }
-        }
-    }
-
-    // MARK: - Scheduled activities
-
-    private var activitiesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Scheduled Activities")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Spacer()
-                Button { showAddActivity = true } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                }
-                .buttonStyle(.plain)
-            }
-
-            VStack(spacing: 0) {
-                if vm.activities.isEmpty {
-                    Text("No activities yet")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                } else {
-                    ForEach(vm.activities) { activity in
-                        activityRow(activity)
-                        if activity.id != vm.activities.last?.id {
-                            Divider().padding(.leading, 16)
-                        }
-                    }
-                }
-            }
-            .background(.regularMaterial)
-            .cornerRadius(16)
-        }
-    }
-
-    private func activityRow(_ activity: Activity) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(activity.name)
-                    .font(.body)
-                    .foregroundStyle(activity.enabled ? .primary : .secondary)
-                Text("\(activity.dayLabel) \(activity.startTime)–\(activity.endTime)  ±\(activity.bufferBeforeMinutes)m")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { activity.enabled },
-                set: { _ in Task { await vm.toggleActivity(activity) } }
-            ))
-            .labelsHidden()
-            Button(role: .destructive) {
-                Task { await vm.deleteActivity(activity) }
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
     // MARK: - Usage history
 
     private var usageHistorySection: some View {
@@ -585,7 +293,88 @@ struct DeviceDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     Divider().padding(.leading, 16)
-                    infoRow(label: "Child", value: device.childName)
+                    if vm.allChildren.isEmpty {
+                        // Couldn't load the children list -- fall back to a plain, read-only
+                        // row rather than blocking the rest of the device screen.
+                        infoRow(label: "Child", value: device.childName)
+                    } else {
+                        // A device backfilled lazily server-side (or whose child was deleted)
+                        // can have a childId that's nil or absent from allChildren. A menu
+                        // Picker can't represent "no selection" -- it renders the first row as
+                        // checked -- so without this, tapping that apparently-selected row would
+                        // silently move the device onto a child the parent never chose. Make
+                        // the "unknown child" state an explicit, disabled placeholder instead.
+                        let hasKnownChild = device.childId.map { id in
+                            vm.allChildren.contains { $0.id == id }
+                        } ?? false
+                        HStack {
+                            Text("Child")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Picker("Child", selection: Binding(
+                                get: { hasKnownChild ? device.childId! : "" },
+                                set: { newId in
+                                    pendingChildId = newId
+                                    showMoveConfirmation = true
+                                }
+                            )) {
+                                if !hasKnownChild {
+                                    Text("Not assigned").tag("")
+                                }
+                                ForEach(vm.allChildren) { child in
+                                    Text(child.name).tag(child.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .disabled(!hasKnownChild)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        Text("Moving this device merges it onto that child's shared daily limit and usage, moves the time already used today from one child's total to the other's, and swaps this device onto that child's scheduled activities.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    }
+                    Divider().padding(.leading, 16)
+                    HStack {
+                        Text("Daily cap")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker("Daily cap", selection: $capMinutes) {
+                            Text("None").tag(Optional<Int>.none)
+                            ForEach([30, 60, 90, 120, 180, 240], id: \.self) { m in
+                                Text(formatMinutes(m)).tag(Optional(m))
+                            }
+                        }
+                        .labelsHidden()
+                        .onChange(of: capMinutes) { _, newValue in
+                            // .task/.refreshable seed capMinutes from the server (and
+                            // lastSentCap along with it), which fires this same onChange --
+                            // skip it when the value already matches what we last sent so a
+                            // load doesn't echo a no-op PATCH. Comparing against lastSentCap
+                            // rather than vm.device?.dailyCapMinutes matters because vm.device
+                            // is stale while a PATCH is in flight: a revert typed during that
+                            // window (e.g. 60 -> 90 -> 60 before the first PATCH lands) must
+                            // still be recognized as a new value to send, not swallowed as a
+                            // no-op against the not-yet-updated server value.
+                            guard newValue != lastSentCap else { return }
+                            let previous = lastSentCap
+                            lastSentCap = newValue
+                            Task {
+                                // Roll back on failure. lastSentCap records what the server
+                                // was told, so leaving a value there that never landed makes
+                                // the guard above swallow every retry of that same value --
+                                // the parent literally could not set that cap again without
+                                // first picking some other one.
+                                if await vm.updateCap(newValue) == false {
+                                    lastSentCap = previous
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                     Divider().padding(.leading, 16)
                     infoRow(label: "Last Seen", value: device.lastSeenText)
                     if let version = device.agentVersion {
@@ -623,218 +412,6 @@ struct DeviceDetailView: View {
             .cornerRadius(16)
         }
     }
-
-    // MARK: - Reusable rows
-
-    private func toggleRow(
-        title: String,
-        subtitle: String,
-        icon: String,
-        iconColor: Color,
-        isOn: Bool,
-        onChange: @escaping (Bool) -> Void
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(iconColor)
-                .frame(width: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { isOn },
-                set: { onChange($0) }
-            ))
-            .labelsHidden()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private func timePickerRow(
-        label: String,
-        time: String,
-        onChange: @escaping (String) -> Void
-    ) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 44)
-
-            Spacer()
-
-            TimePickerCompact(time: time, onChange: onChange)
-                .padding(.trailing, 16)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private func minutesPickerRow(
-        label: String,
-        minutes: Int,
-        placeholder: String? = nil,
-        onChange: @escaping (Int) -> Void
-    ) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 44)
-
-            Spacer()
-
-            HStack(spacing: 4) {
-                Stepper(
-                    value: Binding(
-                        get: { minutes },
-                        set: { onChange($0) }
-                    ),
-                    in: 15...720,
-                    step: 15
-                ) {
-                    Text(formatMinutes(minutes))
-                        .font(.system(.body, design: .rounded))
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                }
-            }
-            .padding(.trailing, 16)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private func infoRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-}
-
-// MARK: - Time picker helper
-
-struct TimePickerCompact: View {
-    let time: String
-    let onChange: (String) -> Void
-
-    @State private var date: Date
-
-    init(time: String, onChange: @escaping (String) -> Void) {
-        self.time = time
-        self.onChange = onChange
-
-        let parts = time.split(separator: ":").compactMap { Int($0) }
-        var components = DateComponents()
-        components.hour = parts.count > 0 ? parts[0] : 0
-        components.minute = parts.count > 1 ? parts[1] : 0
-        _date = State(initialValue: Calendar.current.date(from: components) ?? Date())
-    }
-
-    var body: some View {
-        DatePicker(
-            "",
-            selection: $date,
-            displayedComponents: .hourAndMinute
-        )
-        .labelsHidden()
-        .onChange(of: date) { _, newDate in
-            let h = Calendar.current.component(.hour, from: newDate)
-            let m = Calendar.current.component(.minute, from: newDate)
-            onChange(String(format: "%02d:%02d", h, m))
-        }
-    }
-}
-
-// MARK: - Add activity sheet
-
-struct AddActivityView: View {
-    @ObservedObject var vm: DeviceDetailViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var name = ""
-    @State private var dayOfWeek = 0
-    @State private var startDate = Calendar.current.date(bySettingHour: 16, minute: 0, second: 0, of: Date())!
-    @State private var endDate = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date())!
-    @State private var bufferBefore = 5
-    @State private var bufferAfter = 5
-    @State private var isSaving = false
-
-    private let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Name") {
-                    TextField("English", text: $name)
-                }
-                Section("Day") {
-                    Picker("Day", selection: $dayOfWeek) {
-                        ForEach(0..<7) { i in Text(days[i]).tag(i) }
-                    }
-                    #if os(iOS)
-                    .pickerStyle(.menu)
-                    #endif
-                }
-                Section("Time") {
-                    DatePicker("Start", selection: $startDate, displayedComponents: .hourAndMinute)
-                    DatePicker("End", selection: $endDate, displayedComponents: .hourAndMinute)
-                }
-                Section("Buffer (minutes)") {
-                    Stepper("Before: \(bufferBefore) min", value: $bufferBefore, in: 0...60)
-                    Stepper("After: \(bufferAfter) min", value: $bufferAfter, in: 0...60)
-                }
-            }
-            .navigationTitle("New Activity")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task {
-                            isSaving = true
-                            await vm.createActivity(ActivityCreate(
-                                name: name.isEmpty ? "Activity" : name,
-                                dayOfWeek: dayOfWeek,
-                                startTime: formatTime(startDate),
-                                endTime: formatTime(endDate),
-                                bufferBeforeMinutes: bufferBefore,
-                                bufferAfterMinutes: bufferAfter,
-                                enabled: true
-                            ))
-                            isSaving = false
-                            dismiss()
-                        }
-                    }
-                    .disabled(name.isEmpty || isSaving)
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(width: 450, height: 500)
-        #endif
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        let h = Calendar.current.component(.hour, from: date)
-        let m = Calendar.current.component(.minute, from: date)
-        return String(format: "%02d:%02d", h, m)
-    }
 }
 
 // MARK: - Edit device name sheet
@@ -846,6 +423,10 @@ struct EditDeviceNameView: View {
     @State private var name: String = ""
     @State private var childName: String = ""
     @State private var isSaving = false
+    /// Failure text for the save attempt, consumed out of `vm.actionError` so the alert on
+    /// the screen behind doesn't also fire. An alert presented on a view that already has
+    /// a sheet up is not visible anyway, and the sheet is what the parent is looking at.
+    @State private var errorText: String?
 
     var body: some View {
         NavigationStack {
@@ -855,6 +436,15 @@ struct EditDeviceNameView: View {
                 }
                 Section("Child Name") {
                     TextField("Child name", text: $childName)
+                }
+                if let errorText {
+                    Section {
+                        Label(errorText, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                    } header: {
+                        Text("Not Saved")
+                    }
                 }
             }
             .navigationTitle("Edit Device")
@@ -869,9 +459,16 @@ struct EditDeviceNameView: View {
                     Button("Save") {
                         Task {
                             isSaving = true
-                            await vm.updateDeviceName(name: name, childName: childName)
+                            let saved = await vm.updateDeviceName(name: name, childName: childName)
                             isSaving = false
-                            dismiss()
+                            // Dismiss only on success. A sheet that closes on failure
+                            // reads to the parent as confirmation that the rename stuck.
+                            if saved {
+                                dismiss()
+                            } else {
+                                errorText = vm.actionError
+                                vm.actionError = nil
+                            }
                         }
                     }
                     .disabled(name.isEmpty || childName.isEmpty || isSaving)

@@ -7,14 +7,24 @@ class DeviceDetailViewModel: ObservableObject {
     @Published var device: Device?
     @Published var policy: Policy?
     @Published var usage: [UsageEntry] = []
-    @Published var activities: [Activity] = []
+    @Published var allChildren: [Child] = []
     @Published var isLoading = false
     @Published var isSaving = false
+
+    /// Failure of the initial load. Rendered by the view's `vm.policy == nil` branch as a
+    /// full-screen message with a Retry button.
     @Published var error: String?
+
+    /// Failure of a mutating action (a cap change, a move, a rename, a policy edit).
+    /// Deliberately separate from `error`: the load branch is only reachable while `policy`
+    /// is nil, so an action failure written there renders nothing at all once the screen
+    /// has loaded once -- which is how every mutating control on this screen used to fail
+    /// in total silence. This is parental-control software: a control that did not take
+    /// effect must never look like one that did. The view surfaces this as an alert
+    /// attached OUTSIDE the load gate, so it shows whatever the load state.
+    @Published var actionError: String?
     @Published var currentTOTPCode: String?
     @Published var totpSecondsRemaining: Int = 0
-    @Published var bonusUntil: Date?
-    @Published var isGrantingBonus = false
     private var totpTimer: Timer?
 
     private let api = APIClient.shared
@@ -34,27 +44,82 @@ class DeviceDetailViewModel: ObservableObject {
             async let dev = api.getDevice(deviceId)
             async let pol = api.getPolicy(deviceId: deviceId)
             async let usg = api.getUsage(deviceId: deviceId, days: 7)
-            async let acts = api.listActivities(deviceId: deviceId)
-            let (d, p, u, a) = try await (dev, pol, usg, acts)
+            let (d, p, u) = try await (dev, pol, usg)
             device = d
             policy = p
             usage = u
-            activities = a
-            bonusUntil = parseISODate(d.bonusUntil)
         } catch {
             self.error = error.localizedDescription
         }
+        // A failing /children request must not block the rest of the device screen --
+        // the child picker just becomes unavailable, everything else still works.
+        await loadChildren()
         isLoading = false
     }
 
-    func updateDeviceName(name: String, childName: String) async {
+    func loadChildren() async {
+        allChildren = (try? await api.listChildren()) ?? []
+    }
+
+    /// Moves the device onto a different child -- this is what merges two devices onto
+    /// one shared daily budget. The server re-keys the device's child_id (and its own
+    /// activities) and makes sure the destination child has a policy, but it does NOT
+    /// touch this device's own daily_cap_minutes column. What DOES change is the
+    /// *effective* policy (screen time limit etc.), which /devices/{id}/policy resolves
+    /// from the device's current child_id -- so refetch it after the move, or the "Today"
+    /// card keeps showing the old child's limit until the next full reload.
+    func moveToChild(_ childId: String) async {
+        do {
+            var update = DeviceUpdateRequest()
+            update.childId = childId
+            device = try await api.updateDevice(deviceId, update: update)
+            if let newPolicy = try? await api.getPolicy(deviceId: deviceId) {
+                policy = newPolicy
+            }
+        } catch {
+            self.actionError = error.localizedDescription
+        }
+    }
+
+    /// Returns whether the rename actually reached the server. The sheet dismisses only
+    /// on `true`: dismissing on failure reads to the parent as confirmation.
+    @discardableResult
+    func updateDeviceName(name: String, childName: String) async -> Bool {
         isSaving = true
+        defer { isSaving = false }
         do {
             device = try await api.updateDevice(deviceId, update: DeviceUpdateRequest(name: name, childName: childName))
+            return true
         } catch {
-            self.error = error.localizedDescription
+            self.actionError = error.localizedDescription
+            return false
         }
-        isSaving = false
+    }
+
+    // Note: the brief's snippet used `errorMessage`, but this view model's error property
+    // (used by every other method here) is named `error` -- matching that instead.
+    //
+    // Picking "None" must send an explicit JSON null, not omit the field -- DeviceUpdateRequest
+    // only encodes dailyCapMinutes when it's non-nil, and the server only clears a column when
+    // the key is present in the request body. Route nil through clearFields instead.
+    /// Returns whether the cap actually reached the server, so the view can roll back the
+    /// value it recorded as sent. Without that rollback its no-op guard swallows a retry of
+    /// the same value and the parent cannot set that cap at all.
+    @discardableResult
+    func updateCap(_ minutes: Int?) async -> Bool {
+        do {
+            var update = DeviceUpdateRequest()
+            if let minutes {
+                update.dailyCapMinutes = minutes
+            } else {
+                update.clearFields = [.dailyCapMinutes]
+            }
+            device = try await APIClient.shared.updateDevice(deviceId, update: update)
+            return true
+        } catch {
+            self.actionError = error.localizedDescription
+            return false
+        }
     }
 
     func updatePolicy(_ update: PolicyUpdate) async {
@@ -70,7 +135,13 @@ class DeviceDetailViewModel: ObservableObject {
             do {
                 policy = try await api.updatePolicy(deviceId: deviceId, update: update)
             } catch {
-                self.error = error.localizedDescription
+                self.actionError = error.localizedDescription
+                // Clear anything that was merged in while this request was in flight.
+                // Leaving it armed would apply an edit the parent made minutes ago
+                // alongside the next, unrelated PUT -- every PolicyUpdate( site sends
+                // exactly one field, so this is the only way an untouched setting can
+                // change on the server.
+                pendingUpdate = nil
                 break
             }
         }
@@ -102,82 +173,6 @@ class DeviceDetailViewModel: ObservableObject {
         )
         merged.clearFields = existing.clearFields.union(new.clearFields)
         return merged
-    }
-
-    func setDayLimit(day: Int, minutes: Int) async {
-        // day: 0=Mon, 6=Sun
-        var update = PolicyUpdate()
-        switch day {
-        case 0: update.screenTimeMonMinutes = minutes
-        case 1: update.screenTimeTueMinutes = minutes
-        case 2: update.screenTimeWedMinutes = minutes
-        case 3: update.screenTimeThuMinutes = minutes
-        case 4: update.screenTimeFriMinutes = minutes
-        case 5: update.screenTimeSatMinutes = minutes
-        case 6: update.screenTimeSunMinutes = minutes
-        default: return
-        }
-        await updatePolicy(update)
-    }
-
-    func clearDayLimit(day: Int) async {
-        var update = PolicyUpdate()
-        let key: PolicyUpdate.CodingKeys
-        switch day {
-        case 0: key = .screenTimeMonMinutes
-        case 1: key = .screenTimeTueMinutes
-        case 2: key = .screenTimeWedMinutes
-        case 3: key = .screenTimeThuMinutes
-        case 4: key = .screenTimeFriMinutes
-        case 5: key = .screenTimeSatMinutes
-        case 6: key = .screenTimeSunMinutes
-        default: return
-        }
-        update.clearFields = [key]
-        await updatePolicy(update)
-    }
-
-    func clearWeekendLimit() async {
-        var update = PolicyUpdate()
-        update.clearFields = [.screenTimeWeekendLimitMinutes]
-        await updatePolicy(update)
-    }
-
-    func clearDowntimeWeekdayOverride() async {
-        var update = PolicyUpdate()
-        update.clearFields = [.downtimeWeekdayStart, .downtimeWeekdayEnd]
-        await updatePolicy(update)
-    }
-
-    func clearDowntimeWeekendOverride() async {
-        var update = PolicyUpdate()
-        update.clearFields = [.downtimeWeekendStart, .downtimeWeekendEnd]
-        await updatePolicy(update)
-    }
-
-    // Convenience helpers for toggling
-    func setDowntimeEnabled(_ enabled: Bool) async {
-        await updatePolicy(PolicyUpdate(downtimeEnabled: enabled))
-    }
-
-    func setDowntimeStart(_ time: String) async {
-        await updatePolicy(PolicyUpdate(downtimeStart: time))
-    }
-
-    func setDowntimeEnd(_ time: String) async {
-        await updatePolicy(PolicyUpdate(downtimeEnd: time))
-    }
-
-    func setScreenTimeEnabled(_ enabled: Bool) async {
-        await updatePolicy(PolicyUpdate(screenTimeEnabled: enabled))
-    }
-
-    func setScreenTimeLimit(_ minutes: Int) async {
-        await updatePolicy(PolicyUpdate(screenTimeLimitMinutes: minutes))
-    }
-
-    func setWeekendLimit(_ minutes: Int?) async {
-        await updatePolicy(PolicyUpdate(screenTimeWeekendLimitMinutes: minutes))
     }
 
     // MARK: - TOTP code generation
@@ -215,69 +210,5 @@ class DeviceDetailViewModel: ObservableObject {
     var usagePercent: Double {
         guard limitMinutes > 0 else { return 0 }
         return min(1.0, usedToday / Double(limitMinutes))
-    }
-
-    // MARK: - Bonus
-
-    func grantBonus(minutes: Int) async {
-        isGrantingBonus = true
-        do {
-            let resp = try await api.grantBonus(deviceId: deviceId, minutes: minutes)
-            bonusUntil = parseISODate(resp.bonusUntil)
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isGrantingBonus = false
-    }
-
-    private func parseISODate(_ s: String?) -> Date? {
-        guard let s else { return nil }
-        let f1 = ISO8601DateFormatter()
-        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f1.date(from: s) { return d }
-        let f2 = ISO8601DateFormatter()
-        f2.formatOptions = [.withInternetDateTime]
-        return f2.date(from: s)
-    }
-
-    var bonusRemainingSeconds: Int? {
-        guard let until = bonusUntil else { return nil }
-        let s = Int(until.timeIntervalSinceNow)
-        return s > 0 ? s : nil
-    }
-
-    // MARK: - Activities
-
-    func createActivity(_ create: ActivityCreate) async {
-        do {
-            let new = try await api.createActivity(deviceId: deviceId, activity: create)
-            activities.append(new)
-            activities.sort { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) }
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    func toggleActivity(_ activity: Activity) async {
-        do {
-            let updated = try await api.updateActivity(
-                deviceId: deviceId, activityId: activity.id,
-                update: ActivityUpdate(enabled: !activity.enabled)
-            )
-            if let idx = activities.firstIndex(where: { $0.id == activity.id }) {
-                activities[idx] = updated
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    func deleteActivity(_ activity: Activity) async {
-        do {
-            try await api.deleteActivity(deviceId: deviceId, activityId: activity.id)
-            activities.removeAll { $0.id == activity.id }
-        } catch {
-            self.error = error.localizedDescription
-        }
     }
 }
