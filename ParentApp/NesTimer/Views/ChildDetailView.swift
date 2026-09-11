@@ -617,8 +617,9 @@ struct AddActivityView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Name") {
-                    TextField("English", text: $name)
+                Section {
+                    // "English" is the example, not the label — see AddDeviceView.
+                    TextField("Name", text: $name, prompt: Text("English"))
                 }
                 Section("Day") {
                     Picker("Day", selection: $dayOfWeek) {
@@ -646,6 +647,7 @@ struct AddActivityView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("New Activity")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
