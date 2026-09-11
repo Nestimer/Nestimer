@@ -447,6 +447,7 @@ struct EditDeviceNameView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Edit Device")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

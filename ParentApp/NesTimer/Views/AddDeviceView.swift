@@ -26,6 +26,26 @@ struct AddDeviceView: View {
     @State private var createdDevice: Device?
     @State private var isCreating = false
     @State private var errorMessage: String?
+    @State private var didCopy = false
+
+    /// What the agent's setup dialog parses: "server|token", split on the single "|".
+    /// The bare token alone is rejected there, so showing only the token — as this
+    /// screen used to — left the parent with something that could not be pasted.
+    private func setupString(token: String) -> String {
+        let server = KeychainHelper.getServerURL().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(server)|\(token)"
+    }
+
+    private let agentDownloadURL = "https://nestimer.com/download/NesTimer.dmg"
+
+    private func copyToPasteboard(_ text: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = text
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
 
     private var isChildLocked: Bool { attachTo != nil }
 
@@ -33,59 +53,67 @@ struct AddDeviceView: View {
         NavigationStack {
             Form {
                 if let device = createdDevice {
-                    // Success state — show token
+                    // Success state — the one line the agent asks for.
                     Section {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Label("Device created!", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.headline)
+                        Label("Device created!", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.headline)
 
-                            Text("Use this token when installing the agent on the child's Mac:")
+                        if let token = device.apiToken {
+                            Text("Paste this single line when the agent asks for the setup string:")
                                 .font(.callout)
 
-                            if let token = device.apiToken {
-                                Text(token)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .padding(8)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(8)
+                            Text(setupString(token: token))
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
 
-                                Button {
-                                    #if os(iOS)
-                                    UIPasteboard.general.string = token
-                                    #elseif os(macOS)
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(token, forType: .string)
-                                    #endif
-                                } label: {
-                                    Label("Copy Token", systemImage: "doc.on.doc")
-                                }
-                                .buttonStyle(.bordered)
+                            Button {
+                                copyToPasteboard(setupString(token: token))
+                                didCopy = true
+                            } label: {
+                                Label(didCopy ? "Copied" : "Copy Setup String",
+                                      systemImage: didCopy ? "checkmark" : "doc.on.doc")
                             }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Text("The server did not return a setup token. Open the device and use Regenerate Token to get one.")
+                                .font(.callout)
+                                .foregroundStyle(.red)
                         }
                     }
 
                     Section {
-                        Text("Run on the child's Mac:")
-                            .font(.callout)
+                        Link(destination: URL(string: agentDownloadURL)!) {
+                            Label("Download NesTimer for Mac", systemImage: "arrow.down.circle")
+                        }
 
-                        Text("sudo ./install.sh")
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .padding(8)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
+                        Text("""
+                        1. Download the app on the child's Mac and drag it to Applications.
+                        2. Open it — it asks for the setup string. Paste the line above.
+                        3. Enter that Mac's admin password once, so the agent installs \
+                        itself as a protected service.
+                        """)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                     } header: {
-                        Text("Agent Installation")
+                        Text("Install the agent")
                     }
                 } else {
                     // Creation form
                     Section {
-                        TextField("Alex's MacBook", text: $deviceName)
+                        // On macOS a TextField's first argument is the *label*, shown
+                        // beside the field — not a placeholder. Passing the example name
+                        // there printed "Alex's MacBook" as a caption next to an empty
+                        // box. The example belongs in `prompt`, which is the placeholder
+                        // on both platforms.
+                        TextField("Mac name", text: $deviceName, prompt: Text("Alex's MacBook"))
 
                         if !isChildLocked {
-                            TextField("Alex", text: $childName)
+                            TextField("Child's name", text: $childName, prompt: Text("Alex"))
                         }
                     } header: {
                         Text("New Device")
@@ -104,6 +132,7 @@ struct AddDeviceView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle(createdDevice != nil ? "Done" : "New Device")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -149,7 +178,7 @@ struct AddDeviceView: View {
             }
         }
         #if os(macOS)
-        .frame(width: 450, height: 400)
+        .frame(width: 460, height: createdDevice == nil ? 260 : 520)
         #endif
     }
 }
