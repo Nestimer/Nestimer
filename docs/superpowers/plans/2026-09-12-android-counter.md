@@ -375,7 +375,7 @@ class UsageCounterTest {
             resumed("com.chrome", 100), paused("com.chrome", 115),
         )
         val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
-        assertEquals(35.0, total, 0.001)
+        assertEquals(25.0, total, 0.001) // 10 + 15; the 80-minute gap is not usage
     }
 
     @Test
