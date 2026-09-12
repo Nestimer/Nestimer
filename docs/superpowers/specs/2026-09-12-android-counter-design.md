@@ -291,6 +291,30 @@ permission, a Play Store policy minefield, and it gives nothing `queryEvents` do
 15 minutes and it is subject to Doze deferral, so the notification — which the design
 relies on for both survival and the remaining-time display — could not exist.
 
+> **Amended 2026-09-12 — the premise was wrong.** This rejection assumed a foreground
+> service runs all day. On the child's phone (Android 15) it does not. An app targeting
+> API 35 gets roughly **6 hours of `dataSync` foreground service per 24 hours**, after
+> which the system calls `Service.onTimeout()` and ANRs a service that does not stop —
+> so the counter would have gone quiet every afternoon, silently. Separately, **Android
+> 14 forbids a `BOOT_COMPLETED` receiver from starting a `dataSync` foreground
+> service**, which breaks reboot recovery, an explicit item on the verification
+> checklist below.
+>
+> Resolved by switching the service to `foregroundServiceType="specialUse"` with a
+> `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` declaration, which is exempt from both. The
+> approved design is otherwise unchanged: 60-second ticks, a non-dismissible
+> notification.
+>
+> **This has a cost at the Play Store**, and it lands on the "sideload now, Play later"
+> decision above. Google reviews `specialUse` strictly and rejects weak justifications.
+> If Play becomes the distribution route, the fallback is the one rejected here —
+> `AlarmManager` (or WorkManager) ticks with an ordinary notification. That fallback is
+> cheap *because* the counter is stateless: it reconstructs the whole day from the
+> system's event history on any tick, so a coarser schedule loses notification
+> freshness and nothing else. What it costs is a dismissible notification and a
+> `last_seen` that updates slower than the 15-minute silence threshold, which would
+> then need raising.
+
 ## Accepted limitations
 
 - **Bypassable.** By choice. Mitigated by stateless recovery (killing it forfeits only
