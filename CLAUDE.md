@@ -32,6 +32,11 @@ xcodebuild -project ParentApp/NesTimer.xcodeproj \
   -scheme NesTimer -configuration Debug \
   -destination 'platform=macOS' \
   CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=YES build
+
+# Android agent (child-side counter)
+export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
+export ANDROID_HOME="$(brew --prefix)/share/android-commandlinetools"
+cd android-agent && ./gradlew test assembleDebug
 ```
 
 Release builds go to `dist/`. Push updates via:
@@ -133,6 +138,7 @@ Timer fires every 5s, checks `adaptiveSyncInterval()` vs `lastSyncTime`.
 | Parent app device page | `ParentApp/NesTimer/Views/DeviceDetailView.swift` |
 | Web device page | `web-dashboard/src/pages/DeviceDetailPage.jsx` |
 | Marketing site | `website/index.html`, `website/style.css` |
+| Android counting logic | `android-agent/app/src/main/kotlin/com/nestimer/agent/counting/UsageCounter.kt` |
 
 ## Deployment
 
@@ -151,6 +157,10 @@ cd ~/Nestimer && git pull && docker compose up -d --build
 
 # Marketing site update
 ssh root@134.209.8.62 "cd ~/Nestimer && git pull && cp -R website/* /var/www/nestimer/"
+
+# Android agent update (from dev Mac) — sideload, no auto-update
+./push-android-update.sh <version>
+# Then install by hand on the phone: the APK cannot push itself.
 ```
 
 HTTPS via nginx + certbot (Let's Encrypt, auto-renew). Certs at `/etc/letsencrypt/live/nestimer.com/`.
@@ -166,3 +176,6 @@ Nginx config: `/etc/nginx/sites-available/nestimer.com`.
 6. **Rate limiter** — disabled when `TESTING=1` env is set. CI sets this automatically.
 7. **Watchdog script** — bundled inside `.app/Contents/Resources/`. `SystemInstaller` copies it to `/usr/local/libexec/`. If you change `watchdog.sh`, update BOTH `macos-agent/Watchdog/watchdog.sh` AND `macos-agent/NesTimerAgent/watchdog.sh`.
 8. **Agent URL migration** — `AgentConfig.migrateServerURL()` auto-converts `134.209.8.62:8000` to `my.nestimer.com`. Add new migrations there if server URL changes.
+9. **Android has no auto-update** — no watchdog, no Device Owner. A stale APK stays
+   stale until someone reinstalls it by hand. Check `agent_version` in the dashboard,
+   not the fact that the build succeeded.

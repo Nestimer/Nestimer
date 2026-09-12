@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -38,9 +45,25 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        create("release") {
+            val path = localProps.getProperty("NESTIMER_KEYSTORE")
+            // CI has no keystore and only ever builds debug; skip rather than fail.
+            if (path != null && file(path).exists()) {
+                storeFile = file(path)
+                storePassword = localProps.getProperty("NESTIMER_KEYSTORE_PASSWORD")
+                keyAlias = localProps.getProperty("NESTIMER_KEY_ALIAS")
+                keyPassword = localProps.getProperty("NESTIMER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            if (localProps.getProperty("NESTIMER_KEYSTORE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
