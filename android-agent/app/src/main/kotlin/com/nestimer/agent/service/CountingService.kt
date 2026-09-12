@@ -16,11 +16,11 @@ import androidx.annotation.RequiresApi
 import com.nestimer.agent.BuildConfig
 import com.nestimer.agent.counting.UsageCounter
 import com.nestimer.agent.data.Pairing
+import com.nestimer.agent.data.UsageFloor
 import com.nestimer.agent.net.AgentClient
 import com.nestimer.agent.ui.SetupActivity
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlin.concurrent.thread
 
 /**
@@ -98,11 +98,18 @@ class CountingService : Service() {
                 return@thread
             }
 
-            val now = System.currentTimeMillis()
-            val startOfDay = startOfLocalDay(now)
-            val localDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+            // One reading of the clock, in one zone, for all three values — so the
+            // window, the date the usage is filed under, and the floor's key can never
+            // disagree because the clock ticked over between two separate reads.
+            // LocalDate.toString() is ISO yyyy-MM-dd by definition, with no locale or
+            // per-tick formatter allocation involved.
+            val zone = ZoneId.systemDefault()
+            val nowLocal = ZonedDateTime.now(zone)
+            val now = nowLocal.toInstant().toEpochMilli()
+            val startOfDay = nowLocal.toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+            val localDate = nowLocal.toLocalDate().toString()
 
-            val minutes = runCatching {
+            val derived = runCatching {
                 UsageCounter.foregroundMinutes(
                     EventReader(this).eventsBetween(startOfDay, now),
                     startOfDay,
@@ -115,6 +122,13 @@ class CountingService : Service() {
                 updateNotification("Usage access not granted")
                 return@thread
             }
+
+            // Never post less than this app has already posted today. The server reads
+            // a decrease as a parent's deliberate reset and passes it through, which
+            // would erase the day's usage on every one of the child's devices. See
+            // UsageFloor — the floor is this client's own derived number and nothing
+            // that came back from the server.
+            val minutes = UsageFloor.floored(this, localDate, derived)
 
             runCatching {
                 val client = AgentClient(pairing.server, pairing.token)
@@ -153,15 +167,6 @@ class CountingService : Service() {
             }
         }
     }
-
-    private fun startOfLocalDay(nowMillis: Long): Long =
-        Calendar.getInstance().apply {
-            timeInMillis = nowMillis
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
 
     private fun createChannel() {
         val channel = NotificationChannel(
