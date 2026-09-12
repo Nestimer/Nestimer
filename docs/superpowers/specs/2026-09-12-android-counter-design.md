@@ -211,13 +211,24 @@ Without this, the counter is defeated by force-stop or by revoking usage access,
 the parent never finds out. The server already stores `last_seen`; the work is
 surfacing it.
 
+**Amended after reading the code: the web dashboard already does this.**
+`web-dashboard/src/pages/DevicesPage.jsx` has `STALE_AFTER_MS = 15 * 60 * 1000`,
+`isStale()` and `staleLabel()`, rendering an orange "Not reporting since HH:MM" on the
+device card — with a comment naming it the compensating control for platforms the agent
+cannot forcibly lock. So the threshold this design would have proposed is already the
+one shipped, and the web half is done.
+
+What is left is the parent app, which has no equivalent:
+
 - `DeviceOut` (`api/app/schemas.py:62`) and `DeviceListOut` (`api/app/schemas.py:83`)
   already carry `last_seen` and `agent_version`, both serialized as UTC ISO strings.
-  No API change, and the list endpoint alone is enough for the device list.
-- ParentApp and the web dashboard show a device as **quiet** when `last_seen` is older
-  than a threshold — proposed 15 minutes, i.e. several missed 60s ticks, not one.
-- Shown per device in the child's device list, so "the phone stopped reporting at
-  16:20" is visible where the parent already looks.
+  No API change.
+- `Device` in `ParentApp/NesTimer/Models/Models.swift:80` already parses `lastSeen` into
+  `lastSeenDate` and exposes `isOnline` (3 min) and `lastSeenText`. It needs `isStale`
+  and `staleLabel` on the same model, matching the web's 15-minute threshold and wording
+  so the two surfaces cannot disagree.
+- Rendered in `DevicesListView.swift:96` and on `DeviceDetailView.swift:379`, where the
+  parent already looks.
 
 Deliberately not an alert or a push: no notification infrastructure exists, and adding
 one is its own project.
