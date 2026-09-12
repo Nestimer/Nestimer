@@ -88,14 +88,23 @@ struct DeviceRow: View {
 
             Spacer()
 
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
-                    .frame(width: 8, height: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(device.isOnline ? Color.green : Color.gray.opacity(0.3))
+                        .frame(width: 8, height: 8)
 
-                Text(device.isOnline ? "Online" : device.lastSeenText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text(device.isOnline ? "Online" : device.lastSeenText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if device.isStale {
+                    Text(device.staleLabel)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .padding(.vertical, 4)

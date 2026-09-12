@@ -377,6 +377,13 @@ struct DeviceDetailView: View {
                     .padding(.vertical, 12)
                     Divider().padding(.leading, 16)
                     infoRow(label: "Last Seen", value: device.lastSeenText)
+                    if device.isStale {
+                        Label(device.staleLabel, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                    }
                     if let version = device.agentVersion {
                         Divider().padding(.leading, 16)
                         infoRow(label: "Agent Version", value: "v\(version)")

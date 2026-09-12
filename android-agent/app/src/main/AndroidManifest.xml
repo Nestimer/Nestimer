@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Special access: granted by hand in Settings, never programmatically. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- The brief specified @android:drawable/ic_lock_idle_clock below, which does not
+         exist in the compileSdk 35 framework (verified via aapt2 dump / javap on
+         android.jar — only ic_lock_idle_alarm/_charging/_lock/_low_battery exist).
+         Substituted the nearest existing public equivalent: a clock icon. Mirrored in
+         CountingService.buildNotification's setSmallIcon for the same reason. -->
+    <application
+        android:label="NesTimer"
+        android:allowBackup="false"
+        android:icon="@android:drawable/ic_lock_idle_alarm">
+
+        <activity
+            android:name=".ui.SetupActivity"
+            android:exported="true"
+            android:label="NesTimer">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- specialUse, not dataSync: dataSync is capped near 6h/24h at targetSdk 35
+             (this service must run all day) and Android 14+ forbids starting a
+             dataSync foreground service from BOOT_COMPLETED, which would break
+             BootReceiver. See CountingService's class KDoc. -->
+        <service
+            android:name=".service.CountingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parental-control screen-time counter: observes foreground app usage for the whole day to enforce a shared daily time budget." />
+        </service>
+
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

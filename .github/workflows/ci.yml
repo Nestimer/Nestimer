@@ -122,3 +122,30 @@ jobs:
 
       - name: Build Web image
         run: docker build -t nestimer-web ./web-dashboard
+
+  # ─── Android agent (Kotlin unit tests + APK) ───
+  android-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-agent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      # Unit tests first: they cover UsageCounter and AgentClient, the only two
+      # layers a machine can check. Everything else on this platform is verified
+      # by hand on the phone, so a green job here means exactly these two passed.
+      - name: Unit tests
+        run: ./gradlew test
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
