@@ -1913,6 +1913,41 @@ still burns a 120-minute budget in roughly 15–20 real minutes and locks the ch
 - **All Macs pass:** assign the phone to the child. Phone time now drains the shared budget and the Mac locks sooner.
 - **Any Mac fails:** leave the phone on its own `Child`. It still counts correctly and still shows up in the dashboard; it just does not share a budget yet. Update the Mac, re-check Step 6, then attach.
 
+- [ ] **Step 7b: The checks review added, which the original list missed**
+
+These come from the final whole-branch review. Several exist because a defect was
+found and fixed; they are how you confirm the fix holds on the real device.
+
+- **Reboot at midday with an app in the foreground, then read the minutes** — not just
+  "does the service come back". Power the phone off while YouTube is open, leave it off
+  an hour, boot it, and check the dashboard rose by roughly the real usage and not by
+  the hour it was off. Android emits no `ACTIVITY_PAUSED` at shutdown; before the fix
+  this charged the whole powered-off period as usage, permanently, for the rest of the
+  day. The original checklist's "reboot, confirm it comes back" passes while that
+  happens — the service does come back; the number was wrong.
+- **Let the battery go flat once** and repeat that check. The unclean path emits no
+  lifecycle event at all.
+- **Navigate between screens inside one app, then check the total.** Android reports an
+  in-app activity switch as `PAUSED(A1)`, `RESUMED(A2)`, `STOPPED(A1)` under one package
+  name; honouring that `STOPPED` turned 60 minutes of use into 600. Covered by a unit
+  test now, but worth seeing once on the real event stream.
+- **Change the phone's time zone backward while the date stays the same**, then watch the
+  next tick. Before the fix the phone posted a smaller absolute total, which the server
+  accepts as a parent reset — erasing the day across every one of the child's devices
+  while `last_seen` kept advancing, so silence detection could not see it.
+- **Pair late in the day on purpose.** The first report is computed from local midnight
+  using system history that predates the install, so pairing at 18:00 charges the whole
+  day at once and can lock the Mac within a minute. Honest behaviour, but it will look
+  like a bug the first time — know it before the child does.
+- **Decline the battery-optimisation prompt deliberately**, leave the phone overnight, and
+  see how long the service survives. That single decision is the biggest determinant of
+  whether any of this works, and the app can only ask.
+- **Check `agent_version` in the dashboard** once paired: a Mac shows `v3.0` and the phone
+  `v1.0` in the same column. You need that column anyway for the Step 6 gate below.
+- **Watch the CI `android-build` job on the PR.** `assembleDebug` has only been proven
+  locally; `android-actions/setup-android@v3` provisioning platform 35 and accepting
+  licences on ubuntu has not been exercised yet.
+
 - [ ] **Step 8: Watch the first full day**
 
 Check once in the evening that the child's total looks like the sum of both devices and that neither counter has run away. The clamp logs a warning on every rejected report:
