@@ -11,9 +11,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- The brief specified @android:drawable/ic_lock_idle_clock below, which does not
+         exist in the compileSdk 35 framework (verified via aapt2 dump / javap on
+         android.jar — only ic_lock_idle_alarm/_charging/_lock/_low_battery exist).
+         Substituted the nearest existing public equivalent: a clock icon. Mirrored in
+         CountingService.buildNotification's setSmallIcon for the same reason. -->
     <application
         android:label="NesTimer"
         android:allowBackup="false"
@@ -29,10 +34,18 @@
             </intent-filter>
         </activity>
 
+        <!-- specialUse, not dataSync: dataSync is capped near 6h/24h at targetSdk 35
+             (this service must run all day) and Android 14+ forbids starting a
+             dataSync foreground service from BOOT_COMPLETED, which would break
+             BootReceiver. See CountingService's class KDoc. -->
         <service
             android:name=".service.CountingService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parental-control screen-time counter: observes foreground app usage for the whole day to enforce a shared daily time budget." />
+        </service>
 
         <receiver
             android:name=".service.BootReceiver"

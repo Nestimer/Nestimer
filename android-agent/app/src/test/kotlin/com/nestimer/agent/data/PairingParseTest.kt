@@ -42,4 +42,22 @@ class PairingParseTest {
         assertNull(Pairing.parse("https://my.nestimer.com|"))
         assertNull(Pairing.parse("|token"))
     }
+
+    @Test
+    fun `a server with no scheme is rejected`() {
+        // A parent who pastes "my.nestimer.com" without "https://" would otherwise save
+        // cleanly and then crash-loop CountingService once a minute, forever.
+        assertNull(Pairing.parse("my.nestimer.com|token"))
+    }
+
+    @Test
+    fun `a server with an unsupported scheme is rejected`() {
+        assertNull(Pairing.parse("ftp://my.nestimer.com|token"))
+    }
+
+    @Test
+    fun `an http scheme is accepted, matching the Mac agent's dev fallback`() {
+        val p = Pairing.parse("http://192.168.1.5:8000|token")
+        assertEquals("http://192.168.1.5:8000", p!!.server)
+    }
 }

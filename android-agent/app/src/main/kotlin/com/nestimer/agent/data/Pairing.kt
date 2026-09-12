@@ -44,6 +44,13 @@ data class Pairing(val server: String, val token: String) {
             val server = parts[0].trim().trimEnd('/')
             val token = parts[1].trim()
             if (server.isEmpty() || token.isEmpty()) return null
+            // A scheme-less host (e.g. a parent pasting "my.nestimer.com" without the
+            // "https://") saves cleanly but then crashes AgentClient's URL building
+            // (Request.Builder.url()/toHttpUrl() throw IllegalArgumentException outside
+            // its own runCatching) once a minute, forever. Reject it here instead.
+            if (!server.startsWith("http://", ignoreCase = true) &&
+                !server.startsWith("https://", ignoreCase = true)
+            ) return null
             return Pairing(server, token)
         }
     }
