@@ -49,7 +49,7 @@ android {
         create("release") {
             val path = localProps.getProperty("NESTIMER_KEYSTORE")
             // CI has no keystore and only ever builds debug; skip rather than fail.
-            if (path != null && file(path).exists()) {
+            if (!path.isNullOrBlank() && file(path).exists()) {
                 storeFile = file(path)
                 storePassword = localProps.getProperty("NESTIMER_KEYSTORE_PASSWORD")
                 keyAlias = localProps.getProperty("NESTIMER_KEY_ALIAS")
@@ -61,7 +61,10 @@ android {
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
-            if (localProps.getProperty("NESTIMER_KEYSTORE") != null) {
+            // Reuse the same completeness test as signingConfigs above, so the two
+            // guards can't disagree: a missing/moved keystore file cleanly skips
+            // signing here too, instead of attaching a half-configured config.
+            if (signingConfigs.getByName("release").storeFile != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

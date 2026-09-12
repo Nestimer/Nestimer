@@ -17,14 +17,49 @@ if [ -z "$SERVER" ] || [ -z "$VERSION" ]; then
     exit 1
 fi
 
+# Both values get interpolated into sed replacements and remote ssh/scp commands
+# below, so reject anything that isn't plainly a version or a host/IP before
+# touching either. A typo here must not be able to run arbitrary commands as
+# root on the production server.
+if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+    echo "ERROR: version '$VERSION' doesn't look like a version (expected e.g. 1.1, 1.2.3)."
+    exit 1
+fi
+if ! [[ "$SERVER" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    echo "ERROR: server '$SERVER' doesn't look like a hostname or IP."
+    exit 1
+fi
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 GRADLE_FILE="$ROOT/android-agent/app/build.gradle.kts"
 APK="$ROOT/android-agent/app/build/outputs/apk/release/app-release.apk"
 REMOTE_DIR="/var/www/nestimer/download"
 
+# If the version bump from a previous run was never committed, the versionCode
+# in this file is already in doubt: it may have been built and uploaded once
+# already, or discarded and about to be recomputed into a duplicate. Either
+# way, don't guess — make the operator sort it out first.
+if [ -n "$(cd "$ROOT" && git status --porcelain -- "$GRADLE_FILE")" ]; then
+    echo "ERROR: $GRADLE_FILE has uncommitted changes."
+    echo "       A previous run's version bump was never committed, so the next"
+    echo "       versionCode this script derives can't be trusted. Commit or"
+    echo "       discard those changes first."
+    exit 1
+fi
+
 export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
 export ANDROID_HOME="$(brew --prefix)/share/android-commandlinetools"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
+
+# Resolve the newest installed build-tools rather than hardcoding a patch
+# version — otherwise a version mismatch fails with "No such file or
+# directory" and gets misread as a signing/local.properties problem.
+BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -1)
+if [ -z "$BUILD_TOOLS_DIR" ]; then
+    echo "ERROR: no build-tools found under $ANDROID_HOME/build-tools/"
+    exit 1
+fi
+APKSIGNER="${BUILD_TOOLS_DIR}apksigner"
 
 # versionCode must increase monotonically and can never be reused once the app is
 # on Play, so derive it from the existing value rather than from the version name.
@@ -45,7 +80,7 @@ fi
 
 # Fail before uploading an unsigned APK — an unsigned one installs nowhere.
 echo "Verifying signature..."
-if ! "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"; then
+if ! "$APKSIGNER" verify --print-certs "$APK"; then
     echo "ERROR: apksigner rejected the APK. Is local.properties configured?"
     exit 1
 fi
@@ -59,6 +94,10 @@ fi
 
 scp "$APK" "root@$SERVER:$REMOTE_DIR/NesTimerAgent.apk"
 ssh "root@$SERVER" "echo '$VERSION' > $REMOTE_DIR/NesTimerAgent.apk.version"
+
+# Commit the version bump now that it's actually built and uploaded, so the
+# versionCode this run consumed can never be silently discarded and reused.
+(cd "$ROOT" && git add "$GRADLE_FILE" && git commit -m "chore: Android agent $VERSION (versionCode $NEXT_CODE)")
 
 echo ""
 echo "=== Done ==="

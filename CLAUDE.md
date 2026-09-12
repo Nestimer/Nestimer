@@ -159,7 +159,7 @@ cd ~/Nestimer && git pull && docker compose up -d --build
 ssh root@134.209.8.62 "cd ~/Nestimer && git pull && cp -R website/* /var/www/nestimer/"
 
 # Android agent update (from dev Mac) — sideload, no auto-update
-./push-android-update.sh <version>
+./push-android-update.sh 134.209.8.62 <version>
 # Then install by hand on the phone: the APK cannot push itself.
 ```
 
