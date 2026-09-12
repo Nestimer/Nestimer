@@ -12,6 +12,11 @@ private fun resumed(pkg: String, atMinute: Long) =
 private fun paused(pkg: String, atMinute: Long) =
     UsageEventRecord(pkg, EventType.PAUSED, min(atMinute))
 
+private fun stopped(pkg: String, atMinute: Long) =
+    UsageEventRecord(pkg, EventType.STOPPED, min(atMinute))
+
+private fun allStopped(atMinute: Long) = UsageEventRecord.allStopped(min(atMinute))
+
 class UsageCounterTest {
 
     @Test
@@ -101,5 +106,85 @@ class UsageCounterTest {
         val events = listOf(resumed("com.chrome", 10))
         val total = UsageCounter.foregroundMinutes(events, DAY_START, DAY_START - 1000)
         assertEquals(0.0, total, 0.001)
+    }
+
+    @Test
+    fun `a shutdown closes an open session instead of running it to now`() {
+        // The worked example in miniature: YouTube open at 09:00 (minute 540), phone
+        // powers off at 09:05 (545), boots at 13:00 (780). Android emits no PAUSED for
+        // YouTube — ever — so without ALL_STOPPED this is ~240 minutes of foreground
+        // time for a phone that was switched off, re-reported every tick until midnight.
+        val events = listOf(
+            resumed("com.youtube", 540),
+            allStopped(545),
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(780))
+        assertEquals(5.0, total, 0.001)
+    }
+
+    @Test
+    fun `a shutdown and a startup count the two real sessions, not the gap between them`() {
+        val events = listOf(
+            resumed("com.youtube", 540),
+            allStopped(545),  // DEVICE_SHUTDOWN
+            allStopped(780),  // DEVICE_STARTUP — nothing open, so a no-op
+            resumed("com.chrome", 790),
+            paused("com.chrome", 800),
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(900))
+        assertEquals(15.0, total, 0.001) // 5 + 10; the 235-minute power-off is not usage
+    }
+
+    @Test
+    fun `a startup with nothing open does not invent a session from the start of the day`() {
+        // A close must never behave like an unmatched PAUSED. If it did, the first boot
+        // of the day would post the whole morning as used.
+        val total = UsageCounter.foregroundMinutes(listOf(allStopped(300)), DAY_START, min(600))
+        assertEquals(0.0, total, 0.001)
+    }
+
+    @Test
+    fun `the screen going non-interactive closes an open session`() {
+        val events = listOf(
+            resumed("com.chrome", 10),
+            allStopped(25), // SCREEN_NON_INTERACTIVE
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
+        assertEquals(15.0, total, 0.001)
+    }
+
+    @Test
+    fun `a shutdown closes every open session, not just the last one`() {
+        val events = listOf(
+            resumed("com.chrome", 10),
+            resumed("com.youtube", 28),
+            paused("com.chrome", 30),
+            allStopped(50),
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
+        assertEquals(40.0, total, 0.001) // one merged timeline, 10..50
+    }
+
+    @Test
+    fun `a stop closes a session that never got a pause`() {
+        val events = listOf(
+            resumed("com.chrome", 10),
+            stopped("com.chrome", 25),
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
+        assertEquals(15.0, total, 0.001)
+    }
+
+    @Test
+    fun `a stop after its own pause changes nothing`() {
+        // The normal lifecycle order. STOPPED must not re-open, re-close, or fall back
+        // to the start of the day the way an unmatched PAUSED does.
+        val events = listOf(
+            resumed("com.chrome", 10),
+            paused("com.chrome", 25),
+            stopped("com.chrome", 26),
+        )
+        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
+        assertEquals(15.0, total, 0.001)
     }
 }
