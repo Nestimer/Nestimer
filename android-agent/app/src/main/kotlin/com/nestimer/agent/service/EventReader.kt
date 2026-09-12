@@ -46,13 +46,15 @@ class EventReader(private val context: Context) {
      * one, and bill a powered-off phone to the child's shared daily budget.
      * `DEVICE_STARTUP` closes anything still open from before the boot for the same
      * reason, and `SCREEN_NON_INTERACTIVE` is cheap insurance for any other path where
-     * the pause goes missing. `ACTIVITY_STOPPED` closes one package's session and is a
-     * no-op in the normal RESUMED → PAUSED → STOPPED order.
+     * the pause goes missing. `ACTIVITY_STOPPED` is deliberately ignored: sessions are
+     * keyed by package, not by activity instance, so ordinary in-app navigation between
+     * two activities of the same app emits PAUSED(A1), RESUMED(A2), STOPPED(A1) — and a
+     * STOPPED honoured here would close the sibling activity's still-live session,
+     * handing its later PAUSED to the from-start-of-day fallback instead.
      */
     private fun typeOf(eventType: Int): EventType? = when (eventType) {
         UsageEvents.Event.ACTIVITY_RESUMED -> EventType.RESUMED
         UsageEvents.Event.ACTIVITY_PAUSED -> EventType.PAUSED
-        UsageEvents.Event.ACTIVITY_STOPPED -> EventType.STOPPED
         UsageEvents.Event.DEVICE_SHUTDOWN,
         UsageEvents.Event.DEVICE_STARTUP,
         UsageEvents.Event.SCREEN_NON_INTERACTIVE,

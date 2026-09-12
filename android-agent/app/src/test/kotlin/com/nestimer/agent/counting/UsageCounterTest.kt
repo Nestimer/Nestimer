@@ -12,9 +12,6 @@ private fun resumed(pkg: String, atMinute: Long) =
 private fun paused(pkg: String, atMinute: Long) =
     UsageEventRecord(pkg, EventType.PAUSED, min(atMinute))
 
-private fun stopped(pkg: String, atMinute: Long) =
-    UsageEventRecord(pkg, EventType.STOPPED, min(atMinute))
-
 private fun allStopped(atMinute: Long) = UsageEventRecord.allStopped(min(atMinute))
 
 class UsageCounterTest {
@@ -166,25 +163,26 @@ class UsageCounterTest {
     }
 
     @Test
-    fun `a stop closes a session that never got a pause`() {
+    fun `in-app navigation is not cut short by the outgoing activity's ACTIVITY_STOPPED`() {
+        // This is the regression the STOPPED-handling removal protects against. Ordinary
+        // navigation between two activities of the *same* app emits, all under one
+        // packageName: ACTIVITY_PAUSED(A1), ACTIVITY_RESUMED(A2), ACTIVITY_STOPPED(A1).
+        // Sessions here are keyed by packageName alone, with no per-activity identity, so
+        // a STOPPED for A1 could only ever remove the entry that actually belongs to the
+        // still-foreground A2 session. If that STOPPED were honoured, A2's real PAUSED at
+        // 10:00 would find nothing open and fall back to startOfDayMillis, turning 60
+        // minutes of real use into 600. EventReader now drops ACTIVITY_STOPPED before it
+        // ever becomes a UsageEventRecord (see EventReader.typeOf), so it is deliberately
+        // absent from this list too, exactly as it reaches UsageCounter in production.
         val events = listOf(
-            resumed("com.chrome", 10),
-            stopped("com.chrome", 25),
+            resumed("com.example.app", 540), // A1 resumes at 09:00
+            paused("com.example.app", 541),  // A1 pauses at 09:01
+            resumed("com.example.app", 541), // A2 resumes at 09:01
+            // ACTIVITY_STOPPED(A1) fires here in the real event stream but never reaches
+            // UsageCounter as a UsageEventRecord — it is filtered out upstream.
+            paused("com.example.app", 600),  // A2 pauses at 10:00
         )
         val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
-        assertEquals(15.0, total, 0.001)
-    }
-
-    @Test
-    fun `a stop after its own pause changes nothing`() {
-        // The normal lifecycle order. STOPPED must not re-open, re-close, or fall back
-        // to the start of the day the way an unmatched PAUSED does.
-        val events = listOf(
-            resumed("com.chrome", 10),
-            paused("com.chrome", 25),
-            stopped("com.chrome", 26),
-        )
-        val total = UsageCounter.foregroundMinutes(events, DAY_START, min(600))
-        assertEquals(15.0, total, 0.001)
+        assertEquals(60.0, total, 0.001)
     }
 }

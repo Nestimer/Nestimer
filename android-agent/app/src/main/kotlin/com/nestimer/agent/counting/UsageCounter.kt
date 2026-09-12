@@ -36,8 +36,8 @@ object UsageCounter {
      * window did — before local midnight — so it runs from [startOfDayMillis].
      *
      * "The app is in the foreground right now" is only true if the device was running
-     * the whole time, which is why [EventType.ALL_STOPPED] and [EventType.STOPPED]
-     * exist. A phone that powers off at 09:05 with YouTube open and boots at 13:00
+     * the whole time, which is why [EventType.ALL_STOPPED] exists. A phone that powers
+     * off at 09:05 with YouTube open and boots at 13:00
      * produces a RESUMED with no PAUSED after it — ever — so extending it to now would
      * report ~4 hours of foreground time for a phone that was switched off, and would
      * keep re-reporting it every tick until local midnight. The server takes this
@@ -68,15 +68,6 @@ object UsageCounter {
                 EventType.PAUSED -> {
                     val start = open.remove(event.packageName) ?: startOfDayMillis
                     if (event.timestampMillis > start) out += start to event.timestampMillis
-                }
-                // After a PAUSED this package has nothing open and STOPPED does
-                // nothing — which is the normal case. It only bites when the PAUSED
-                // never arrived.
-                EventType.STOPPED -> {
-                    val start = open.remove(event.packageName)
-                    if (start != null && event.timestampMillis > start) {
-                        out += start to event.timestampMillis
-                    }
                 }
                 EventType.ALL_STOPPED -> {
                     for (start in open.values) {

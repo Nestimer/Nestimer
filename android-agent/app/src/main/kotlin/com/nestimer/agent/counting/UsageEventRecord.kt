@@ -42,15 +42,6 @@ enum class EventType {
     PAUSED,
 
     /**
-     * This package's activity was fully stopped.
-     *
-     * In the normal lifecycle this arrives just after [PAUSED] and is a no-op. It
-     * matters only when the [PAUSED] never came: it then closes the session that would
-     * otherwise hang open.
-     */
-    STOPPED,
-
-    /**
      * Every open session ended here, whatever package it belonged to.
      *
      * The device shut down, booted, or the screen went non-interactive. Android emits
