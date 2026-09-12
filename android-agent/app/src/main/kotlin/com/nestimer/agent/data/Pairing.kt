@@ -1,6 +1,7 @@
 package com.nestimer.agent.data
 
 import android.content.Context
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -14,6 +15,7 @@ import androidx.security.crypto.MasterKey
 data class Pairing(val server: String, val token: String) {
 
     companion object {
+        private const val TAG = "NesTimerPairing"
         private const val FILE = "nestimer_pairing"
         private const val KEY_SERVER = "server"
         private const val KEY_TOKEN = "token"
@@ -26,15 +28,42 @@ data class Pairing(val server: String, val token: String) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
 
-        fun load(context: Context): Pairing? {
+        /**
+         * The saved pairing, or null if there is none **or it cannot be read**.
+         *
+         * The keystore can fail: `security-crypto` is still an alpha with a real record
+         * of `GeneralSecurityException` on OEM devices, the master key can be
+         * invalidated by a lock-screen change or a restore, and the prefs file can be
+         * corrupted. None of that may be allowed to throw. `CountingService` calls this
+         * from inside a bare `thread { }`, where an uncaught exception takes the whole
+         * process down once a minute, and `SetupActivity` calls it during `onResume` —
+         * so an unguarded throw here is a crash on launch with no way out but clearing
+         * app data. Degrading to "not paired" leaves the parent with a screen that says
+         * so and a Pair button that overwrites the unreadable entry.
+         */
+        fun load(context: Context): Pairing? = runCatching {
             val p = prefs(context)
-            val server = p.getString(KEY_SERVER, null) ?: return null
-            val token = p.getString(KEY_TOKEN, null) ?: return null
-            return Pairing(server, token)
+            val server = p.getString(KEY_SERVER, null) ?: return@runCatching null
+            val token = p.getString(KEY_TOKEN, null) ?: return@runCatching null
+            Pairing(server, token)
+        }.getOrElse {
+            Log.w(TAG, "Could not read the saved pairing — treating this device as unpaired", it)
+            null
         }
 
-        fun save(context: Context, server: String, token: String) {
+        /**
+         * Saves the pairing; returns false if it could not be written.
+         *
+         * Guarded for the same reason as [load], and it reports rather than silently
+         * swallowing: a parent who taps Pair must not be told "Paired with …" by an app
+         * that stored nothing and will sit at "Not reporting yet" forever.
+         */
+        fun save(context: Context, server: String, token: String): Boolean = runCatching {
             prefs(context).edit().putString(KEY_SERVER, server).putString(KEY_TOKEN, token).apply()
+            true
+        }.getOrElse {
+            Log.w(TAG, "Could not save the pairing", it)
+            false
         }
 
         /** Parse "https://my.nestimer.com|eyJ..." — split on the single "|", as the Mac does. */

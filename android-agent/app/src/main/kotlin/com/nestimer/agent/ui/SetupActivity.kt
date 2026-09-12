@@ -1,5 +1,6 @@
 package com.nestimer.agent.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -81,7 +83,13 @@ class SetupActivity : ComponentActivity() {
 
         root.addView(Button(this).apply {
             text = "Grant usage access"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+            setOnClickListener {
+                openSettings(
+                    Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
+                    "This phone has no usage access screen. Find it under " +
+                        "Settings → Apps → Special app access → Usage access.",
+                )
+            }
         })
 
         root.addView(Button(this).apply {
@@ -127,7 +135,18 @@ class SetupActivity : ComponentActivity() {
             ).show()
             return
         }
-        Pairing.save(this, parsed.server, parsed.token)
+        if (!Pairing.save(this, parsed.server, parsed.token)) {
+            // The encrypted store refused to write. Saying "Paired with …" here would
+            // leave the parent looking at a screen that reads "Paired: MISSING" with no
+            // idea why.
+            Toast.makeText(
+                this,
+                "Could not save the pairing on this device — secure storage is unavailable.",
+                Toast.LENGTH_LONG,
+            ).show()
+            refreshStatus()
+            return
+        }
         Toast.makeText(this, "Paired with ${parsed.server}", Toast.LENGTH_LONG).show()
         refreshStatus()
         startIfReady()
@@ -199,12 +218,33 @@ class SetupActivity : ComponentActivity() {
 
     @Suppress("BatteryLife") // deliberate: the service dies within hours without it
     private fun requestBatteryExemption() {
-        startActivity(
+        openSettings(
             Intent(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:$packageName"),
-            )
+            ),
+            "This phone has no battery optimisation screen. Find NesTimer under " +
+                "Settings → Apps → Battery and set it to Unrestricted.",
         )
+    }
+
+    /**
+     * Opens a Settings deep link, or explains where to go by hand.
+     *
+     * Neither of these actions is guaranteed to resolve — an OEM is free to ship
+     * neither screen — and an unhandled implicit intent is an `ActivityNotFoundException`
+     * crash on tap. Catching the throw rather than pre-checking `resolveActivity` is
+     * deliberate: package-visibility filtering can return null for an activity that does
+     * exist, which would send a parent to the fallback text on a phone where the button
+     * would have worked.
+     */
+    private fun openSettings(intent: Intent, fallbackMessage: String) {
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("NesTimerSetup", "No activity for ${intent.action}", e)
+            Toast.makeText(this, fallbackMessage, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
