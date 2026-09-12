@@ -130,6 +130,25 @@ struct Device: Decodable, Identifiable {
         if diff < 86400 { return "\(Int(diff / 3600)) hr ago" }
         return "\(Int(diff / 86400)) days ago"
     }
+
+    /// A device is stale when it hasn't reported in over 15 minutes -- several missed
+    /// 60s ticks, not one. This is the compensating control for platforms the agent
+    /// can't forcibly lock: on Android the child can force-stop the app or revoke usage
+    /// access, and without this the bypass is both free and invisible.
+    ///
+    /// Kept identical to STALE_AFTER_MS in web-dashboard/src/pages/DevicesPage.jsx --
+    /// a parent checking both surfaces must not see them disagree.
+    var isStale: Bool {
+        guard let date = lastSeenDate else { return true }
+        return Date().timeIntervalSince(date) > 15 * 60
+    }
+
+    var staleLabel: String {
+        guard let date = lastSeenDate else { return "Never reported" }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return "Not reporting since \(f.string(from: date))"
+    }
 }
 
 // MARK: - Policy
