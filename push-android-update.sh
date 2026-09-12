@@ -54,7 +54,9 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 # Resolve the newest installed build-tools rather than hardcoding a patch
 # version — otherwise a version mismatch fails with "No such file or
 # directory" and gets misread as a signing/local.properties problem.
-BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -1)
+# `|| true` is load-bearing: under `set -e` with `pipefail` a failing `ls` would
+# abort the script here, before the empty-check below could print its explanation.
+BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -1 || true)
 if [ -z "$BUILD_TOOLS_DIR" ]; then
     echo "ERROR: no build-tools found under $ANDROID_HOME/build-tools/"
     exit 1
@@ -67,8 +69,25 @@ CURRENT_CODE=$(grep -E '^\s*versionCode = ' "$GRADLE_FILE" | head -1 | grep -oE 
 NEXT_CODE=$((CURRENT_CODE + 1))
 echo "versionCode $CURRENT_CODE -> $NEXT_CODE, versionName -> $VERSION"
 
+# The bump has to happen BEFORE the build — the APK must carry the new versionCode —
+# so it cannot simply be moved after it. Instead it is undone on any failure: the
+# guard above already proved the file was clean, so restoring it is safe, and it keeps
+# a failed run from leaving the tree dirty and self-blocking on that same guard next
+# time. Cleared once the bump is committed, at which point there is nothing to revert.
+BUMP_APPLIED=0
+revert_bump_on_failure() {
+    local status=$?
+    if [ "$status" -ne 0 ] && [ "$BUMP_APPLIED" -eq 1 ]; then
+        echo ""
+        echo "Run failed — reverting the uncommitted version bump in $GRADLE_FILE"
+        (cd "$ROOT" && git checkout -- "$GRADLE_FILE") || true
+    fi
+}
+trap revert_bump_on_failure EXIT
+
 sed -i '' "s/versionCode = $CURRENT_CODE/versionCode = $NEXT_CODE/" "$GRADLE_FILE"
 sed -i '' "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/" "$GRADLE_FILE"
+BUMP_APPLIED=1
 
 echo "Building signed release..."
 (cd "$ROOT/android-agent" && ./gradlew --quiet assembleRelease)
@@ -97,7 +116,10 @@ ssh "root@$SERVER" "echo '$VERSION' > $REMOTE_DIR/NesTimerAgent.apk.version"
 
 # Commit the version bump now that it's actually built and uploaded, so the
 # versionCode this run consumed can never be silently discarded and reused.
-(cd "$ROOT" && git add "$GRADLE_FILE" && git commit -m "chore: Android agent $VERSION (versionCode $NEXT_CODE)")
+# Commit with an explicit pathspec rather than `git add` + `git commit`: the latter
+# would sweep in whatever else the operator happened to have staged.
+(cd "$ROOT" && git commit -m "chore: Android agent $VERSION (versionCode $NEXT_CODE)" -- "$GRADLE_FILE")
+BUMP_APPLIED=0
 
 echo ""
 echo "=== Done ==="
