@@ -381,6 +381,8 @@ struct DeviceDetailView: View {
                         Label(device.staleLabel, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
                     }
                     if let version = device.agentVersion {
                         Divider().padding(.leading, 16)
