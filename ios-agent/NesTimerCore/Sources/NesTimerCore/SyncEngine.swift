@@ -28,11 +28,15 @@ public actor SyncEngine {
     private let calendar: Calendar
     private let now: @Sendable () -> Date
     private let uptime: @Sendable () -> TimeInterval
+    /// Diagnostics: (step, seconds) for slow steps.
+    private let trace: @Sendable (String, TimeInterval) -> Void
 
     public init(api: AgentAPI, store: StateStore, shield: Shield, scheduler: MonitorScheduler,
                 notifier: Notifier, secrets: SecretStore, calendar: Calendar = .current,
                 now: @escaping @Sendable () -> Date = Date.init,
-                uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+                uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                trace: @escaping @Sendable (String, TimeInterval) -> Void = { _, _ in }) {
+        self.trace = trace
         self.api = api; self.store = store; self.shield = shield; self.scheduler = scheduler
         self.notifier = notifier; self.secrets = secrets; self.calendar = calendar
         self.now = now; self.uptime = uptime
@@ -230,20 +234,28 @@ public actor SyncEngine {
 
     /// iOS side effects, with no lock held. If no lock event can be armed, the phone must
     /// not stay open.
+    private func timed<T>(_ step: String, _ work: () throws -> T) rethrows -> T {
+        let t0 = Date()
+        defer { trace(step, Date().timeIntervalSince(t0)) }
+        return try work()
+    }
+
     private func carryOut(_ plan: EnforcementPlan) -> Decision {
         var decision = plan.decision
         do {
-            try scheduler.armEvents(plan.events)
+            try timed("armEvents") { try scheduler.armEvents(plan.events) }
         } catch {
             if !decision.isShielded {
                 decision = .shield(.agentError)
                 store.update { s in s.shielded = true; s.paused = false }
             }
         }
-        try? scheduler.armWindows(plan.windows)
-        switch decision {
-        case .shield(let reason): shield.apply(reason)
-        case .open: shield.remove()
+        timed("armWindows") { try? scheduler.armWindows(plan.windows) }
+        timed("shield") {
+            switch decision {
+            case .shield(let reason): shield.apply(reason)
+            case .open: shield.remove()
+            }
         }
         for n in plan.warnings { notifier.warn(minutesLeft: n) }
         if plan.expired { notifier.expired() }

@@ -22,11 +22,25 @@ struct FileStateStore: StateStore {
 
     /// The app and the monitor extension are separate processes: hold an exclusive flock on
     /// a lock file in the App Group for each read-modify-write.
+    ///
+    /// The wait is bounded: iOS can suspend the monitor extension at any moment, and a
+    /// suspended process keeps its flock. After 2 s we go ahead unlocked — the merge rules
+    /// (max of counters, union of attempts) make a rare lost race cheap; a hung app is not.
     func update<T>(_ body: (inout AgentState) -> T) -> T {
         let path = AppGroup.container.appendingPathComponent("state.lock").path
         let fd = open(path, O_CREAT | O_RDWR, 0o600)
-        if fd >= 0 { flock(fd, LOCK_EX) }
-        defer { if fd >= 0 { flock(fd, LOCK_UN); close(fd) } }
+        let started = Date()
+        var locked = false
+        if fd >= 0 {
+            while true {
+                locked = flock(fd, LOCK_EX | LOCK_NB) == 0
+                if locked || Date().timeIntervalSince(started) >= 2 { break }
+                usleep(20_000)
+            }
+        }
+        let waited = Date().timeIntervalSince(started)
+        if waited > 0.2 || !locked { DebugLog.write(String(format: "state lock: waited %.2fs, locked=%@", waited, locked ? "yes" : "NO")) }
+        defer { if fd >= 0 { if locked { flock(fd, LOCK_UN) }; close(fd) } }
         var s = load()
         let r = body(&s)
         save(s)
@@ -111,10 +125,37 @@ struct LocalNotifier: Notifier {
     }
 }
 
+/// For the monitor extension. DeviceActivityCenter.startMonitoring blocks while *any*
+/// monitor callback is running — including the one calling it — so inside a callback the
+/// arming is only recorded, and `flush()` performs it once the callback has returned.
+final class DeferredScheduler: MonitorScheduler, @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [PlannedEvent]?
+    private var windows: [PlannedWindow]?
+
+    func armEvents(_ events: [PlannedEvent]) throws { lock.lock(); self.events = events; lock.unlock() }
+    func armWindows(_ windows: [PlannedWindow]) throws { lock.lock(); self.windows = windows; lock.unlock() }
+
+    func flush() {
+        lock.lock(); let e = events, w = windows; lock.unlock()
+        let real = DeviceActivityScheduler()
+        if let e {
+            do { try real.armEvents(e) } catch {
+                // No lock event could be armed: don't leave the phone open unmonitored.
+                DebugLog.write("deferred armEvents failed: \(error) — shielding")
+                ManagedShield().apply(.agentError)
+                FileStateStore().update { $0.shielded = true; $0.paused = false }
+            }
+        }
+        if let w { try? real.armWindows(w) }
+    }
+}
+
 enum Engine {
-    static func make() -> SyncEngine {
+    static func make(scheduler: MonitorScheduler = DeviceActivityScheduler()) -> SyncEngine {
         SyncEngine(api: AgentClient(), store: FileStateStore(), shield: ManagedShield(),
-                   scheduler: DeviceActivityScheduler(), notifier: LocalNotifier(), secrets: Keychain(),
-                   calendar: AppGroup.homeCalendar)
+                   scheduler: scheduler, notifier: LocalNotifier(), secrets: Keychain(),
+                   calendar: AppGroup.homeCalendar,
+                   trace: { step, s in if s > 0.5 { DebugLog.write(String(format: "%@ took %.1fs", step, s)) } })
     }
 }

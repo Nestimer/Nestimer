@@ -16,6 +16,16 @@ struct AgentClient: AgentAPI {
         return URLSession(configuration: c)
     }()
 
+    /// Times each call; slow ones go to the debug log.
+    private func timed<T>(_ label: String, _ work: () async throws -> T) async rethrows -> T {
+        let started = Date()
+        defer {
+            let took = Date().timeIntervalSince(started)
+            if took > 1 { DebugLog.write(String(format: "%@ took %.1fs", label, took)) }
+        }
+        return try await work()
+    }
+
     private func request(_ path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
         guard let base, let token, let url = URL(string: base + path) else { throw NotPaired() }
         var r = URLRequest(url: url)
@@ -28,7 +38,7 @@ struct AgentClient: AgentAPI {
     static var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown" }
 
     func fetchConfig(localDate: String) async throws -> ConfigResponse {
-        let (data, resp) = try await Self.session.data(for: request("/api/v1/agent/config?date=\(localDate)&version=ios-\(Self.version)"))
+        let (data, resp) = try await timed("config") { try await Self.session.data(for: request("/api/v1/agent/config?date=\(localDate)&version=ios-\(Self.version)")) }
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { throw Unreachable() }
         let policy = try JSONDecoder().decode(ServerPolicy.self, from: data)
         // nginx's Date header: the server clock, which the child can't change.
@@ -46,7 +56,7 @@ struct AgentClient: AgentAPI {
 
     func reportUsage(date: String, totalMinutes: Double) async throws {
         let body = try JSONEncoder().encode(UsageReport(date: date, totalMinutes: totalMinutes))
-        let (_, resp) = try await Self.session.data(for: request("/api/v1/agent/usage", method: "POST", body: body))
+        let (_, resp) = try await timed("usage") { try await Self.session.data(for: request("/api/v1/agent/usage", method: "POST", body: body)) }
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw Unreachable() }
     }
 

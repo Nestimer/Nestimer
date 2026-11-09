@@ -35,3 +35,22 @@ enum AppGroup {
         return try? JSONDecoder().decode(type, from: data)
     }
 }
+
+
+/// A small rolling debug log in the App Group (who: app or extension). Readable from the
+/// app's Debug section; no secrets are written here.
+enum DebugLog {
+    static var url: URL { AppGroup.container.appendingPathComponent("debug.log") }
+
+    static func write(_ line: String) {
+        let who = Bundle.main.bundleIdentifier?.components(separatedBy: ".").last ?? "?"
+        let entry = "\(ISO8601DateFormatter().string(from: Date())) [\(who)] \(line)\n"
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(Data(entry.utf8)); try? h.close()
+        } else {
+            try? Data(entry.utf8).write(to: url)
+        }
+    }
+
+    static func read() -> String { (try? String(contentsOf: url, encoding: .utf8)) ?? "" }
+}

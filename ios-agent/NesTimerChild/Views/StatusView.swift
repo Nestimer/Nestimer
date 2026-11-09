@@ -62,6 +62,7 @@ struct StatusView: View {
                 #if DEBUG
                 Section("Debug") {
                     Button("Refresh") { Task { await refresh() } }
+                    Button("Copy debug log") { UIPasteboard.general.string = DebugLog.read() }
                     Button("Reset pairing", role: .destructive) {
                         Keychain.delete(.apiToken); Keychain.delete(.serverURL); Keychain.delete(.totpSecret)
                         onUnpair()
@@ -105,8 +106,11 @@ struct StatusView: View {
     }
 
     private func refresh() async {
+        let started = Date()
         decision = await Engine.make().onForeground()
         lastSync = Date()
+        let took = Date().timeIntervalSince(started)
+        if took > 3 { DebugLog.write(String(format: "app refresh took %.1fs", took)) }
     }
 
     private func confirmTimeZone() async {
