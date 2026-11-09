@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
@@ -68,15 +68,20 @@ def get_effective_limit(policy: Policy, weekday: int) -> int:
 ENFORCE_PLAUSIBLE_DATES = True
 
 
-def _require_plausible_local_date(date: str, now: datetime) -> None:
+def _require_plausible_local_date(date: str, now: datetime, allow_previous_day: bool = False) -> None:
     """A local date must exist somewhere on Earth right now (UTC-12 … UTC+14).
 
     Agents send their own local date, and the child controls the device clock. Without
     this check, moving the clock a day forward fetches a fresh, unused budget.
+
+    `allow_previous_day` (usage reports only): a phone reports yesterday's last minutes on
+    its first sync of the morning, which in the Americas is after yesterday has ended
+    everywhere. Accepting an older date doesn't help the forward-clock trick.
     """
     if not ENFORCE_PLAUSIBLE_DATES:
         return
-    plausible = {(now + timedelta(hours=h)).strftime("%Y-%m-%d") for h in (-12, 0, 14)}
+    hours = (-36, -12, 0, 14) if allow_previous_day else (-12, 0, 14)
+    plausible = {(now + timedelta(hours=h)).strftime("%Y-%m-%d") for h in hours}
     if date not in plausible:
         raise HTTPException(status_code=400, detail="Date out of range: check the device's date and time")
 
@@ -292,7 +297,7 @@ async def report_usage(
     report — see `_clamp_reported_minutes`.
     """
     now = datetime.now(timezone.utc)
-    _require_plausible_local_date(report.date, now)
+    _require_plausible_local_date(report.date, now, allow_previous_day=True)
     result = await db.execute(
         select(UsageLog).where(
             UsageLog.device_id == device.id, UsageLog.date == report.date
@@ -351,10 +356,19 @@ async def verify_totp_endpoint(
     step = matching_step(device.shared_secret, body.code)
     # One-time codes: a step at or below the last accepted one is spent. Without this a
     # child can replay one code for ~10 minutes of repeated 5-minute unlocks.
-    valid = step is not None and (device.last_totp_step is None or step > device.last_totp_step)
-    if valid:
-        device.last_totp_step = step
+    # Compare-and-set in one statement: two concurrent requests with the same code can't
+    # both win (the ORM's copy of the row may be stale).
+    valid = False
+    if step is not None:
+        result = await db.execute(
+            update(Device)
+            .where(Device.id == device.id)
+            .where(or_(Device.last_totp_step.is_(None), Device.last_totp_step < step))
+            .values(last_totp_step=step)
+            .execution_options(synchronize_session=False)
+        )
         await db.commit()
+        valid = result.rowcount == 1
     return TOTPVerifyResponse(valid=valid, granted_minutes=5 if valid else 0)
 
 

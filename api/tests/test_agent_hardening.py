@@ -70,3 +70,54 @@ async def test_older_code_rejected_after_newer_one_used(client):
     assert newer.json()["valid"] is True
     older = await client.post("/api/v1/agent/verify-totp", json={"code": _code_for_counter(secret, now - 1)}, headers=_agent(device))
     assert older.json()["valid"] is False
+
+
+def test_usage_accepts_yesterday_late_in_the_americas():
+    """A phone in UTC-5 reports yesterday's last minutes at 08:00 local (13:00 UTC)."""
+    from fastapi import HTTPException
+    from app.routers.agent import _require_plausible_local_date
+    now = datetime(2026, 11, 10, 13, 0, tzinfo=timezone.utc)
+    _require_plausible_local_date("2026-11-09", now, allow_previous_day=True)
+    with pytest.raises(HTTPException):
+        _require_plausible_local_date("2026-11-09", now)  # /config stays strict
+    with pytest.raises(HTTPException):
+        _require_plausible_local_date("2026-11-08", now, allow_previous_day=True)
+    with pytest.raises(HTTPException):
+        _require_plausible_local_date("2026-11-12", now, allow_previous_day=True)
+
+
+async def test_usage_endpoint_accepts_yesterday(client):
+    device = await _device(client)
+    yesterday = (datetime.now(timezone.utc) - timedelta(hours=12, days=1)).strftime("%Y-%m-%d")
+    r = await client.post("/api/v1/agent/usage", json={"date": yesterday, "total_minutes": 5}, headers=_agent(device))
+    assert r.status_code == 200, r.text
+
+
+async def test_totp_stale_read_cannot_reuse_a_code(client):
+    """Two concurrent verifies read last_totp_step before either commits; only one may win."""
+    from sqlalchemy import select
+    from sqlalchemy.orm.attributes import set_committed_value
+    from app.models.models import Device
+    import app.routers.agent as agent
+
+    device = await _device(client)
+    secret = device["shared_secret"]
+    code = _code_for_counter(secret, int(datetime.now(timezone.utc).timestamp()) // STEP)
+    first = await client.post("/api/v1/agent/verify-totp", json={"code": code}, headers=_agent(device))
+    assert first.json()["valid"] is True
+
+    # Simulate the second request having read the row before the first one committed.
+    orig_check = agent.totp_limiter.check
+
+    async def check_then_forget(db, device_id):
+        await orig_check(db, device_id)
+        dev = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one()
+        # What a stale, pre-commit read would have seen; not a pending write.
+        set_committed_value(dev, "last_totp_step", None)
+
+    agent.totp_limiter.check = check_then_forget
+    try:
+        again = await client.post("/api/v1/agent/verify-totp", json={"code": code}, headers=_agent(device))
+    finally:
+        agent.totp_limiter.check = orig_check
+    assert again.json()["valid"] is False
