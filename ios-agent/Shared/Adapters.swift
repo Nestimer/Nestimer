@@ -9,7 +9,7 @@ import UserNotifications
 struct Selections: Codable {
     /// "All Apps & Categories" from the picker — the usage that counts.
     var counted = FamilyActivitySelection()
-    /// Phone + Messages — never shielded.
+    /// Messages — never shielded. (iOS never shields Phone; it can't even be picked.)
     var exempt = FamilyActivitySelection()
 
     static func load() -> Selections { AppGroup.read(Selections.self, from: AppGroup.selectionURL) ?? Selections() }

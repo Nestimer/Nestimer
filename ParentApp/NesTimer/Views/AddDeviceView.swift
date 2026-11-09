@@ -97,7 +97,7 @@ struct AddDeviceView: View {
                             1. Install NesTimer on the child's iPhone.
                             2. Open it and paste the line above.
                             3. Approve Screen Time access when your iPhone asks.
-                            4. Tick "All Apps & Categories", then Phone and Messages.
+                            4. Tick "All Apps & Categories", then Messages (Phone is never blocked).
                             """)
                             .font(.callout)
                         } header: {

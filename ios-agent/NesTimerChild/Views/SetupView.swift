@@ -29,7 +29,7 @@ struct SetupView: View {
                     next: { step = .pickExempt })
                 case .pickExempt: pickSection(
                     title: "Always allowed",
-                    text: "Find and tick Phone and Messages \u{2014} they stay available even when time is up.",
+                    text: "Find and tick Messages \u{2014} it stays available even when time is up. (Phone is never blocked.)",
                     summary: "\(selections.exempt.applicationTokens.count) apps selected",
                     ready: !selections.exempt.applicationTokens.isEmpty,
                     next: finish)
