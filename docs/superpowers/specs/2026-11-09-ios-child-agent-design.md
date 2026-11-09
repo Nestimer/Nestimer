@@ -241,3 +241,25 @@ network), we stop and redesign before the real build.
 - App UI layout: setup screen, status screen (remaining time, locked/unlocked, code entry).
 - Shared-code packaging (local Swift package vs. a shared folder in both projects).
 - Version string scheme for `?version=`.
+
+## Spike and first device-run findings (2026-11-09, Ruslan's iPhone, iOS 27)
+
+- **Q2 extension network:** yes — `DeviceActivityMonitor` extension POSTs to
+  `my.nestimer.com` fine (dozens of 200s).
+- **Q4 shield:** `shield.applicationCategories = .all(except:)` blocks everything; Phone and
+  Messages keep working. **Phone can't even be picked in `FamilyActivityPicker`** — iOS never
+  shields it — so setup only asks for Messages.
+- **Q5 limits:** 120 events on one activity were accepted.
+- **Past activity:** with `includesPastActivity: true`, every (re)start of monitoring
+  immediately delivers all thresholds already passed today, as a burst.
+- **`DeviceActivityCenter.startMonitoring` blocks while any monitor callback is running**,
+  including the caller's own. Arming inside the extension's callback stalled every wake to
+  its timeout (25–75 s) and the app queued behind it. The extension now arms after its
+  callback returns.
+- **Screen Time "Share Across Devices"** makes the "All Apps & Categories" usage include
+  other devices on the same Apple ID (the Mac). Turning it on mid-day pushed the counted
+  usage from ~140 to ~450 minutes in ten minutes. Countermeasures: observed usage can't grow
+  faster than the clock; **the child's devices must have Share Across Devices off** (the Mac
+  agent already counts Mac time — sharing would count it twice). Added to the device
+  checklist and pairing instructions.
+- Q1/Q6 (cadence and lag of 5-minute events) — being measured in the device run.

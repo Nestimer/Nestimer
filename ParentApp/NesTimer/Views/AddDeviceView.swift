@@ -98,6 +98,7 @@ struct AddDeviceView: View {
                             2. Open it and paste the line above.
                             3. Approve Screen Time access when your iPhone asks.
                             4. Tick "All Apps & Categories", then Messages (Phone is never blocked).
+                            5. On that iPhone, turn off Settings → Screen Time → Share Across Devices.
                             """)
                             .font(.callout)
                         } header: {

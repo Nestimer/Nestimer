@@ -59,6 +59,8 @@ struct SetupView: View {
     private var authorizeSection: some View {
         Section {
             Text("NesTimer needs Screen Time access to count and limit screen time.")
+            Text("Also turn off Settings \u{2192} Screen Time \u{2192} Share Across Devices, so time on other devices isn't counted here twice.")
+                .font(.footnote).foregroundStyle(.secondary)
             Button("Allow Screen Time access") { Task { await authorize() } }
         }
     }
