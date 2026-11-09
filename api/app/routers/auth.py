@@ -6,14 +6,14 @@ from ..auth import hash_password, verify_password, create_access_token, get_curr
 from ..database import get_db
 from ..models.models import User
 from ..schemas import UserCreate, UserLogin, Token, UserOut
-from ..rate_limit import login_limiter, register_limiter
+from ..rate_limit import client_ip, login_limiter, register_limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=Token)
 async def register(data: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
-    register_limiter.check(request.client.host)
+    register_limiter.check(client_ip(request))
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -33,7 +33,7 @@ async def register(data: UserCreate, request: Request, db: AsyncSession = Depend
 
 @router.post("/login", response_model=Token)
 async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
-    login_limiter.check(request.client.host)
+    login_limiter.check(client_ip(request))
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):

@@ -30,6 +30,22 @@ class RateLimiter:
         self._attempts[key].append(now)
 
 
+def client_ip(request: Request) -> str:
+    """The real client IP for rate limiting.
+
+    Behind host nginx → web-container nginx → uvicorn, `request.client.host` is the
+    web container for every request. Host nginx sets X-Real-IP to `$remote_addr`
+    (overwriting anything the client sent) and the inner nginx passes it through, so it
+    is trustworthy. X-Forwarded-For is deliberately ignored: host nginx appends to it, so
+    its leftmost entry is client-controlled. The API port is bound to 127.0.0.1, so only
+    the proxies can set X-Real-IP.
+    """
+    real = (request.headers.get("x-real-ip") or "").strip()
+    if real:
+        return real
+    return request.client.host if request.client else "unknown"
+
+
 # Shared instances
 login_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 totp_limiter = RateLimiter(max_attempts=5, window_seconds=300)
