@@ -518,3 +518,25 @@ async def test_moving_a_device_keeps_the_activity_with_a_sibling_left_behind(cli
     )
     assert resp.json()["activities"] == [], \
         "the destination child's other Mac must not inherit another child's schedule"
+
+
+async def test_create_ios_device_roundtrips_platform(client):
+    token = await register_user(client)
+    h = {"Authorization": f"Bearer {token}"}
+    resp = await client.post("/api/v1/devices", json={"name": "Alex's iPhone", "child_name": "Alex", "platform": "ios"}, headers=h)
+    assert resp.status_code == 200, resp.text
+    device = resp.json()
+    assert device["platform"] == "ios"
+    listed = (await client.get("/api/v1/devices", headers=h)).json()
+    assert [d["platform"] for d in listed] == ["ios"]
+    cfg = await client.get("/api/v1/agent/config?date=2026-11-09&version=ios-1.0.0",
+                           headers={"Authorization": f"Bearer {device['api_token']}"})
+    assert cfg.status_code == 200
+    assert "screen_time_limit_minutes" in cfg.json()
+
+
+async def test_unknown_platform_rejected(client):
+    token = await register_user(client)
+    resp = await client.post("/api/v1/devices", json={"name": "x", "child_name": "Alex", "platform": "windows"},
+                             headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 422

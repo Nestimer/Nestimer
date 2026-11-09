@@ -38,11 +38,14 @@ struct CreateDeviceRequest: Encodable {
     /// required by the API even when this is set (it falls back to the child's own name
     /// server-side), so callers must keep sending a non-empty childName either way.
     let childId: String?
+    /// "macos" or "ios" — must match the agent that will pair with this device.
+    var platform: String = "macos"
 
     enum CodingKeys: String, CodingKey {
         case name
         case childName = "child_name"
         case childId = "child_id"
+        case platform
     }
 }
 

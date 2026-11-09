@@ -20,10 +20,17 @@ function isOnline(dateStr) {
 // A device is stale when it hasn't reported in over 15 minutes — the compensating
 // control for platforms the agent can't forcibly lock: a bypass stops being invisible.
 const STALE_AFTER_MS = 15 * 60 * 1000
+// An iPhone only talks to the server while it's being used or the app is open, so an
+// idle or shielded phone is quiet for hours. Under Family Sharing the real bypasses
+// (delete app, revoke Screen Time) need the parent anyway; 24 h is a safety net.
+const IOS_STALE_AFTER_MS = 24 * 60 * 60 * 1000
 
 function isStale(device) {
-  return !device.last_seen || (Date.now() - new Date(device.last_seen).getTime()) > STALE_AFTER_MS
+  const limit = device.platform === 'ios' ? IOS_STALE_AFTER_MS : STALE_AFTER_MS
+  return !device.last_seen || (Date.now() - new Date(device.last_seen).getTime()) > limit
 }
+
+const PLATFORM_LABEL = { macos: 'Mac', ios: 'iPhone', android: 'Android' }
 
 function staleLabel(device) {
   if (!device.last_seen) return 'Never reported'
@@ -59,6 +66,8 @@ export default function DevicesPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [childName, setChildName] = useState('')
+  const [newPlatform, setNewPlatform] = useState('macos')
+  const [createdPlatform, setCreatedPlatform] = useState('macos')
   const [newToken, setNewToken] = useState('')
   const [showAddChild, setShowAddChild] = useState(false)
   const [newChildName, setNewChildName] = useState('')
@@ -95,8 +104,9 @@ export default function DevicesPage() {
   const addDevice = async (e) => {
     e.preventDefault()
     try {
-      const device = await api.createDevice({ name: newName, child_name: childName })
+      const device = await api.createDevice({ name: newName, child_name: childName, platform: newPlatform })
       setNewToken(device.api_token)
+      setCreatedPlatform(newPlatform)
       setNewName('')
       setChildName('')
       loadDevices()
@@ -167,8 +177,15 @@ export default function DevicesPage() {
           {!newToken ? (
             <form onSubmit={addDevice}>
               <div className="form-group">
+                <label>Device</label>
+                <select value={newPlatform} onChange={(e) => setNewPlatform(e.target.value)}>
+                  <option value="macos">Mac</option>
+                  <option value="ios">iPhone</option>
+                </select>
+              </div>
+              <div className="form-group">
                 <label>Device Name</label>
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Alex's MacBook" required />
+                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={newPlatform === 'ios' ? "Alex's iPhone" : "Alex's MacBook"} required />
               </div>
               <div className="form-group">
                 <label>Child's Name</label>
@@ -178,7 +195,9 @@ export default function DevicesPage() {
             </form>
           ) : (
             <div>
-              <p style={{ marginBottom: 8, fontWeight: 500 }}>Device created! Paste this into the agent app on the child's Mac:</p>
+              <p style={{ marginBottom: 8, fontWeight: 500 }}>{createdPlatform === 'ios'
+                ? "Device created! Open NesTimer on the child's iPhone and paste this:"
+                : "Device created! Paste this into the agent app on the child's Mac:"}</p>
               <div className="token-display" style={{ fontSize: 13, userSelect: 'all', cursor: 'pointer' }}
                 onClick={(e) => { navigator.clipboard.writeText(e.target.textContent) }}>
                 {`${window.location.origin}|${newToken}`}
@@ -230,7 +249,7 @@ export default function DevicesPage() {
             <div key={device.id} className="card device-card" onClick={() => navigate(`/devices/${device.id}`)}>
               <div className="device-info">
                 <h3>{device.name}</h3>
-                <p className="child-name">{device.child_name}</p>
+                <p className="child-name">{device.child_name} · {PLATFORM_LABEL[device.platform] ?? device.platform}</p>
               </div>
               <div className="device-status">
                 <span className={`status-dot ${isOnline(device.last_seen) ? 'status-online' : 'status-offline'}`}></span>
