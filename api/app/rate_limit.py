@@ -21,13 +21,18 @@ class RateLimiter:
             return
         now = time.time()
         # Remove old attempts
-        self._attempts[key] = [t for t in self._attempts[key] if now - t < self.window]
-        if len(self._attempts[key]) >= self.max_attempts:
+        recent = [t for t in self._attempts.get(key, []) if now - t < self.window]
+        if not recent:
+            # Keyed per client IP now, so drop idle keys rather than keep one per IP forever.
+            self._attempts.pop(key, None)
+        else:
+            self._attempts[key] = recent
+        if len(recent) >= self.max_attempts:
             raise HTTPException(
                 status_code=429,
                 detail=f"Too many attempts. Try again in {self.window} seconds.",
             )
-        self._attempts[key].append(now)
+        self._attempts.setdefault(key, []).append(now)
 
 
 def client_ip(request: Request) -> str:

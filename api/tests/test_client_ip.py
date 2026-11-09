@@ -43,3 +43,16 @@ def test_two_clients_behind_same_proxy_have_separate_budgets(monkeypatch):
     limiter.check(a)
     limiter.check(a)
     limiter.check(b)  # must not raise: b has its own budget
+
+
+def test_idle_keys_are_dropped(monkeypatch):
+    import app.rate_limit as rl
+    monkeypatch.setattr(rl, "_DISABLED", False)
+    limiter = RateLimiter(max_attempts=2, window_seconds=60)
+    t = [1000.0]
+    monkeypatch.setattr(rl.time, "time", lambda: t[0])
+    limiter.check("203.0.113.7")
+    t[0] += 61
+    limiter.check("198.51.100.9")
+    limiter.check("203.0.113.7")  # window expired: allowed again, old entries pruned
+    assert limiter._attempts["203.0.113.7"] == [t[0]]
