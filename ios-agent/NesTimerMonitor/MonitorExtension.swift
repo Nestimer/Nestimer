@@ -46,21 +46,29 @@ final class MonitorExtension: DeviceActivityMonitor {
     /// DeviceActivity/ManagedSettings calls inside the wake need this (main) thread, and a
     /// semaphore wait here stalled every wake until its timeout.
     private func run(_ body: @escaping @Sendable (SyncEngine) async -> Void) {
-        let done = Flag()
+        let done = Flag(), timedOut = Flag()
         let started = Date()
         let deferred = DeferredScheduler()
         Task.detached {
             await body(Engine.make(scheduler: deferred))
             done.set()
+            // Finished after the callback returned: arm what it planned now (best effort;
+            // iOS may already have suspended us).
+            if timedOut.isSet { DispatchQueue.global(qos: .userInitiated).async { deferred.flush() } }
         }
         let deadline = Date().addingTimeInterval(25)
         while !done.isSet && Date() < deadline {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
+        if !done.isSet {
+            timedOut.set()
+            // Nothing planned yet: at least keep the heartbeat so another wake comes.
+            DispatchQueue.global(qos: .userInitiated).async { DeviceActivityScheduler().ensureHeartbeat() }
+        }
         // Arm after this callback returns (startMonitoring waits for it).
         DispatchQueue.global(qos: .userInitiated).async { deferred.flush() }
         let took = Date().timeIntervalSince(started)
-        if !done.isSet {
+        if timedOut.isSet {
             DebugLog.write("wake timed out after 25s — returning to iOS with work in flight")
         } else if took > 3 {
             DebugLog.write(String(format: "wake took %.1fs", took))

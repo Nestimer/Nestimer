@@ -50,7 +50,9 @@ public enum ThresholdPlanner {
             lockPoint = lock
             fixed.append(PlannedEvent(name: "lock-\(lock)", deviceMinutes: lock, kind: .lock))
             for n in warningMinutes {
-                let at = Int((deviceUsedMinutes + remaining - Double(n)).rounded(.up))
+                // Round down: at the event at least `n` minutes must be left, or the engine
+                // (which shields below 1 minute) locks instead of warning.
+                let at = Int((deviceUsedMinutes + remaining - Double(n)).rounded(.down))
                 if Double(at) > deviceUsedMinutes, at < lock {
                     fixed.append(PlannedEvent(name: "warn\(n)-\(at)", deviceMinutes: at, kind: .warning(minutesLeft: n)))
                 }

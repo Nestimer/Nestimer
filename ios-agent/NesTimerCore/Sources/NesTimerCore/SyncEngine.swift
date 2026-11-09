@@ -20,6 +20,10 @@ public actor SyncEngine {
     public static let staleAfter: TimeInterval = 30 * 60
     /// Wakes closer together than this skip the network (iOS delivers events in bursts).
     public static let networkDebounce: TimeInterval = 5
+    /// iOS fires window callbacks a few seconds early (seen: 8 s). A wake this close
+    /// before a schedule edge decides as if the edge had passed; otherwise a shielded phone
+    /// (no usage events) would stay on the stale decision.
+    public static let edgeLookahead: TimeInterval = 60
 
     private let api: AgentAPI
     private let store: StateStore
@@ -192,20 +196,52 @@ public actor SyncEngine {
             }
             if let t = trustedTime(s) { s.latestTrusted = max(s.latestTrusted ?? t, t) }
 
-            let decision = decide(&s, device: device)
-            return record(&s, decision)
+            let at = policyTime(s, device: device)
+            let decision = decide(&s, device: device, policyTime: at)
+            return record(&s, decision, policyTime: at, device: device)
         }
         return carryOut(plan)
     }
 
     // MARK: Decide / enforce
 
-    private func decide(_ s: inout AgentState, device: Date) -> Decision {
+    /// Schedule windows (downtime, activities, bonus end) for the policy, from `t` on.
+    private nonisolated func policyWindows(_ policy: ServerPolicy?, at t: Date) -> [PlannedWindow] {
+        guard let policy else { return [] }
+        var windows = SchedulePlanner.plan(policy: policy, now: t, calendar: calendar)
+        if let bonusEnd = policy.bonusUntilDate, bonusEnd > t {
+            // Windows are armed to the minute: end on the minute after, never before.
+            let end = Date(timeIntervalSince1970: (bonusEnd.timeIntervalSince1970 / 60).rounded(.up) * 60)
+            windows.append(PlannedWindow(name: "bonusend-\(Int(bonusEnd.timeIntervalSince1970))",
+                                         start: end.addingTimeInterval(-SchedulePlanner.minimumLength),
+                                         end: end, kind: .bonusEnd))
+        }
+        return windows
+    }
+
+    /// Times at which the policy's decision can change: downtime and activity boundaries
+    /// and the bonus end. Not the synthetic bonus-window start.
+    private nonisolated func policyEdges(_ policy: ServerPolicy?, at t: Date) -> [Date] {
+        guard let policy else { return [] }
+        var edges = SchedulePlanner.plan(policy: policy, now: t, calendar: calendar).flatMap { [$0.start, $0.end] }
+        if let bonusEnd = policy.bonusUntilDate { edges.append(bonusEnd) }
+        return edges
+    }
+
+    /// The time the policy is evaluated at: the next schedule edge if it is within
+    /// `edgeLookahead`, else the device time. Usage accounting always uses the device time.
+    private nonisolated func policyTime(_ s: AgentState, device: Date) -> Date {
+        policyEdges(effectivePolicy(s), at: device)
+            .filter { $0 > device && $0.timeIntervalSince(device) <= Self.edgeLookahead }
+            .min() ?? device
+    }
+
+    private func decide(_ s: inout AgentState, device: Date, policyTime: Date) -> Decision {
         if clockTampered(s, device: device) { return .shield(.clockChanged) }
         guard var policy = effectivePolicy(s) else { return .shield(.timeExpired) }  // never seen a policy
         if isStale(s, device: device) { policy = Self.halveRemaining(policy, deviceUsed: s.countedMinutes) }
         return PolicyEvaluator.evaluate(policy: policy, deviceUsedMinutes: s.countedMinutes,
-                                        unlockUntil: s.unlockUntil, now: device, calendar: calendar)
+                                        unlockUntil: s.unlockUntil, now: policyTime, calendar: calendar)
     }
 
     /// Everything to do on iOS after a decision, computed under the lock.
@@ -220,14 +256,11 @@ public actor SyncEngine {
     }
 
     /// Updates state for the decision (warned, shielded, paused) and plans the side effects.
-    private func record(_ s: inout AgentState, _ decision: Decision) -> EnforcementPlan {
-        let policy = effectivePolicy(s)
-        var windows = policy.map { SchedulePlanner.plan(policy: $0, now: now(), calendar: calendar) } ?? []
-        if let bonusEnd = policy?.bonusUntilDate, bonusEnd > now() {
-            windows.append(PlannedWindow(name: "bonusend-\(Int(bonusEnd.timeIntervalSince1970))",
-                                         start: bonusEnd.addingTimeInterval(-SchedulePlanner.minimumLength),
-                                         end: bonusEnd, kind: .bonusEnd))
-        }
+    private func record(_ s: inout AgentState, _ decision: Decision, policyTime: Date, device: Date) -> EnforcementPlan {
+        // Edges at or before policyTime are already decided; don't re-arm a window iOS
+        // has just ended.
+        // Heartbeat first: if iOS refuses a window (activity limit), it's the one to keep.
+        let windows = [SchedulePlanner.heartbeat(now: device)] + policyWindows(effectivePolicy(s), at: policyTime)
         var plan = EnforcementPlan(decision: decision, events: armingNeeded(plannedEvents(decision, s), &s),
                                    windows: windows, warnings: [], expired: false)
         switch decision {
@@ -237,15 +270,17 @@ public actor SyncEngine {
             s.paused = false
         case .open(let remaining, let why):
             s.shielded = false
-            if why == .withinLimit, let r = remaining {
+            // Whole minutes left, as the planner arms warnings (rounded down): 1.06 left is
+            // the 1-minute warning.
+            if why == .withinLimit, let r = remaining?.rounded(.down) {
                 for n in ThresholdPlanner.warningMinutes where r <= Double(n) && !s.warned.contains(n) {
                     s.warned.insert(n)
                     plan.warnings.append(n)
                 }
             }
-            if let r = remaining, r > 15 { s.warned = [] }
+            if let r = remaining?.rounded(.down), r > 15 { s.warned = [] }
             switch why {
-            case .activity, .temporaryUnlock: s.paused = true
+            case .activity, .temporaryUnlock, .bonus: s.paused = true   // as on the Mac
             default: s.paused = false
             }
         }
