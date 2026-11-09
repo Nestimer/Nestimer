@@ -64,3 +64,33 @@ final class ThresholdPlannerTests: XCTestCase {
         XCTAssertEqual(Set(e.map(\.deviceMinutes)).count, e.count)  // no two events on the same minute
     }
 }
+
+extension ThresholdPlannerTests {
+    /// Seen on device: 4.055 min left at 243 → warn1 was armed at 247, where only 0.055 is
+    /// left, so the engine shielded without the 1-minute warning. A warning must fire with
+    /// at least its minutes left.
+    func testWarningsWithFractionalRemainingFireBeforeTheyAreDue() {
+        let events = ThresholdPlanner.plan(deviceUsedMinutes: 243, remainingMinutes: 4.055, unlockEndsAfterMinutes: nil)
+        XCTAssertTrue(events.contains { $0.name == "warn1-246" }, "\(events.map(\.name))")
+        XCTAssertTrue(events.contains { $0.name == "lock-248" }, "\(events.map(\.name))")
+    }
+}
+
+extension SyncEngineTests {
+    func testOneMinuteWarningWithFractionalRemaining() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-50", observedMinutes: 50)
+        // A bonus/activity split left a fractional pause: 4.055 min left at 56.
+        r.store.update { $0.pausedMinutes = 0.055; $0.armedEvents = nil }
+        r.clock.advance(6 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-56", observedMinutes: 56)
+        guard let warn1 = r.scheduler.events.first(where: { $0.kind == .warning(minutesLeft: 1) }) else {
+            return XCTFail("\(r.scheduler.events.map(\.name))")
+        }
+        r.clock.advance(4 * 60)
+        let d = await r.engine.onThreshold(eventName: warn1.name, observedMinutes: warn1.deviceMinutes)
+        XCTAssertFalse(d.isShielded, "\(warn1.name) → \(d)")
+        XCTAssertEqual(r.notifier.warnings.last, 1)
+    }
+}

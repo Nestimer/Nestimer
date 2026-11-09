@@ -270,13 +270,15 @@ public actor SyncEngine {
             s.paused = false
         case .open(let remaining, let why):
             s.shielded = false
-            if why == .withinLimit, let r = remaining {
+            // Whole minutes left, as the planner arms warnings (rounded down): 1.06 left is
+            // the 1-minute warning.
+            if why == .withinLimit, let r = remaining?.rounded(.down) {
                 for n in ThresholdPlanner.warningMinutes where r <= Double(n) && !s.warned.contains(n) {
                     s.warned.insert(n)
                     plan.warnings.append(n)
                 }
             }
-            if let r = remaining, r > 15 { s.warned = [] }
+            if let r = remaining?.rounded(.down), r > 15 { s.warned = [] }
             switch why {
             case .activity, .temporaryUnlock, .bonus: s.paused = true   // as on the Mac
             default: s.paused = false
