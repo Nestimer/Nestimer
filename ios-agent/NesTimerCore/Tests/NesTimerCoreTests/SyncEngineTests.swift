@@ -41,6 +41,7 @@ final class SyncEngineTests: XCTestCase {
         r.api.policy = Fx.policy()
         r.api.reportFailures = [10]
         _ = await r.engine.onThreshold(eventName: "chunk-10", observedMinutes: 10)
+        r.clock.advance(5 * 60)
         _ = await r.engine.onThreshold(eventName: "chunk-15", observedMinutes: 15)
         XCTAssertEqual(r.api.reports.map(\.0), [10, 15])
         XCTAssertEqual(r.api.reports.map(\.1), [false, true])
@@ -97,6 +98,7 @@ final class SyncEngineTests: XCTestCase {
         r.api.policy = Fx.policy(limit: 120, used: 40, deviceUsed: 40)
         _ = await r.engine.onThreshold(eventName: "chunk-40", observedMinutes: 40)
         r.api.policy = Fx.policy(limit: 30, used: 40, deviceUsed: 40)
+        r.clock.advance(10)
         let d = await r.engine.onForeground()
         XCTAssertEqual(d, .shield(.timeExpired))
         XCTAssertFalse(r.scheduler.events.contains { $0.kind == .lock })
@@ -123,6 +125,7 @@ final class SyncEngineTests: XCTestCase {
         _ = await r.engine.onThreshold(eventName: "chunk-55", observedMinutes: 55)
         XCTAssertEqual(r.notifier.warnings, [15, 10, 5])
         r.api.policy = Fx.policy(limit: 120, used: 0, deviceUsed: 0)  // parent raised the limit
+        r.clock.advance(10)
         _ = await r.engine.onForeground()
         XCTAssertEqual(r.store.state.warned, [])
     }
@@ -146,6 +149,7 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertNil(r.shield.current)
         XCTAssertEqual(r.scheduler.events.first { $0.kind == .unlockEnd }?.deviceMinutes, 65)
         // Five more minutes of use → shield again.
+        r.clock.advance(5 * 60)
         let d = await r.engine.onThreshold(eventName: "unlockend-65", observedMinutes: 65)
         XCTAssertEqual(d, .shield(.timeExpired))
     }

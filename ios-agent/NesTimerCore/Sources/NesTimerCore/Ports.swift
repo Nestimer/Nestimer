@@ -92,6 +92,10 @@ public struct AgentState: Codable, Equatable, Sendable {
 
     // For splitting a usage delta between paused and counted time.
     public var lastWakeAt: Date?
+    /// When `observedMinutes` last grew; it may grow by at most the time elapsed since.
+    public var lastObservedAt: Date?
+    /// Last time a wake went to the network; bursts within seconds re-use the snapshot.
+    public var lastNetworkAt: Date?
     public var secondsSinceObservation: TimeInterval = 0
     public var pausedSecondsSinceObservation: TimeInterval = 0
 

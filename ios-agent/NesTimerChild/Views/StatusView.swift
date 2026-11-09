@@ -63,6 +63,19 @@ struct StatusView: View {
                 Section("Debug") {
                     Button("Refresh") { Task { await refresh() } }
                     Button("Copy debug log") { UIPasteboard.general.string = DebugLog.read() }
+                    Button("Reset today's count") {
+                        // Back to what the server holds for this device today.
+                        FileStateStore().update { s in
+                            let floor = s.snapshot?.deviceUsedMinutes ?? 0
+                            s.observedMinutes = floor
+                            s.pausedMinutes = 0
+                            s.serverFloorMinutes = floor
+                            s.reportedMinutes = floor
+                            s.lastObservedAt = Date()
+                        }
+                        try? FileManager.default.removeItem(at: DebugLog.url)
+                        Task { await refresh() }
+                    }
                     Button("Reset pairing", role: .destructive) {
                         Keychain.delete(.apiToken); Keychain.delete(.serverURL); Keychain.delete(.totpSecret)
                         onUnpair()
@@ -108,6 +121,7 @@ struct StatusView: View {
     private func refresh() async {
         let started = Date()
         decision = await Engine.make().onForeground()
+        DebugLog.write("app refresh → \(String(describing: decision))")
         lastSync = Date()
         let took = Date().timeIntervalSince(started)
         if took > 3 { DebugLog.write(String(format: "app refresh took %.1fs", took)) }

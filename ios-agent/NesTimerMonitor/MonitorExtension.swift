@@ -9,22 +9,24 @@ final class MonitorExtension: DeviceActivityMonitor {
         super.eventDidReachThreshold(event, activity: activity)
         let name = event.rawValue
         run { engine in
+            let d: Decision
             if let minutes = PlannedEvent.observedMinutes(fromName: name) {
-                _ = await engine.onThreshold(eventName: name, observedMinutes: minutes)
+                d = await engine.onThreshold(eventName: name, observedMinutes: minutes)
             } else {
-                _ = await engine.onIntervalBoundary()
+                d = await engine.onIntervalBoundary()
             }
+            DebugLog.write("event \(name) [\(activity.rawValue)] → \(d)")
         }
     }
 
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
-        run { _ = await $0.onIntervalBoundary() }
+        run { DebugLog.write("intervalDidStart \(activity.rawValue) → \(await $0.onIntervalBoundary())") }
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
-        run { _ = await $0.onIntervalBoundary() }
+        run { DebugLog.write("intervalDidEnd \(activity.rawValue) → \(await $0.onIntervalBoundary())") }
     }
 
     /// Callbacks are synchronous and the process may be suspended once they return, so we

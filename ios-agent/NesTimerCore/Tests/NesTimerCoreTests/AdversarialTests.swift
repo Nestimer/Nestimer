@@ -96,6 +96,7 @@ final class AdversarialTests: XCTestCase {
         let c = code(at: r.clock.now)
         let v4 = await r.engine.submitCode(c)
         XCTAssertTrue(v4)
+        r.clock.advance(5 * 60)
         _ = await r.engine.onThreshold(eventName: "unlockend-65", observedMinutes: 65)
         XCTAssertNotNil(r.shield.current)
         r.clock.advance(60)
@@ -276,5 +277,40 @@ final class TravelTests: XCTestCase {
         r.clock.advance(3600)        // 00:00 Tokyo
         _ = await engine(r, tz: "Asia/Tokyo").onForeground()
         XCTAssertEqual(r.store.state.date, "2026-11-10")
+    }
+}
+
+// MARK: - iOS fires thresholds prematurely after (re)starting monitoring (seen on device:
+// 140 → 450 "minutes" in 10 real minutes). Usage can't grow faster than the clock.
+
+final class PrematureEventTests: XCTestCase {
+    func testUsageCannotGrowFasterThanTheClock() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 160)
+        _ = await r.engine.onThreshold(eventName: "chunk-140", observedMinutes: 140)
+        r.clock.advance(30)
+        let d = await r.engine.onThreshold(eventName: "chunk-450", observedMinutes: 450)
+        XCTAssertLessThanOrEqual(r.store.state.observedMinutes, 141)
+        XCTAssertEqual(d.isShielded, false)
+    }
+
+    func testGrowthUpToElapsedTimeIsAccepted() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 160)
+        _ = await r.engine.onThreshold(eventName: "chunk-140", observedMinutes: 140)
+        r.clock.advance(5 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-145", observedMinutes: 145)
+        XCTAssertEqual(r.store.state.observedMinutes, 145)
+    }
+
+    func testBurstOfWakesHitsTheNetworkOnce() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 160)
+        _ = await r.engine.onThreshold(eventName: "chunk-140", observedMinutes: 140)
+        let before = r.api.fetchedDates.count
+        for m in stride(from: 145, through: 240, by: 5) {
+            _ = await r.engine.onThreshold(eventName: "chunk-\(m)", observedMinutes: m)  // same instant
+        }
+        XCTAssertEqual(r.api.fetchedDates.count, before, "a burst within seconds re-used the snapshot")
     }
 }

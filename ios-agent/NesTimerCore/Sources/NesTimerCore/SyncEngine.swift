@@ -18,6 +18,8 @@ public actor SyncEngine {
     public static let clockTolerance: TimeInterval = 10 * 60
     /// A snapshot older than this is "offline": only half the remaining budget may be spent.
     public static let staleAfter: TimeInterval = 30 * 60
+    /// Wakes closer together than this skip the network (iOS delivers events in bursts).
+    public static let networkDebounce: TimeInterval = 5
 
     private let api: AgentAPI
     private let store: StateStore
@@ -109,7 +111,7 @@ public actor SyncEngine {
         let device = now()
 
         // (A) Local facts: rollover, usage growth, unlock expiry.
-        let (pending, reportDate, flushYesterday) = store.update { s -> (Double?, String, (String, Double)?) in
+        let (pending, reportDate, flushYesterday, useNetwork) = store.update { s -> (Double?, String, (String, Double)?, Bool) in
             var flush: (String, Double)?
             let tampered = clockTampered(s, device: device)
             let today = localDate(device)
@@ -127,24 +129,37 @@ public actor SyncEngine {
 
             accumulateWallTime(&s, device: device, tampered: tampered)
             if var o = observed {
-                // A late event from yesterday can't be more than the minutes since midnight.
+                // A late event from yesterday can't be more than the minutes since midnight,
+                // and usage can't grow faster than the clock (iOS fires thresholds early
+                // right after monitoring restarts).
                 o = min(o, minutesSinceMidnight(device))
-                if o > s.observedMinutes { addObservation(&s, o) }
+                if let last = s.lastObservedAt, !tampered {
+                    o = min(o, s.observedMinutes + max(0, device.timeIntervalSince(last)) / 60 + 0.5)
+                }
+                if o > s.observedMinutes {
+                    addObservation(&s, o)
+                    s.lastObservedAt = device
+                } else if s.lastObservedAt == nil {
+                    s.lastObservedAt = device
+                }
             }
             if let end = s.unlockEndsAtObserved, s.observedMinutes >= Double(end) { Self.clearUnlock(&s) }
             if let until = s.unlockUntil, device >= until || tampered { Self.clearUnlock(&s) }
 
             let pending = s.countedMinutes > s.reportedMinutes ? s.countedMinutes : nil
-            return (pending, s.date, flush)
+            let recent = s.lastNetworkAt.map { abs(device.timeIntervalSince($0)) < Self.networkDebounce } ?? false
+            let useNetwork = !recent || flush != nil || s.snapshot == nil
+            if useNetwork { s.lastNetworkAt = device }
+            return (pending, s.date, flush, useNetwork)
         }
 
         // (B) Network, holding no state.
         if let (date, total) = flushYesterday { try? await api.reportUsage(date: date, totalMinutes: total) }
         var reported: Double?
-        if let total = pending, (try? await api.reportUsage(date: reportDate, totalMinutes: total)) != nil {
+        if useNetwork, let total = pending, (try? await api.reportUsage(date: reportDate, totalMinutes: total)) != nil {
             reported = total
         }
-        let fetched = try? await api.fetchConfig(localDate: reportDate)
+        let fetched = useNetwork ? try? await api.fetchConfig(localDate: reportDate) : nil
         let fetchedAtUptime = uptime()
 
         // (C) Merge and decide atomically; then act on iOS *outside* the lock — arming
@@ -168,7 +183,7 @@ public actor SyncEngine {
                         s.serverFloorMinutes = max(s.serverFloorMinutes, fetched.policy.deviceUsedMinutes)
                     }
                 }
-            } else if s.anchorTime == nil {
+            } else if s.anchorTime == nil, useNetwork {
                 s.anchorTime = device
                 s.anchorUptime = uptime()
             }

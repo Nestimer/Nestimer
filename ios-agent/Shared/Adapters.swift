@@ -88,6 +88,7 @@ struct DeviceActivityScheduler: MonitorScheduler {
         }
         let allDay = DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0),
                                             intervalEnd: DateComponents(hour: 23, minute: 59), repeats: true)
+        DebugLog.write("restart daily: \(names.count) events \(names.first ?? "")…\(names.last ?? "")")
         center.stopMonitoring([Self.daily])
         try center.startMonitoring(Self.daily, during: allDay, events: deviceEvents)
         AppGroup.write(names, to: armedURL)
@@ -101,7 +102,9 @@ struct DeviceActivityScheduler: MonitorScheduler {
 
         let cal = AppGroup.homeCalendar
         let fields: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute]
+        if !stale.isEmpty { DebugLog.write("stop windows: \(stale.sorted())") }
         for w in windows where !current.contains(w.name) {
+            DebugLog.write("start window \(w.name)")
             let s = DeviceActivitySchedule(intervalStart: cal.dateComponents(fields, from: w.start),
                                            intervalEnd: cal.dateComponents(fields, from: w.end), repeats: false)
             try center.startMonitoring(.init(w.name), during: s)
