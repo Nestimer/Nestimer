@@ -27,3 +27,4 @@ ios-build/
 
 # SDD scratch (subagent-driven-development workspaces)
 .superpowers/
+spikes/
