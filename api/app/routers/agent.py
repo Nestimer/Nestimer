@@ -326,7 +326,7 @@ async def verify_totp_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Verify a TOTP code — rate limited to prevent brute-force."""
-    totp_limiter.check(device.id)  # Rate limit per device, not IP
+    await totp_limiter.check(db, device.id)  # Rate limit per device, not IP
     if not device.shared_secret:
         raise HTTPException(status_code=400, detail="No shared secret configured")
     valid = verify_totp(device.shared_secret, body.code)
