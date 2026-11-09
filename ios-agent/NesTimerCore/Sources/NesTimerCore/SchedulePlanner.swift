@@ -18,8 +18,8 @@ public struct PlannedWindow: Equatable, Sendable {
 public enum SchedulePlanner {
     /// DeviceActivity rejects intervals shorter than 15 minutes.
     public static let minimumLength: TimeInterval = 15 * 60
-    /// iOS allows ~20 activities: daily counting, heartbeat and bonus end leave 17.
-    public static let maxWindows = 17
+    /// iOS allows ~20 activities: daily counting, heartbeat, bonus end and one spare leave 16.
+    public static let maxWindows = 16
     /// How often the heartbeat wakes the monitor even with no usage and no schedule edge.
     public static let heartbeatInterval: TimeInterval = 15 * 60
 

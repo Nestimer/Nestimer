@@ -210,18 +210,28 @@ public actor SyncEngine {
         guard let policy else { return [] }
         var windows = SchedulePlanner.plan(policy: policy, now: t, calendar: calendar)
         if let bonusEnd = policy.bonusUntilDate, bonusEnd > t {
+            // Windows are armed to the minute: end on the minute after, never before.
+            let end = Date(timeIntervalSince1970: (bonusEnd.timeIntervalSince1970 / 60).rounded(.up) * 60)
             windows.append(PlannedWindow(name: "bonusend-\(Int(bonusEnd.timeIntervalSince1970))",
-                                         start: bonusEnd.addingTimeInterval(-SchedulePlanner.minimumLength),
-                                         end: bonusEnd, kind: .bonusEnd))
+                                         start: end.addingTimeInterval(-SchedulePlanner.minimumLength),
+                                         end: end, kind: .bonusEnd))
         }
         return windows
+    }
+
+    /// Times at which the policy's decision can change: downtime and activity boundaries
+    /// and the bonus end. Not the synthetic bonus-window start.
+    private nonisolated func policyEdges(_ policy: ServerPolicy?, at t: Date) -> [Date] {
+        guard let policy else { return [] }
+        var edges = SchedulePlanner.plan(policy: policy, now: t, calendar: calendar).flatMap { [$0.start, $0.end] }
+        if let bonusEnd = policy.bonusUntilDate { edges.append(bonusEnd) }
+        return edges
     }
 
     /// The time the policy is evaluated at: the next schedule edge if it is within
     /// `edgeLookahead`, else the device time. Usage accounting always uses the device time.
     private nonisolated func policyTime(_ s: AgentState, device: Date) -> Date {
-        policyWindows(effectivePolicy(s), at: device)
-            .flatMap { [$0.start, $0.end] }
+        policyEdges(effectivePolicy(s), at: device)
             .filter { $0 > device && $0.timeIntervalSince(device) <= Self.edgeLookahead }
             .min() ?? device
     }
@@ -249,7 +259,8 @@ public actor SyncEngine {
     private func record(_ s: inout AgentState, _ decision: Decision, policyTime: Date, device: Date) -> EnforcementPlan {
         // Edges at or before policyTime are already decided; don't re-arm a window iOS
         // has just ended.
-        let windows = policyWindows(effectivePolicy(s), at: policyTime) + [SchedulePlanner.heartbeat(now: device)]
+        // Heartbeat first: if iOS refuses a window (activity limit), it's the one to keep.
+        let windows = [SchedulePlanner.heartbeat(now: device)] + policyWindows(effectivePolicy(s), at: policyTime)
         var plan = EnforcementPlan(decision: decision, events: armingNeeded(plannedEvents(decision, s), &s),
                                    windows: windows, warnings: [], expired: false)
         switch decision {

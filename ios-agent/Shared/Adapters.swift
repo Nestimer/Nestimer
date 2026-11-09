@@ -119,11 +119,23 @@ struct DeviceActivityScheduler: MonitorScheduler {
         let fields: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute]
         if !stale.isEmpty { DebugLog.write("stop windows: \(stale.sorted())") }
         for w in windows where !current.contains(w.name) {
-            DebugLog.write("start window \(w.name)")
-            let s = DeviceActivitySchedule(intervalStart: cal.dateComponents(fields, from: w.start),
-                                           intervalEnd: cal.dateComponents(fields, from: w.end), repeats: false)
-            try center.startMonitoring(.init(w.name), during: s)
+            try start(w, cal: cal, fields: fields)
         }
+    }
+
+    /// Arms the current heartbeat without touching other windows — for a wake that timed
+    /// out before it could plan, so the next wake still comes.
+    func ensureHeartbeat() {
+        let hb = SchedulePlanner.heartbeat(now: Date())
+        guard !center.activities.contains(.init(hb.name)) else { return }
+        try? start(hb, cal: AppGroup.homeCalendar, fields: [.year, .month, .day, .hour, .minute])
+    }
+
+    private func start(_ w: PlannedWindow, cal: Calendar, fields: Set<Calendar.Component>) throws {
+        DebugLog.write("start window \(w.name)")
+        let s = DeviceActivitySchedule(intervalStart: cal.dateComponents(fields, from: w.start),
+                                       intervalEnd: cal.dateComponents(fields, from: w.end), repeats: false)
+        try center.startMonitoring(.init(w.name), during: s)
     }
 
     struct NoSelection: Error {}
@@ -154,8 +166,9 @@ final class DeferredScheduler: MonitorScheduler, @unchecked Sendable {
     func armEvents(_ events: [PlannedEvent]) throws { lock.lock(); self.events = events; lock.unlock() }
     func armWindows(_ windows: [PlannedWindow]) throws { lock.lock(); self.windows = windows; lock.unlock() }
 
+    /// Performs what was recorded, once: a second flush only arms what was recorded since.
     func flush() {
-        lock.lock(); let e = events, w = windows; lock.unlock()
+        lock.lock(); let e = events, w = windows; events = nil; windows = nil; lock.unlock()
         let real = DeviceActivityScheduler()
         if let e {
             do { try real.armEvents(e) } catch {

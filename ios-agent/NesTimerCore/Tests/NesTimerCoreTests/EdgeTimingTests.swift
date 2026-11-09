@@ -72,3 +72,21 @@ final class EdgeTimingTests: XCTestCase {
         XCTAssertFalse(d.isShielded)
     }
 }
+
+extension EdgeTimingTests {
+    /// Windows are armed with minute precision; a bonus ending at :10 s must not get a
+    /// window ending at the minute before (that's a wake 10 s early, or 59 s).
+    func testBonusWindowEndsOnTheMinuteAfter() async {
+        let r = Rig(now: Fx.at(18, 0))
+        r.api.policy = Fx.policy(limit: 60, bonusUntil: Fx.at(19, 8).addingTimeInterval(10))
+        _ = await r.engine.onForeground()
+        XCTAssertEqual(r.scheduler.windows.first { $0.kind == .bonusEnd }?.end, Fx.at(19, 9))
+    }
+
+    func testHeartbeatIsArmedFirst() async {
+        let r = Rig(now: Fx.at(20))
+        r.api.policy = Fx.policy(downtime: ("22:00", "07:00"))
+        _ = await r.engine.onForeground()
+        XCTAssertEqual(r.scheduler.windows.first?.kind, .heartbeat)
+    }
+}
