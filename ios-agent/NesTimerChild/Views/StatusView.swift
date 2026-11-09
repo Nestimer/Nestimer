@@ -214,7 +214,7 @@ struct StatusView: View {
         let ok = await Engine.make().submitCode(code)
         code = ""
         codeFocused = false
-        codeMessage = ok ? "Unlocked for 5 minutes." : "That code didn't work."
+        codeMessage = ok ? "Unlocked for 5 minutes." : "That code didn't work, or it was already used. A new code comes every 5 minutes."
         await refresh()
     }
 }
