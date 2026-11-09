@@ -23,6 +23,9 @@ struct AddDeviceView: View {
 
     @State private var deviceName = ""
     @State private var childName = ""
+    @State private var platform = "macos"
+
+    private var isPhone: Bool { platform == "ios" }
     @State private var createdDevice: Device?
     @State private var isCreating = false
     @State private var errorMessage: String?
@@ -60,7 +63,9 @@ struct AddDeviceView: View {
                             .font(.headline)
 
                         if let token = device.apiToken {
-                            Text("Paste this single line when the agent asks for the setup string:")
+                            Text(isPhone
+                             ? "Open NesTimer on the child's iPhone and paste this line:"
+                             : "Paste this single line when the agent asks for the setup string:")
                                 .font(.callout)
 
                             Text(setupString(token: token))
@@ -86,6 +91,20 @@ struct AddDeviceView: View {
                         }
                     }
 
+                    if isPhone {
+                        Section {
+                            Text("""
+                            1. Install NesTimer on the child's iPhone.
+                            2. Open it and paste the line above.
+                            3. Approve Screen Time access when your iPhone asks.
+                            4. Tick "All Apps & Categories", then Messages (Phone is never blocked).
+                            5. On that iPhone, turn off Settings → Screen Time → Share Across Devices.
+                            """)
+                            .font(.callout)
+                        } header: {
+                            Text("Set up the iPhone")
+                        }
+                    } else {
                     Section {
                         Link(destination: URL(string: agentDownloadURL)!) {
                             Label("Download NesTimer for Mac", systemImage: "arrow.down.circle")
@@ -102,15 +121,23 @@ struct AddDeviceView: View {
                     } header: {
                         Text("Install the agent")
                     }
+                    }
                 } else {
                     // Creation form
                     Section {
+                        Picker("Device", selection: $platform) {
+                            Text("Mac").tag("macos")
+                            Text("iPhone").tag("ios")
+                        }
+                        .pickerStyle(.segmented)
+
                         // On macOS a TextField's first argument is the *label*, shown
                         // beside the field — not a placeholder. Passing the example name
                         // there printed "Alex's MacBook" as a caption next to an empty
                         // box. The example belongs in `prompt`, which is the placeholder
                         // on both platforms.
-                        TextField("Mac name", text: $deviceName, prompt: Text("Alex's MacBook"))
+                        TextField(isPhone ? "iPhone name" : "Mac name", text: $deviceName,
+                                  prompt: Text(isPhone ? "Alex's iPhone" : "Alex's MacBook"))
 
                         if !isChildLocked {
                             TextField("Child's name", text: $childName, prompt: Text("Alex"))
@@ -119,8 +146,8 @@ struct AddDeviceView: View {
                         Text("New Device")
                     } footer: {
                         Text(isChildLocked
-                             ? "Enter the Mac's name"
-                             : "Enter the Mac name and child's name")
+                             ? "Enter the device's name"
+                             : "Enter the device name and child's name")
                     }
 
                     if let errorMessage {
@@ -153,7 +180,8 @@ struct AddDeviceView: View {
                                         let device = try await APIClient.shared.createDevice(
                                             name: deviceName,
                                             childName: attachTo.name,
-                                            childId: attachTo.id
+                                            childId: attachTo.id,
+                                            platform: platform
                                         )
                                         createdDevice = device
                                         onCreated?()
@@ -161,7 +189,7 @@ struct AddDeviceView: View {
                                         errorMessage = error.localizedDescription
                                     }
                                 } else {
-                                    createdDevice = await vm.createDevice(name: deviceName, childName: childName)
+                                    createdDevice = await vm.createDevice(name: deviceName, childName: childName, platform: platform)
                                 }
                                 isCreating = false
                             }

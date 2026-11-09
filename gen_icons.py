@@ -148,6 +148,12 @@ if __name__ == "__main__":
     make_iconset(os.path.join(base, "icons/parent"), "controller")
     make_iconset(os.path.join(base, "icons/agent"), "agent")
 
+    # iOS child agent: single 1024 universal icon (agent variant)
+    child = os.path.join(base, "ios-agent/NesTimerChild/Assets.xcassets/AppIcon.appiconset")
+    os.makedirs(child, exist_ok=True)
+    flatten_ios(make_icon(1024, "agent")).save(os.path.join(child, "icon_1024.png"))
+    print(f"✓ Generated iOS child icon in {child}")
+
     # Preview
     preview = Image.new("RGBA", (1024 * 3 + 40, 1024), (255, 255, 255, 0))
     preview.paste(make_icon(1024, "controller"), (0, 0))

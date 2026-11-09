@@ -3,20 +3,20 @@ import hashlib
 import logging
 import os
 import re
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
 from ..models.models import Device, Policy, UsageLog, Activity, Child
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
-from ..totp import verify_totp
+from ..totp import matching_step
 from ..rate_limit import totp_limiter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -64,6 +64,28 @@ def get_effective_limit(policy: Policy, weekday: int) -> int:
     return policy.screen_time_limit_minutes
 
 
+# Tests pin historical dates (e.g. a known weekday); they switch this off. Production never does.
+ENFORCE_PLAUSIBLE_DATES = True
+
+
+def _require_plausible_local_date(date: str, now: datetime, allow_previous_day: bool = False) -> None:
+    """A local date must exist somewhere on Earth right now (UTC-12 … UTC+14).
+
+    Agents send their own local date, and the child controls the device clock. Without
+    this check, moving the clock a day forward fetches a fresh, unused budget.
+
+    `allow_previous_day` (usage reports only): a phone reports yesterday's last minutes on
+    its first sync of the morning, which in the Americas is after yesterday has ended
+    everywhere. Accepting an older date doesn't help the forward-clock trick.
+    """
+    if not ENFORCE_PLAUSIBLE_DATES:
+        return
+    hours = (-36, -12, 0, 14) if allow_previous_day else (-12, 0, 14)
+    plausible = {(now + timedelta(hours=h)).strftime("%Y-%m-%d") for h in hours}
+    if date not in plausible:
+        raise HTTPException(status_code=400, detail="Date out of range: check the device's date and time")
+
+
 @router.get("/config", response_model=AgentConfig)
 async def get_config(
     device: Device = Depends(get_device_by_token),
@@ -79,6 +101,7 @@ async def get_config(
     now = datetime.now(timezone.utc)
     # Use agent-provided date if valid, otherwise fall back to UTC date
     if date and re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        _require_plausible_local_date(date, now)
         today = date
         # Parse agent's local date to get correct weekday for limit/downtime
         agent_date = datetime.strptime(date, "%Y-%m-%d")
@@ -274,6 +297,7 @@ async def report_usage(
     report — see `_clamp_reported_minutes`.
     """
     now = datetime.now(timezone.utc)
+    _require_plausible_local_date(report.date, now, allow_previous_day=True)
     result = await db.execute(
         select(UsageLog).where(
             UsageLog.device_id == device.id, UsageLog.date == report.date
@@ -329,7 +353,22 @@ async def verify_totp_endpoint(
     await totp_limiter.check(db, device.id)  # Rate limit per device, not IP
     if not device.shared_secret:
         raise HTTPException(status_code=400, detail="No shared secret configured")
-    valid = verify_totp(device.shared_secret, body.code)
+    step = matching_step(device.shared_secret, body.code)
+    # One-time codes: a step at or below the last accepted one is spent. Without this a
+    # child can replay one code for ~10 minutes of repeated 5-minute unlocks.
+    # Compare-and-set in one statement: two concurrent requests with the same code can't
+    # both win (the ORM's copy of the row may be stale).
+    valid = False
+    if step is not None:
+        result = await db.execute(
+            update(Device)
+            .where(Device.id == device.id)
+            .where(or_(Device.last_totp_step.is_(None), Device.last_totp_step < step))
+            .values(last_totp_step=step)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        valid = result.rowcount == 1
     return TOTPVerifyResponse(valid=valid, granted_minutes=5 if valid else 0)
 
 

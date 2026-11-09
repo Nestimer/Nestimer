@@ -28,6 +28,15 @@ def verify_totp(secret_hex: str, code: str, step: int = STEP, window: int = 1) -
     return False
 
 
+def matching_step(secret_hex: str, code: str, step: int = STEP, window: int = 1) -> int | None:
+    """The time step the code belongs to (current ± window), or None."""
+    t = int(time_module.time()) // step
+    for offset in range(-window, window + 1):
+        if _code_for_counter(secret_hex, t + offset) == code:
+            return t + offset
+    return None
+
+
 def _code_for_counter(secret_hex: str, counter: int) -> str:
     key = bytes.fromhex(secret_hex)
     msg = struct.pack(">Q", counter)

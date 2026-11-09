@@ -19,9 +19,9 @@ class DevicesViewModel: ObservableObject {
         isLoading = false
     }
 
-    func createDevice(name: String, childName: String) async -> Device? {
+    func createDevice(name: String, childName: String, platform: String = "macos") async -> Device? {
         do {
-            let device = try await api.createDevice(name: name, childName: childName)
+            let device = try await api.createDevice(name: name, childName: childName, platform: platform)
             await loadDevices()
             return device
         } catch {

@@ -105,3 +105,11 @@ async def simulate_elapsed_time(minutes: float) -> None:
         await session.commit()
     finally:
         await gen.aclose()
+
+
+@pytest.fixture(autouse=True)
+def _historical_dates_allowed(monkeypatch):
+    """Most agent tests pin fixed dates (a known Monday, a weekend). The plausible-date
+    check is exercised on its own in test_agent_hardening.py."""
+    import app.routers.agent as agent
+    monkeypatch.setattr(agent, "ENFORCE_PLAUSIBLE_DATES", False)
