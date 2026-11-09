@@ -72,6 +72,7 @@ struct StatusView: View {
                             s.serverFloorMinutes = floor
                             s.reportedMinutes = floor
                             s.lastObservedAt = Date()
+                            s.armedEvents = nil   // re-arm from the new base
                         }
                         try? FileManager.default.removeItem(at: DebugLog.url)
                         Task { await refresh() }

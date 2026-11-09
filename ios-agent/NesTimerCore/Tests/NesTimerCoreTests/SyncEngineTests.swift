@@ -338,3 +338,30 @@ final class FlakyScheduler: MonitorScheduler, @unchecked Sendable {
     func armEvents(_ events: [PlannedEvent]) throws { if fail { throw Boom() }; succeeded += 1 }
     func armWindows(_ windows: [PlannedWindow]) throws {}
 }
+
+final class ConsumedEventTests: XCTestCase {
+    /// Seen on device: iOS delivered warn10/warn5/warn1/lock together after 4.5 real minutes.
+    /// The clock cap kept the phone open (10 min left) — but those events are one-shot, so
+    /// the lock must be re-armed or the phone stays open for good.
+    func testEarlyLockEventIsReArmed() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 200, used: 177, deviceUsed: 177)
+        _ = await r.engine.onThreshold(eventName: "chunk-177", observedMinutes: 177)  // armed up to lock-200
+        XCTAssertTrue(r.scheduler.events.contains { $0.name == "lock-200" })
+        // As on device: chunk-180 after 25 min, warn15-185 ~5.7 min later, then the burst.
+        r.clock.advance(25 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-180", observedMinutes: 180)
+        r.clock.advance(5.7 * 60)
+        _ = await r.engine.onThreshold(eventName: "warn15-185", observedMinutes: 185)
+        let armsBefore = r.scheduler.armCount
+        r.clock.advance(4.5 * 60)
+        defer { XCTAssertGreaterThan(r.scheduler.armCount, armsBefore, "fired one-shot events were never re-armed") }
+        for name in ["warn5-195", "warn1-199", "lock-200", "warn10-190"] {
+            _ = await r.engine.onThreshold(eventName: name, observedMinutes: PlannedEvent.observedMinutes(fromName: name)!)
+        }
+        let lock = r.scheduler.events.first { $0.kind == .lock }
+        XCTAssertNotNil(lock, "no lock armed — phone would stay open")
+        XCTAssertEqual(lock?.deviceMinutes, 200)
+        XCTAssertGreaterThan(lock?.armThreshold ?? 0, 9)  // ~10.5 min of use from now
+    }
+}

@@ -48,7 +48,7 @@ public actor SyncEngine {
 
     /// A usage event fired. `observedMinutes` is the event's threshold (today's usage per iOS).
     public func onThreshold(eventName: String, observedMinutes: Int) async -> Decision {
-        await wake(observed: Double(observedMinutes))
+        await wake(observed: Double(observedMinutes), firedEvent: eventName)
     }
 
     /// A downtime/activity/bonus window started or ended, or the daily interval rolled over.
@@ -107,7 +107,7 @@ public actor SyncEngine {
 
     // MARK: The wake
 
-    private func wake(observed: Double?) async -> Decision {
+    private func wake(observed: Double?, firedEvent: String? = nil) async -> Decision {
         let device = now()
 
         // (A) Local facts: rollover, usage growth, unlock expiry.
@@ -143,6 +143,9 @@ public actor SyncEngine {
                     s.lastObservedAt = device
                 }
             }
+            // iOS delivers each event once: whatever fired is no longer armed, even if the
+            // clock cap kept our count below its point — so it gets re-armed from now.
+            if let fired = firedEvent { s.armedEvents?.removeAll { $0.name == fired } }
             if let end = s.unlockEndsAtObserved, s.observedMinutes >= Double(end) { Self.clearUnlock(&s) }
             if let until = s.unlockUntil, device >= until || tampered { Self.clearUnlock(&s) }
 
