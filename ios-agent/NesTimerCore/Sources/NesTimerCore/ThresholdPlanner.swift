@@ -1,7 +1,7 @@
 import Foundation
 
-public struct PlannedEvent: Equatable, Sendable {
-    public enum Kind: Equatable, Sendable {
+public struct PlannedEvent: Equatable, Sendable, Codable {
+    public enum Kind: Equatable, Sendable, Codable {
         case chunk
         case warning(minutesLeft: Int)
         case lock
@@ -12,9 +12,13 @@ public struct PlannedEvent: Equatable, Sendable {
     /// Cumulative device usage today (minutes) at which the event fires.
     public let deviceMinutes: Int
     public let kind: Kind
+    /// What iOS is given: usage *since the events were armed* (includesPastActivity off),
+    /// i.e. deviceMinutes minus the observed usage at arming time. Set by the engine.
+    public var armThreshold: Int
 
-    public init(name: String, deviceMinutes: Int, kind: Kind) {
+    public init(name: String, deviceMinutes: Int, kind: Kind, armThreshold: Int? = nil) {
         self.name = name; self.deviceMinutes = deviceMinutes; self.kind = kind
+        self.armThreshold = armThreshold ?? deviceMinutes
     }
 
     /// Every name ends in "-<deviceMinutes>", so the monitor extension can recover the

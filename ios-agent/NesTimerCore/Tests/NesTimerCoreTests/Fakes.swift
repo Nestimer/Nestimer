@@ -66,7 +66,8 @@ final class FakeShield: Shield, @unchecked Sendable {
 final class FakeScheduler: MonitorScheduler, @unchecked Sendable {
     var events: [PlannedEvent] = []
     var windows: [PlannedWindow] = []
-    func armEvents(_ events: [PlannedEvent]) throws { self.events = events }
+    var armCount = 0
+    func armEvents(_ events: [PlannedEvent]) throws { self.events = events; armCount += 1 }
     func armWindows(_ windows: [PlannedWindow]) throws { self.windows = windows }
 }
 

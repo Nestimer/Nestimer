@@ -271,3 +271,70 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(probe.violations, 0)
     }
 }
+
+final class ArmingTests: XCTestCase {
+    func testThresholdsAreRelativeToWhenTheyWereArmed() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
+        let lock = r.scheduler.events.first { $0.kind == .lock }!
+        XCTAssertEqual(lock.deviceMinutes, 60)       // absolute, in the name
+        XCTAssertEqual(lock.armThreshold, 40)        // usage since arming
+        XCTAssertEqual(lock.name, "lock-60")
+    }
+
+    func testPassingAChunkDoesNotReArm() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 120)
+        _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
+        let first = r.scheduler.armCount
+        r.clock.advance(5 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-25", observedMinutes: 25)
+        XCTAssertEqual(r.scheduler.armCount, first, "re-arming restarts iOS's count and fires echoes")
+    }
+
+    func testLimitChangeReArms() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 120)
+        _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
+        let first = r.scheduler.armCount
+        r.api.policy = Fx.policy(limit: 90)
+        r.clock.advance(60)
+        _ = await r.engine.onForeground()
+        XCTAssertEqual(r.scheduler.armCount, first + 1)
+        XCTAssertEqual(r.scheduler.events.first { $0.kind == .lock }?.armThreshold, 70)
+    }
+
+    func testRunningOutOfChunksReArms() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limitEnabled: false)
+        _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)   // chunks 25…120
+        let first = r.scheduler.armCount
+        r.clock.advance(95 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-115", observedMinutes: 115)  // one left ahead
+        XCTAssertEqual(r.scheduler.armCount, first + 1)
+    }
+
+    func testArmFailureIsRetriedNextWake() async {
+        let store = MemoryStore(), api = FakeAPI(), clock = Clock(Fx.at(15))
+        api.policy = Fx.policy(limit: 60)
+        let flaky = FlakyScheduler()
+        let c = clock
+        let e = SyncEngine(api: api, store: store, shield: FakeShield(), scheduler: flaky, notifier: FakeNotifier(),
+                           secrets: FakeSecrets(secret: nil), calendar: Fx.cal, now: { c.now }, uptime: { c.uptime })
+        flaky.fail = true
+        _ = await e.onForeground()
+        flaky.fail = false
+        clock.advance(60)
+        _ = await e.onForeground()
+        XCTAssertEqual(flaky.succeeded, 1)
+    }
+}
+
+final class FlakyScheduler: MonitorScheduler, @unchecked Sendable {
+    var fail = false
+    var succeeded = 0
+    struct Boom: Error {}
+    func armEvents(_ events: [PlannedEvent]) throws { if fail { throw Boom() }; succeeded += 1 }
+    func armWindows(_ windows: [PlannedWindow]) throws {}
+}

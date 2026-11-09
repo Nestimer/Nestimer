@@ -96,6 +96,10 @@ public struct AgentState: Codable, Equatable, Sendable {
     public var lastObservedAt: Date?
     /// Last time a wake went to the network; bursts within seconds re-use the snapshot.
     public var lastNetworkAt: Date?
+    /// The usage events currently armed on iOS (absolute deviceMinutes, relative thresholds)
+    /// and the day they were armed for. Nil = must (re-)arm.
+    public var armedEvents: [PlannedEvent]?
+    public var armedDate: String?
     public var secondsSinceObservation: TimeInterval = 0
     public var pausedSecondsSinceObservation: TimeInterval = 0
 

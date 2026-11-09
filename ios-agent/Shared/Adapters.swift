@@ -72,7 +72,8 @@ struct DeviceActivityScheduler: MonitorScheduler {
     private var armedURL: URL { AppGroup.container.appendingPathComponent("armed-events.json") }
 
     func armEvents(_ events: [PlannedEvent]) throws {
-        let names = events.map(\.name).sorted()
+        // Name + relative threshold: the same names re-armed from a new base are a change.
+        let names = events.map { "\($0.name)@\($0.armThreshold)" }.sorted()
         // Decide and record under a lock, before starting: concurrent wakes (app + several
         // extension callbacks) must not each see "not armed yet" and restart again.
         let lockPath = AppGroup.container.appendingPathComponent("arm.lock").path
@@ -95,8 +96,10 @@ struct DeviceActivityScheduler: MonitorScheduler {
         for e in events {
             deviceEvents[.init(e.name)] = DeviceActivityEvent(
                 applications: counted.applicationTokens, categories: counted.categoryTokens,
-                webDomains: counted.webDomainTokens, threshold: DateComponents(minute: e.deviceMinutes),
-                includesPastActivity: true)
+                webDomains: counted.webDomainTokens, threshold: DateComponents(minute: e.armThreshold),
+                // Count from now, not from midnight: past usage (including other devices'
+                // shared Screen Time) would otherwise fire every threshold at once on restart.
+                includesPastActivity: false)
         }
         let allDay = DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0),
                                             intervalEnd: DateComponents(hour: 23, minute: 59), repeats: true)

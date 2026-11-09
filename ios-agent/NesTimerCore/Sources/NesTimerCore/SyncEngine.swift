@@ -208,7 +208,9 @@ public actor SyncEngine {
     /// Everything to do on iOS after a decision, computed under the lock.
     struct EnforcementPlan {
         var decision: Decision
-        var events: [PlannedEvent]
+        /// Nil: what's armed on iOS is still right — don't restart monitoring (a restart
+        /// resets iOS's count and makes it echo interval callbacks).
+        var events: [PlannedEvent]?
         var windows: [PlannedWindow]
         var warnings: [Int]
         var expired: Bool
@@ -223,8 +225,8 @@ public actor SyncEngine {
                                          start: bonusEnd.addingTimeInterval(-SchedulePlanner.minimumLength),
                                          end: bonusEnd, kind: .bonusEnd))
         }
-        var plan = EnforcementPlan(decision: decision, events: plannedEvents(decision, s), windows: windows,
-                                   warnings: [], expired: false)
+        var plan = EnforcementPlan(decision: decision, events: armingNeeded(plannedEvents(decision, s), &s),
+                                   windows: windows, warnings: [], expired: false)
         switch decision {
         case .shield(let reason):
             plan.expired = !s.shielded && (reason == .timeExpired || reason == .deviceCapReached)
@@ -257,12 +259,15 @@ public actor SyncEngine {
 
     private func carryOut(_ plan: EnforcementPlan) -> Decision {
         var decision = plan.decision
-        do {
-            try timed("armEvents") { try scheduler.armEvents(plan.events) }
-        } catch {
-            if !decision.isShielded {
-                decision = .shield(.agentError)
-                store.update { s in s.shielded = true; s.paused = false }
+        if let events = plan.events {
+            do {
+                try timed("armEvents") { try scheduler.armEvents(events) }
+            } catch {
+                store.update { s in s.armedEvents = nil }  // retry next wake
+                if !decision.isShielded {
+                    decision = .shield(.agentError)
+                    store.update { s in s.shielded = true; s.paused = false }
+                }
             }
         }
         timed("armWindows") { try? scheduler.armWindows(plan.windows) }
@@ -368,6 +373,26 @@ public actor SyncEngine {
                             screenTimeLimitMinutes: p.screenTimeLimitMinutes, usedMinutesToday: 0,
                             activities: p.activities, bonusUntil: p.bonusUntil,
                             deviceUsedMinutes: p.reportsDeviceUsage ? 0 : nil, deviceCapMinutes: p.deviceCapMinutes)
+    }
+
+    /// Re-arm only when the key points (lock, warnings, unlock end) move, when fewer than
+    /// two chunks are left ahead, or on a new day. Thresholds become relative to now.
+    private nonisolated func armingNeeded(_ planned: [PlannedEvent], _ s: inout AgentState) -> [PlannedEvent]? {
+        func keys(_ e: [PlannedEvent]) -> [String] { e.filter { $0.kind != .chunk }.map(\.name).sorted() }
+        if let armed = s.armedEvents, s.armedDate == s.date {
+            let chunksAhead = armed.filter { $0.kind == .chunk && Double($0.deviceMinutes) > s.observedMinutes }.count
+            let plannedChunks = planned.contains { $0.kind == .chunk }
+            let keysAhead = keys(armed.filter { Double($0.deviceMinutes) > s.observedMinutes })
+            if keys(planned) == keysAhead && (!plannedChunks || chunksAhead >= 2) { return nil }
+        }
+        let base = Int(s.observedMinutes.rounded(.down))
+        let events = planned.map {
+            PlannedEvent(name: $0.name, deviceMinutes: $0.deviceMinutes, kind: $0.kind,
+                         armThreshold: max(1, $0.deviceMinutes - base))
+        }
+        s.armedEvents = events
+        s.armedDate = s.date
+        return events
     }
 
     private nonisolated func plannedEvents(_ d: Decision, _ s: AgentState) -> [PlannedEvent] {
