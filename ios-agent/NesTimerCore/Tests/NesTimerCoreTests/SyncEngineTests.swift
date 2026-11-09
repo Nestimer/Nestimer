@@ -252,4 +252,18 @@ final class SyncEngineTests: XCTestCase {
         _ = await r.engine.onThreshold(eventName: "chunk-70", observedMinutes: 70)
         XCTAssertEqual(r.store.state.countedMinutes, 70)
     }
+
+    // MARK: Deadlock guard
+
+    func testNoIOSCallsWhileStateIsLocked() async {
+        let store = MemoryStore(), api = FakeAPI(), clock = Clock(Fx.at(15))
+        api.policy = Fx.policy(limit: 60, downtime: ("22:00", "07:00"))
+        let probe = LockCheckingScheduler(store: store)
+        let c = clock
+        let e = SyncEngine(api: api, store: store, shield: probe, scheduler: probe, notifier: FakeNotifier(),
+                           secrets: FakeSecrets(secret: nil), calendar: Fx.cal, now: { c.now }, uptime: { c.uptime })
+        _ = await e.onForeground()
+        _ = await e.onThreshold(eventName: "lock-60", observedMinutes: 60)
+        XCTAssertEqual(probe.violations, 0)
+    }
 }

@@ -31,9 +31,29 @@ final class FakeAPI: AgentAPI, @unchecked Sendable {
 
 final class MemoryStore: StateStore, @unchecked Sendable {
     var state = AgentState()
+    /// True while an update() closure runs — i.e. while the real store would hold its flock.
+    var locked = false
     func load() -> AgentState { state }
     func save(_ s: AgentState) { state = s }
+    func update<T>(_ body: (inout AgentState) -> T) -> T {
+        locked = true
+        defer { locked = false }
+        var s = state; let r = body(&s); state = s; return r
+    }
 }
+
+/// Fails the test if iOS side effects happen while the state lock is held: on device the
+/// monitor extension, woken by those very calls, blocks on the same lock (deadlock).
+final class LockCheckingScheduler: MonitorScheduler, ShieldLike, @unchecked Sendable {
+    let store: MemoryStore
+    var violations = 0
+    init(store: MemoryStore) { self.store = store }
+    func armEvents(_ events: [PlannedEvent]) throws { if store.locked { violations += 1 } }
+    func armWindows(_ windows: [PlannedWindow]) throws { if store.locked { violations += 1 } }
+    func apply(_ reason: ShieldReason) { if store.locked { violations += 1 } }
+    func remove() { if store.locked { violations += 1 } }
+}
+typealias ShieldLike = Shield
 
 final class FakeShield: Shield, @unchecked Sendable {
     var applied: [ShieldReason] = []

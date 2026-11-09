@@ -165,8 +165,9 @@ final class AdversarialTests: XCTestCase {
         let e = SyncEngine(api: api, store: store, shield: shield, scheduler: ThrowingScheduler(), notifier: FakeNotifier(),
                            secrets: FakeSecrets(secret: secret), calendar: Fx.cal, now: { c.now }, uptime: { c.uptime })
         let d = await e.onThreshold(eventName: "chunk-50", observedMinutes: 50)
-        XCTAssertEqual(d, .open(remainingMinutes: 10, why: .withinLimit))
-        XCTAssertEqual(shield.current, .agentError, "open with no lock event armed")
+        XCTAssertEqual(d, .shield(.agentError), "open with no lock event armed")
+        XCTAssertEqual(shield.current, .agentError)
+        XCTAssertTrue(store.state.shielded)
     }
 
     func testBonusEndIsAWake() async {

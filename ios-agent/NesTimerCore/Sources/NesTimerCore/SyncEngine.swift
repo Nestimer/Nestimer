@@ -143,8 +143,9 @@ public actor SyncEngine {
         let fetched = try? await api.fetchConfig(localDate: reportDate)
         let fetchedAtUptime = uptime()
 
-        // (C) Merge, decide, enforce, re-arm — atomically.
-        return store.update { s -> Decision in
+        // (C) Merge and decide atomically; then act on iOS *outside* the lock — arming
+        // monitoring makes iOS wake the monitor extension, which needs the same lock.
+        let plan = store.update { s -> EnforcementPlan in
             if let reported, s.date == reportDate { s.reportedMinutes = max(s.reportedMinutes, reported) }
             if let fetched {
                 if let serverTime = fetched.serverTime {
@@ -170,9 +171,9 @@ public actor SyncEngine {
             if let t = trustedTime(s) { s.latestTrusted = max(s.latestTrusted ?? t, t) }
 
             let decision = decide(&s, device: device)
-            enforce(&s, decision)
-            return decision
+            return record(&s, decision)
         }
+        return carryOut(plan)
     }
 
     // MARK: Decide / enforce
@@ -185,38 +186,37 @@ public actor SyncEngine {
                                         unlockUntil: s.unlockUntil, now: device, calendar: calendar)
     }
 
-    private func enforce(_ s: inout AgentState, _ decision: Decision) {
-        var decision = decision
-        let policy = effectivePolicy(s)
+    /// Everything to do on iOS after a decision, computed under the lock.
+    struct EnforcementPlan {
+        var decision: Decision
+        var events: [PlannedEvent]
+        var windows: [PlannedWindow]
+        var warnings: [Int]
+        var expired: Bool
+    }
 
-        // Re-arm first: if no lock can be armed, the phone must not stay open.
-        let events = plannedEvents(decision, s)
-        do {
-            try scheduler.armEvents(events)
-        } catch {
-            if !decision.isShielded { decision = .shield(.agentError) }
-        }
+    /// Updates state for the decision (warned, shielded, paused) and plans the side effects.
+    private func record(_ s: inout AgentState, _ decision: Decision) -> EnforcementPlan {
+        let policy = effectivePolicy(s)
         var windows = policy.map { SchedulePlanner.plan(policy: $0, now: now(), calendar: calendar) } ?? []
         if let bonusEnd = policy?.bonusUntilDate, bonusEnd > now() {
             windows.append(PlannedWindow(name: "bonusend-\(Int(bonusEnd.timeIntervalSince1970))",
                                          start: bonusEnd.addingTimeInterval(-SchedulePlanner.minimumLength),
                                          end: bonusEnd, kind: .bonusEnd))
         }
-        try? scheduler.armWindows(windows)
-
+        var plan = EnforcementPlan(decision: decision, events: plannedEvents(decision, s), windows: windows,
+                                   warnings: [], expired: false)
         switch decision {
         case .shield(let reason):
-            shield.apply(reason)
-            if !s.shielded, reason == .timeExpired || reason == .deviceCapReached { notifier.expired() }
+            plan.expired = !s.shielded && (reason == .timeExpired || reason == .deviceCapReached)
             s.shielded = true
             s.paused = false
         case .open(let remaining, let why):
-            shield.remove()
             s.shielded = false
             if why == .withinLimit, let r = remaining {
                 for n in ThresholdPlanner.warningMinutes where r <= Double(n) && !s.warned.contains(n) {
                     s.warned.insert(n)
-                    notifier.warn(minutesLeft: n)
+                    plan.warnings.append(n)
                 }
             }
             if let r = remaining, r > 15 { s.warned = [] }
@@ -225,6 +225,29 @@ public actor SyncEngine {
             default: s.paused = false
             }
         }
+        return plan
+    }
+
+    /// iOS side effects, with no lock held. If no lock event can be armed, the phone must
+    /// not stay open.
+    private func carryOut(_ plan: EnforcementPlan) -> Decision {
+        var decision = plan.decision
+        do {
+            try scheduler.armEvents(plan.events)
+        } catch {
+            if !decision.isShielded {
+                decision = .shield(.agentError)
+                store.update { s in s.shielded = true; s.paused = false }
+            }
+        }
+        try? scheduler.armWindows(plan.windows)
+        switch decision {
+        case .shield(let reason): shield.apply(reason)
+        case .open: shield.remove()
+        }
+        for n in plan.warnings { notifier.warn(minutesLeft: n) }
+        if plan.expired { notifier.expired() }
+        return decision
     }
 
     // MARK: Time
