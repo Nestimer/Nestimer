@@ -101,3 +101,11 @@ async def test_disabled_in_tests_records_nothing(db_session):
         await limiter.check(db_session, "203.0.113.7", now=T0)
     n = (await db_session.execute(select(func.count()).select_from(RateLimitHit))).scalar_one()
     assert n == 0
+
+
+async def test_old_rows_of_other_keys_are_swept(db_session, enabled):
+    limiter = RateLimiter("login", max_attempts=5, window_seconds=60)
+    await limiter.check(db_session, "203.0.113.7", now=T0)  # never comes back
+    await limiter.check(db_session, "198.51.100.9", now=T0 + timedelta(hours=2))
+    keys = (await db_session.execute(select(RateLimitHit.key))).scalars().all()
+    assert keys == ["198.51.100.9"]

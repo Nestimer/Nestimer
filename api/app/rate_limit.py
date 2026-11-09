@@ -18,6 +18,9 @@ from .models.models import RateLimitHit
 # Disable rate limiting in tests
 _DISABLED = os.getenv("TESTING", "").lower() in ("1", "true")
 
+# Longer than the largest window below; rows older than this can't affect any decision.
+SWEEP_AFTER = timedelta(hours=1)
+
 
 def client_ip(request: Request) -> str:
     """The real client IP for rate limiting.
@@ -62,6 +65,8 @@ class RateLimiter:
 
         where = (RateLimitHit.scope == self.scope, RateLimitHit.key == key)
         await db.execute(delete(RateLimitHit).where(*where, RateLimitHit.created_at <= cutoff))
+        # Global sweep: keys that never come back would otherwise keep their rows forever.
+        await db.execute(delete(RateLimitHit).where(RateLimitHit.created_at < now - SWEEP_AFTER))
         recent = (await db.execute(select(func.count()).select_from(RateLimitHit).where(*where))).scalar_one()
         if recent >= self.max_attempts:
             await db.commit()  # keep the pruning, release the lock

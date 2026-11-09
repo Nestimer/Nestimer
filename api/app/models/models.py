@@ -143,11 +143,14 @@ class RateLimitHit(Base):
     """One rate-limited attempt (login, register, TOTP verify).
 
     Lives in the database rather than process memory so the limit holds across all
-    uvicorn workers. Rows older than the scope's window are deleted on the next check
-    for the same key.
+    uvicorn workers. Every check deletes rows older than `SWEEP_AFTER` for all keys,
+    so IPs that never return don't accumulate.
     """
     __tablename__ = "rate_limit_hits"
-    __table_args__ = (Index("ix_rate_limit_scope_key_at", "scope", "key", "created_at"),)
+    __table_args__ = (
+        Index("ix_rate_limit_scope_key_at", "scope", "key", "created_at"),
+        Index("ix_rate_limit_created_at", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     scope = Column(String, nullable=False)
