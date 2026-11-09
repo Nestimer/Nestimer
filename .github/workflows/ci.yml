@@ -110,6 +110,27 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  # ─── iOS child agent (NesTimerCore tests + app build) ───
+  ios-child:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: NesTimerCore tests
+        run: swift test --package-path ios-agent/NesTimerCore
+
+      - name: Build NesTimerChild (iOS Simulator)
+        run: |
+          xcodebuild -project ios-agent/NesTimerChild.xcodeproj \
+            -scheme NesTimerChild \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
   # ─── Docker build (API + Web) ───
   docker-build:
     runs-on: ubuntu-latest
