@@ -1,0 +1,647 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06530815F6E89EDF7565B0BC /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E5F1A4397A0448D471ACED /* SetupView.swift */; };
+		1394C5206440EBE2B029F798 /* ShieldExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF39D89C1376FD9E25FEBEFB /* ShieldExtension.swift */; };
+		13DECBFCEB5523660523EF46 /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C431463D6D0FEC4FCB3CAD /* MonitorExtension.swift */; };
+		13F4789E4E9BD0301D614977 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F12F4DFE0947C8B2252BA3C /* Keychain.swift */; };
+		2856B96EB63BE3E37C5434FC /* Adapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41C58E5D5F3C6AEA2431E92 /* Adapters.swift */; };
+		3BBB4BDC81ACFE7FD9C887FD /* NesTimerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 42C0E5FDFDA958C8D8CBC404 /* NesTimerCore */; };
+		5ACE3D7D874D2864F256861A /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 833BCE7FD9EF6C6009B04137 /* AppGroup.swift */; };
+		6106B54180A21B0A92816338 /* NesTimerChildApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211A4C6E06562697E558FBFB /* NesTimerChildApp.swift */; };
+		8BB87043ACE2ABD422761C6A /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D913F128DF96C264D3B4386 /* AgentClient.swift */; };
+		A159EBFB2115E27147BE6370 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 833BCE7FD9EF6C6009B04137 /* AppGroup.swift */; };
+		A410723CE8596DB7183380B5 /* Adapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41C58E5D5F3C6AEA2431E92 /* Adapters.swift */; };
+		AAFC8F5E2C97524EB57B5C21 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 833BCE7FD9EF6C6009B04137 /* AppGroup.swift */; };
+		B11C334514371D7F4509A4B2 /* NesTimerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9C139F9AE1FED4B60132283A /* NesTimerCore */; };
+		B1D104E92B5C468352F283BF /* NesTimerMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E4A897A84EF98BE5136EBC7E /* NesTimerMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C9C38E7F3E4534218D4EF4BA /* NesTimerCore in Frameworks */ = {isa = PBXBuildFile; productRef = E36F4FDB13F9F2E3EECE0F9A /* NesTimerCore */; };
+		D6CC1C33FDE85DFE0A19F706 /* StatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDA1FB2B3675675FA1D405E /* StatusView.swift */; };
+		D9327CED19F32843764464CA /* NesTimerShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E8B92980025A1F3E8F0F33C6 /* NesTimerShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E9DDD68DC44D5EB47F87FE97 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D913F128DF96C264D3B4386 /* AgentClient.swift */; };
+		F135772C09B97EB8014C6827 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F12F4DFE0947C8B2252BA3C /* Keychain.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4AAAB835C8F2CB2862244C36 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A33AAB4688E2E0EEB913E71 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3D1F82745CEA1F8C4CA80252;
+			remoteInfo = NesTimerMonitor;
+		};
+		661EFFEE50B0DD82BBD80288 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A33AAB4688E2E0EEB913E71 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 605741F7823DCA514FA483EB;
+			remoteInfo = NesTimerShield;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CFC223B296A52F83C29E3EF8 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B1D104E92B5C468352F283BF /* NesTimerMonitor.appex in Embed Foundation Extensions */,
+				D9327CED19F32843764464CA /* NesTimerShield.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		08C431463D6D0FEC4FCB3CAD /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
+		0ADEEF8B01AF9244A86A00F3 /* NesTimerMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerMonitor.entitlements; sourceTree = "<group>"; };
+		0D4CCC374C98C8731F66B822 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		12DA6629FADA3D438A878710 /* NesTimerChild.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NesTimerChild.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		144ADC073E989738F8D29EF2 /* NesTimerShield.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerShield.entitlements; sourceTree = "<group>"; };
+		211A4C6E06562697E558FBFB /* NesTimerChildApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NesTimerChildApp.swift; sourceTree = "<group>"; };
+		23E5F1A4397A0448D471ACED /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		27A4D1C21B7C0310DA45CBED /* NesTimerChild.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerChild.entitlements; sourceTree = "<group>"; };
+		40D5BDB95821C793E35B92AC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		44983180DED1E9215F5B330F /* NesTimerCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = NesTimerCore; path = NesTimerCore; sourceTree = SOURCE_ROOT; };
+		59B9C4028661B69E6CB41CB9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5F12F4DFE0947C8B2252BA3C /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		833BCE7FD9EF6C6009B04137 /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroup.swift; sourceTree = "<group>"; };
+		9D913F128DF96C264D3B4386 /* AgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentClient.swift; sourceTree = "<group>"; };
+		B41C58E5D5F3C6AEA2431E92 /* Adapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Adapters.swift; sourceTree = "<group>"; };
+		BF39D89C1376FD9E25FEBEFB /* ShieldExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldExtension.swift; sourceTree = "<group>"; };
+		DDDA1FB2B3675675FA1D405E /* StatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusView.swift; sourceTree = "<group>"; };
+		E4A897A84EF98BE5136EBC7E /* NesTimerMonitor.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NesTimerMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E8B92980025A1F3E8F0F33C6 /* NesTimerShield.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NesTimerShield.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1112CEAB579BB025171F2275 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B11C334514371D7F4509A4B2 /* NesTimerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		82809DA6DB0F35935DF52B38 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C9C38E7F3E4534218D4EF4BA /* NesTimerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAC95ECDEED48033CC918CC7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3BBB4BDC81ACFE7FD9C887FD /* NesTimerCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		13D72238981B73AF6DF53901 /* NesTimerChild */ = {
+			isa = PBXGroup;
+			children = (
+				40D5BDB95821C793E35B92AC /* Info.plist */,
+				27A4D1C21B7C0310DA45CBED /* NesTimerChild.entitlements */,
+				211A4C6E06562697E558FBFB /* NesTimerChildApp.swift */,
+				27F12B46154008C3930C3197 /* Views */,
+			);
+			path = NesTimerChild;
+			sourceTree = "<group>";
+		};
+		20958A7842296040ED312DCA /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				44983180DED1E9215F5B330F /* NesTimerCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		23C9750D4D074BB8B3193214 /* NesTimerMonitor */ = {
+			isa = PBXGroup;
+			children = (
+				59B9C4028661B69E6CB41CB9 /* Info.plist */,
+				08C431463D6D0FEC4FCB3CAD /* MonitorExtension.swift */,
+				0ADEEF8B01AF9244A86A00F3 /* NesTimerMonitor.entitlements */,
+			);
+			path = NesTimerMonitor;
+			sourceTree = "<group>";
+		};
+		27F12B46154008C3930C3197 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				23E5F1A4397A0448D471ACED /* SetupView.swift */,
+				DDDA1FB2B3675675FA1D405E /* StatusView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		6133CA17FB3D455975409D73 = {
+			isa = PBXGroup;
+			children = (
+				13D72238981B73AF6DF53901 /* NesTimerChild */,
+				23C9750D4D074BB8B3193214 /* NesTimerMonitor */,
+				D788E76FF9475BAFE3ACD705 /* NesTimerShield */,
+				20958A7842296040ED312DCA /* Packages */,
+				F3FB1B39489F0307DBE1F234 /* Shared */,
+				FF9D72F0344AF5515D07663D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D788E76FF9475BAFE3ACD705 /* NesTimerShield */ = {
+			isa = PBXGroup;
+			children = (
+				0D4CCC374C98C8731F66B822 /* Info.plist */,
+				144ADC073E989738F8D29EF2 /* NesTimerShield.entitlements */,
+				BF39D89C1376FD9E25FEBEFB /* ShieldExtension.swift */,
+			);
+			path = NesTimerShield;
+			sourceTree = "<group>";
+		};
+		F3FB1B39489F0307DBE1F234 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B41C58E5D5F3C6AEA2431E92 /* Adapters.swift */,
+				9D913F128DF96C264D3B4386 /* AgentClient.swift */,
+				833BCE7FD9EF6C6009B04137 /* AppGroup.swift */,
+				5F12F4DFE0947C8B2252BA3C /* Keychain.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		FF9D72F0344AF5515D07663D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				12DA6629FADA3D438A878710 /* NesTimerChild.app */,
+				E4A897A84EF98BE5136EBC7E /* NesTimerMonitor.appex */,
+				E8B92980025A1F3E8F0F33C6 /* NesTimerShield.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1DC46720D5D57ECE2FFAF0BC /* NesTimerChild */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E9F406C322152DF70EE0316 /* Build configuration list for PBXNativeTarget "NesTimerChild" */;
+			buildPhases = (
+				96B2F064C3F533BF244FAB46 /* Sources */,
+				FAC95ECDEED48033CC918CC7 /* Frameworks */,
+				CFC223B296A52F83C29E3EF8 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D935D500A1911195CB2651E8 /* PBXTargetDependency */,
+				1315C6318E25B177645788A9 /* PBXTargetDependency */,
+			);
+			name = NesTimerChild;
+			packageProductDependencies = (
+				42C0E5FDFDA958C8D8CBC404 /* NesTimerCore */,
+			);
+			productName = NesTimerChild;
+			productReference = 12DA6629FADA3D438A878710 /* NesTimerChild.app */;
+			productType = "com.apple.product-type.application";
+		};
+		3D1F82745CEA1F8C4CA80252 /* NesTimerMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE941039DB927D03752BC772 /* Build configuration list for PBXNativeTarget "NesTimerMonitor" */;
+			buildPhases = (
+				B10024264D33B37088E26F9A /* Sources */,
+				82809DA6DB0F35935DF52B38 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NesTimerMonitor;
+			packageProductDependencies = (
+				E36F4FDB13F9F2E3EECE0F9A /* NesTimerCore */,
+			);
+			productName = NesTimerMonitor;
+			productReference = E4A897A84EF98BE5136EBC7E /* NesTimerMonitor.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		605741F7823DCA514FA483EB /* NesTimerShield */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6B13144EFE6B57D7DE333A92 /* Build configuration list for PBXNativeTarget "NesTimerShield" */;
+			buildPhases = (
+				32AD9C7E7ED33130608E545F /* Sources */,
+				1112CEAB579BB025171F2275 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NesTimerShield;
+			packageProductDependencies = (
+				9C139F9AE1FED4B60132283A /* NesTimerCore */,
+			);
+			productName = NesTimerShield;
+			productReference = E8B92980025A1F3E8F0F33C6 /* NesTimerShield.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6A33AAB4688E2E0EEB913E71 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1DC46720D5D57ECE2FFAF0BC = {
+						DevelopmentTeam = CBBC6T33XY;
+						ProvisioningStyle = Automatic;
+					};
+					3D1F82745CEA1F8C4CA80252 = {
+						DevelopmentTeam = CBBC6T33XY;
+						ProvisioningStyle = Automatic;
+					};
+					605741F7823DCA514FA483EB = {
+						DevelopmentTeam = CBBC6T33XY;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 1710DFB35B8C6E89571BF522 /* Build configuration list for PBXProject "NesTimerChild" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6133CA17FB3D455975409D73;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				247CE703B2732D8F36D04121 /* XCLocalSwiftPackageReference "NesTimerCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FF9D72F0344AF5515D07663D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1DC46720D5D57ECE2FFAF0BC /* NesTimerChild */,
+				3D1F82745CEA1F8C4CA80252 /* NesTimerMonitor */,
+				605741F7823DCA514FA483EB /* NesTimerShield */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		32AD9C7E7ED33130608E545F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAFC8F5E2C97524EB57B5C21 /* AppGroup.swift in Sources */,
+				1394C5206440EBE2B029F798 /* ShieldExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		96B2F064C3F533BF244FAB46 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A410723CE8596DB7183380B5 /* Adapters.swift in Sources */,
+				8BB87043ACE2ABD422761C6A /* AgentClient.swift in Sources */,
+				5ACE3D7D874D2864F256861A /* AppGroup.swift in Sources */,
+				F135772C09B97EB8014C6827 /* Keychain.swift in Sources */,
+				6106B54180A21B0A92816338 /* NesTimerChildApp.swift in Sources */,
+				06530815F6E89EDF7565B0BC /* SetupView.swift in Sources */,
+				D6CC1C33FDE85DFE0A19F706 /* StatusView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10024264D33B37088E26F9A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2856B96EB63BE3E37C5434FC /* Adapters.swift in Sources */,
+				E9DDD68DC44D5EB47F87FE97 /* AgentClient.swift in Sources */,
+				A159EBFB2115E27147BE6370 /* AppGroup.swift in Sources */,
+				13F4789E4E9BD0301D614977 /* Keychain.swift in Sources */,
+				13DECBFCEB5523660523EF46 /* MonitorExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1315C6318E25B177645788A9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 605741F7823DCA514FA483EB /* NesTimerShield */;
+			targetProxy = 661EFFEE50B0DD82BBD80288 /* PBXContainerItemProxy */;
+		};
+		D935D500A1911195CB2651E8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3D1F82745CEA1F8C4CA80252 /* NesTimerMonitor */;
+			targetProxy = 4AAAB835C8F2CB2862244C36 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		34C7F234CD099ABCFA4C2A98 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NesTimerShield/NesTimerShield.entitlements;
+				INFOPLIST_FILE = NesTimerShield/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child.shield;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		830792535324F27ECBD032DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NesTimerMonitor/NesTimerMonitor.entitlements;
+				INFOPLIST_FILE = NesTimerMonitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child.monitor;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A84FA473494CB914B355C4BC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NesTimerMonitor/NesTimerMonitor.entitlements;
+				INFOPLIST_FILE = NesTimerMonitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child.monitor;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C0B568AEF986F391B65AFC51 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = NesTimerChild/NesTimerChild.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = NesTimerChild/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C52F05F4F6610BDC1DC307AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = CBBC6T33XY;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CAA972FBDD2D63FB8FEC4B0F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NesTimerShield/NesTimerShield.entitlements;
+				INFOPLIST_FILE = NesTimerShield/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child.shield;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D0311B2F33FEC736DFBB39F3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = CBBC6T33XY;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E1DCB72F24E99BA8E2BA8613 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = NesTimerChild/NesTimerChild.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = NesTimerChild/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nestimer.child;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1710DFB35B8C6E89571BF522 /* Build configuration list for PBXProject "NesTimerChild" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D0311B2F33FEC736DFBB39F3 /* Debug */,
+				C52F05F4F6610BDC1DC307AC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4E9F406C322152DF70EE0316 /* Build configuration list for PBXNativeTarget "NesTimerChild" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1DCB72F24E99BA8E2BA8613 /* Debug */,
+				C0B568AEF986F391B65AFC51 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6B13144EFE6B57D7DE333A92 /* Build configuration list for PBXNativeTarget "NesTimerShield" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				34C7F234CD099ABCFA4C2A98 /* Debug */,
+				CAA972FBDD2D63FB8FEC4B0F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CE941039DB927D03752BC772 /* Build configuration list for PBXNativeTarget "NesTimerMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A84FA473494CB914B355C4BC /* Debug */,
+				830792535324F27ECBD032DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		247CE703B2732D8F36D04121 /* XCLocalSwiftPackageReference "NesTimerCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = NesTimerCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		42C0E5FDFDA958C8D8CBC404 /* NesTimerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NesTimerCore;
+		};
+		9C139F9AE1FED4B60132283A /* NesTimerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NesTimerCore;
+		};
+		E36F4FDB13F9F2E3EECE0F9A /* NesTimerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NesTimerCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 6A33AAB4688E2E0EEB913E71 /* Project object */;
+}

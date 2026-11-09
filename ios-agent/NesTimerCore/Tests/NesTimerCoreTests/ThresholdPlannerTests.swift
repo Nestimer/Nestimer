@@ -42,7 +42,7 @@ final class ThresholdPlannerTests: XCTestCase {
 
     func testUnlockEnd() {
         let e = ThresholdPlanner.plan(deviceUsedMinutes: 40.2, remainingMinutes: 0, unlockEndsAfterMinutes: 5)
-        XCTAssertEqual(e, [PlannedEvent(name: "unlock-end", deviceMinutes: 46, kind: .unlockEnd)])
+        XCTAssertEqual(e, [PlannedEvent(name: "unlockend-46", deviceMinutes: 46, kind: .unlockEnd)])
     }
 
     func testCapAtMaxEventsKeepsLockAndWarnings() {
@@ -51,6 +51,11 @@ final class ThresholdPlannerTests: XCTestCase {
         XCTAssertEqual(minutes(e) { $0 == .lock }, [300])
         XCTAssertEqual(e.filter { if case .warning = $0.kind { return true } else { return false } }.count, 4)
         XCTAssertEqual(minutes(e) { $0 == .chunk }.first, 5)  // nearest chunks kept, furthest dropped
+    }
+
+    func testEveryNameCarriesItsMinutes() {
+        let e = ThresholdPlanner.plan(deviceUsedMinutes: 12, remainingMinutes: 20, unlockEndsAfterMinutes: 3)
+        for ev in e { XCTAssertEqual(PlannedEvent.observedMinutes(fromName: ev.name), ev.deviceMinutes, ev.name) }
     }
 
     func testNamesAreUnique() {

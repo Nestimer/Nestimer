@@ -17,13 +17,11 @@ public struct PlannedEvent: Equatable, Sendable {
         self.name = name; self.deviceMinutes = deviceMinutes; self.kind = kind
     }
 
-    /// Inverse of the naming scheme, for the monitor extension's callback.
-    public static func kind(forName name: String) -> Kind? {
-        if name == "lock" { return .lock }
-        if name == "unlock-end" { return .unlockEnd }
-        if name.hasPrefix("chunk-") { return .chunk }
-        if name.hasPrefix("warn-"), let n = Int(name.dropFirst(5)) { return .warning(minutesLeft: n) }
-        return nil
+    /// Every name ends in "-<deviceMinutes>", so the monitor extension can recover the
+    /// observed usage from the event alone: "chunk-85", "warn5-117", "lock-122", "unlockend-65".
+    public static func observedMinutes(fromName name: String) -> Int? {
+        guard let last = name.split(separator: "-").last else { return nil }
+        return Int(last)
     }
 }
 
@@ -40,17 +38,17 @@ public enum ThresholdPlanner {
         var lockPoint: Int?
 
         if let unlock = unlockEndsAfterMinutes {
-            fixed.append(PlannedEvent(name: "unlock-end", deviceMinutes: Int(deviceUsedMinutes.rounded(.up)) + unlock, kind: .unlockEnd))
+            fixed.append(PlannedEvent(name: "unlockend-\(Int(deviceUsedMinutes.rounded(.up)) + unlock)", deviceMinutes: Int(deviceUsedMinutes.rounded(.up)) + unlock, kind: .unlockEnd))
         }
         if let remaining = remainingMinutes {
             guard remaining > 0 else { return fixed }  // already spent: the caller shields
             let lock = Int((deviceUsedMinutes + remaining).rounded(.up))
             lockPoint = lock
-            fixed.append(PlannedEvent(name: "lock", deviceMinutes: lock, kind: .lock))
+            fixed.append(PlannedEvent(name: "lock-\(lock)", deviceMinutes: lock, kind: .lock))
             for n in warningMinutes {
                 let at = Int((deviceUsedMinutes + remaining - Double(n)).rounded(.up))
                 if Double(at) > deviceUsedMinutes, at < lock {
-                    fixed.append(PlannedEvent(name: "warn-\(n)", deviceMinutes: at, kind: .warning(minutesLeft: n)))
+                    fixed.append(PlannedEvent(name: "warn\(n)-\(at)", deviceMinutes: at, kind: .warning(minutesLeft: n)))
                 }
             }
         }

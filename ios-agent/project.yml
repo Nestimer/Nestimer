@@ -1,0 +1,86 @@
+name: NesTimerChild
+options:
+  bundleIdPrefix: com.nestimer
+  deploymentTarget:
+    iOS: "17.4"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: CBBC6T33XY
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+packages:
+  NesTimerCore:
+    path: NesTimerCore
+targets:
+  NesTimerChild:
+    type: application
+    platform: iOS
+    sources: [NesTimerChild, Shared]
+    dependencies:
+      - package: NesTimerCore
+      - target: NesTimerMonitor
+      - target: NesTimerShield
+    info:
+      path: NesTimerChild/Info.plist
+      properties:
+        CFBundleDisplayName: NesTimer
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: NesTimerChild/NesTimerChild.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.nestimer.child]
+        keychain-access-groups: [$(AppIdentifierPrefix)com.nestimer.child]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nestimer.child
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  NesTimerMonitor:
+    type: app-extension
+    platform: iOS
+    sources: [NesTimerMonitor, Shared]
+    dependencies:
+      - package: NesTimerCore
+    info:
+      path: NesTimerMonitor/Info.plist
+      properties:
+        CFBundleDisplayName: NesTimer Monitor
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MonitorExtension
+    entitlements:
+      path: NesTimerMonitor/NesTimerMonitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.nestimer.child]
+        keychain-access-groups: [$(AppIdentifierPrefix)com.nestimer.child]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nestimer.child.monitor
+  NesTimerShield:
+    type: app-extension
+    platform: iOS
+    sources: [NesTimerShield, Shared/AppGroup.swift]
+    dependencies:
+      - package: NesTimerCore
+    info:
+      path: NesTimerShield/Info.plist
+      properties:
+        CFBundleDisplayName: NesTimer Shield
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldExtension
+    entitlements:
+      path: NesTimerShield/NesTimerShield.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.nestimer.child]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nestimer.child.shield

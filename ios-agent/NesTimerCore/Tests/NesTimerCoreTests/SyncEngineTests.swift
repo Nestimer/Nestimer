@@ -19,7 +19,7 @@ final class SyncEngineTests: XCTestCase {
         _ = await r.engine.onForeground()
         XCTAssertEqual(r.shield.current, nil)
         r.api.configFails = true
-        let d = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        let d = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         XCTAssertEqual(d, .shield(.timeExpired))
         XCTAssertEqual(r.shield.current, .timeExpired)
     }
@@ -118,7 +118,7 @@ final class SyncEngineTests: XCTestCase {
     func testWarningsFireOnceEach() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60, used: 0, deviceUsed: 0)
-        _ = await r.engine.onThreshold(eventName: "warn-5", observedMinutes: 55)
+        _ = await r.engine.onThreshold(eventName: "warn5-55", observedMinutes: 55)
         _ = await r.engine.onThreshold(eventName: "chunk-55", observedMinutes: 55)
         XCTAssertEqual(r.notifier.warnings, [15, 10, 5])
         r.api.policy = Fx.policy(limit: 120, used: 0, deviceUsed: 0)  // parent raised the limit
@@ -129,7 +129,7 @@ final class SyncEngineTests: XCTestCase {
     func testExpiredNotifiedOnceOnTransition() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         _ = await r.engine.onForeground()
         XCTAssertEqual(r.notifier.expiredCount, 1)
     }
@@ -139,20 +139,20 @@ final class SyncEngineTests: XCTestCase {
     func testCodeOnlineGrantsFiveMinutesOfUse() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         let v3 = await r.engine.submitCode("123456")
         XCTAssertTrue(v3)
         XCTAssertNil(r.shield.current)
         XCTAssertEqual(r.scheduler.events.first { $0.kind == .unlockEnd }?.deviceMinutes, 65)
         // Five more minutes of use → shield again.
-        let d = await r.engine.onThreshold(eventName: "unlock-end", observedMinutes: 65)
+        let d = await r.engine.onThreshold(eventName: "unlockend-65", observedMinutes: 65)
         XCTAssertEqual(d, .shield(.timeExpired))
     }
 
     func testUnlockEndsByWallClockToo() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         _ = await r.engine.submitCode("123456")
         r.clock.now = r.clock.now.addingTimeInterval(6 * 60)
         let v4 = await r.engine.onForeground()
@@ -162,7 +162,7 @@ final class SyncEngineTests: XCTestCase {
     func testCodeOfflineFallsBackToKeychainSecret() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         r.api.verifyResult = nil
         r.api.configFails = true
         let code = TOTP.code(secretHex: "3132333435363738393031323334353637383930",
@@ -176,7 +176,7 @@ final class SyncEngineTests: XCTestCase {
         // Offline there is no server-side limit; 6-digit codes must not be brute-forceable.
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         r.api.verifyResult = nil
         for _ in 0..<5 { _ = await r.engine.submitCode("000001") }
         let good = TOTP.code(secretHex: "3132333435363738393031323334353637383930",
@@ -193,7 +193,7 @@ final class SyncEngineTests: XCTestCase {
     func testWrongCodeKeepsShield() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         r.api.verifyResult = false
         let v8 = await r.engine.submitCode("999999")
         XCTAssertFalse(v8)
@@ -203,7 +203,7 @@ final class SyncEngineTests: XCTestCase {
     func testServerRejectionIsNotOverriddenByOfflineCheck() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         r.api.verifyResult = false  // server reachable and says no (e.g. rate limited)
         let code = TOTP.code(secretHex: "3132333435363738393031323334353637383930",
                              counter: UInt64(r.clock.now.timeIntervalSince1970 / 300))!
@@ -233,9 +233,9 @@ final class SyncEngineTests: XCTestCase {
     func testUsageDuringTOTPUnlockIsNotCounted() async {
         let r = Rig()
         r.api.policy = Fx.policy(limit: 60)
-        _ = await r.engine.onThreshold(eventName: "lock", observedMinutes: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         _ = await r.engine.submitCode("123456")
-        _ = await r.engine.onThreshold(eventName: "unlock-end", observedMinutes: 65)
+        _ = await r.engine.onThreshold(eventName: "unlockend-65", observedMinutes: 65)
         XCTAssertEqual(r.store.state.countedMinutes, 60)
     }
 

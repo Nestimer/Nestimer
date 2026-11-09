@@ -1,0 +1,93 @@
+import NesTimerCore
+import SwiftUI
+
+/// What the child sees: time left, state, and where to type the parent's code.
+struct StatusView: View {
+    let onUnpair: () -> Void
+
+    @Environment(\.scenePhase) private var phase
+    @State private var decision: Decision?
+    @State private var code = ""
+    @State private var codeMessage: String?
+    @State private var lastSync: Date?
+    @FocusState private var codeFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(headline).font(.title2.bold())
+                        Text(detail).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                    if let lastSync {
+                        Text("Updated \(lastSync.formatted(date: .omitted, time: .shortened))")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Section("Have a code from your parent?") {
+                    TextField("6-digit code", text: $code)
+                        .keyboardType(.numberPad)
+                        .font(.system(.title3, design: .monospaced))
+                        .focused($codeFocused)
+                        .onChange(of: code) { _, v in
+                            code = String(v.filter(\.isNumber).prefix(6))
+                            if code.count == 6 { Task { await submit() } }
+                        }
+                    if let codeMessage { Text(codeMessage).font(.footnote) }
+                }
+                #if DEBUG
+                Section("Debug") {
+                    Button("Refresh") { Task { await refresh() } }
+                    Button("Reset pairing", role: .destructive) {
+                        Keychain.delete(.apiToken); Keychain.delete(.serverURL); Keychain.delete(.totpSecret)
+                        onUnpair()
+                    }
+                }
+                #endif
+            }
+            .navigationTitle("NesTimer")
+            .refreshable { await refresh() }
+        }
+        .task { await refresh() }
+        .onChange(of: phase) { _, p in if p == .active { Task { await refresh() } } }
+    }
+
+    private var headline: String {
+        switch decision {
+        case .none: return "Checking…"
+        case .shield(.downtime(let until)): return "Downtime until \(until)"
+        case .shield(.deviceCapReached): return "This iPhone's limit is reached"
+        case .shield(.timeExpired): return "Time's up for today"
+        case .open(let r, _):
+            guard let r else { return "No limit today" }
+            let m = Int(r)
+            return m >= 60 ? "\(m / 60) h \(m % 60) m left today" : "\(m) m left today"
+        }
+    }
+
+    private var detail: String {
+        switch decision {
+        case .open(_, .activity(let endsAt)): return "Scheduled activity until \(endsAt)"
+        case .open(_, .temporaryUnlock): return "Unlocked with a code for 5 minutes"
+        case .open(_, .bonus): return "Bonus time from your parent"
+        case .open: return "Phone and Messages always work."
+        case .shield: return "Phone and Messages still work."
+        case .none: return ""
+        }
+    }
+
+    private func refresh() async {
+        decision = await Engine.make().onForeground()
+        lastSync = Date()
+    }
+
+    private func submit() async {
+        let ok = await Engine.make().submitCode(code)
+        code = ""
+        codeFocused = false
+        codeMessage = ok ? "Unlocked for 5 minutes." : "That code didn't work."
+        await refresh()
+    }
+}
