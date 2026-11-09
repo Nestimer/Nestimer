@@ -60,6 +60,8 @@ struct StatusView: View {
         case .shield(.downtime(let until)): return "Downtime until \(until)"
         case .shield(.deviceCapReached): return "This iPhone's limit is reached"
         case .shield(.timeExpired): return "Time's up for today"
+        case .shield(.clockChanged): return "Date & time changed"
+        case .shield(.agentError): return "NesTimer needs attention"
         case .open(let r, _):
             guard let r else { return "No limit today" }
             let m = Int(r)
@@ -73,6 +75,8 @@ struct StatusView: View {
         case .open(_, .temporaryUnlock): return "Unlocked with a code for 5 minutes"
         case .open(_, .bonus): return "Bonus time from your parent"
         case .open: return "Phone and Messages always work."
+        case .shield(.clockChanged): return "Turn on Settings \u{2192} General \u{2192} Date & Time \u{2192} Set Automatically. Phone and Messages still work."
+        case .shield(.agentError): return "Screen Time monitoring couldn't start. Ask your parent to check the app. Phone and Messages still work."
         case .shield: return "Phone and Messages still work."
         case .none: return ""
         }

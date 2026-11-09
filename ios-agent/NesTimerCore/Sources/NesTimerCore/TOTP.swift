@@ -17,6 +17,15 @@ public enum TOTP {
         return String(format: "%06d", value % 1_000_000)
     }
 
+    /// The step (counter) the code matches within ± `window` steps of `now`, if any.
+    public static func matchingStep(secretHex: String, code: String, now: Date, window: Int = 1) -> Int64? {
+        let t = Int64(now.timeIntervalSince1970 / step)
+        for offset in -window...window where t + Int64(offset) >= 0 {
+            if Self.code(secretHex: secretHex, counter: UInt64(t + Int64(offset))) == code { return t + Int64(offset) }
+        }
+        return nil
+    }
+
     /// Accepts the current step ± `window` steps.
     public static func verify(secretHex: String, code: String, now: Date, window: Int = 1) -> Bool {
         let t = Int64(now.timeIntervalSince1970 / step)

@@ -90,6 +90,7 @@ struct SetupView: View {
                 return
             }
             Keychain.set(.totpSecret, secret)
+            AppGroup.write(TimeZone.current.identifier, to: AppGroup.homeTimeZoneURL)
             step = .authorize
         } catch {
             self.error = "Can't reach the server. Check the internet connection."

@@ -1,7 +1,7 @@
 import Foundation
 
 public struct PlannedWindow: Equatable, Sendable {
-    public enum Kind: Equatable, Sendable { case downtime, activity }
+    public enum Kind: Equatable, Sendable { case downtime, activity, bonusEnd }
     public let name: String
     public let start: Date
     public let end: Date
@@ -34,7 +34,7 @@ public enum SchedulePlanner {
             if policy.downtimeEnabled,
                let w = window(day: day, start: PolicyEvaluator.parseTimeToMinutes(policy.downtimeStart),
                               end: PolicyEvaluator.parseTimeToMinutes(policy.downtimeEnd), calendar: calendar) {
-                out.append(PlannedWindow(name: "downtime-\(stamp(w.0, calendar))", start: w.0, end: w.1, kind: .downtime))
+                out.append(PlannedWindow(name: "downtime-\(stamp(w.0, calendar))-\(stamp(w.1, calendar))", start: w.0, end: w.1, kind: .downtime))
             }
 
             let mondayBased = (calendar.component(.weekday, from: day) + 5) % 7
@@ -44,7 +44,7 @@ public enum SchedulePlanner {
                 if e <= s { e += 1440 }
                 if let w = window(day: day, start: s - a.bufferBeforeMinutes, end: e + a.bufferAfterMinutes,
                                   calendar: calendar, overnightAllowed: false) {
-                    out.append(PlannedWindow(name: "activity-\(a.id)-\(stamp(w.0, calendar))", start: w.0, end: w.1, kind: .activity))
+                    out.append(PlannedWindow(name: "activity-\(a.id)-\(stamp(w.0, calendar))-\(stamp(w.1, calendar))", start: w.0, end: w.1, kind: .activity))
                 }
             }
         }

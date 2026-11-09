@@ -12,13 +12,13 @@ final class SchedulePlannerTests: XCTestCase {
 
     func testOvernightDowntimeFromEvening() {
         let w = plan(Fx.policy(downtime: ("22:00", "07:00")), now: Fx.at(20))
-        XCTAssertEqual(w, [PlannedWindow(name: "downtime-202611092200", start: Fx.at(22), end: Fx.at(7, day: 1), kind: .downtime)])
+        XCTAssertEqual(w, [PlannedWindow(name: "downtime-202611092200-202611100700", start: Fx.at(22), end: Fx.at(7, day: 1), kind: .downtime)])
     }
 
     func testInProgressDowntimeKeepsItsRealStart() {
         // 23:30, inside 22:00–07:00: the window is still registered (its end must wake us).
         let w = plan(Fx.policy(downtime: ("22:00", "07:00")), now: Fx.at(23, 30))
-        XCTAssertEqual(w.first, PlannedWindow(name: "downtime-202611092200", start: Fx.at(22), end: Fx.at(7, day: 1), kind: .downtime))
+        XCTAssertEqual(w.first, PlannedWindow(name: "downtime-202611092200-202611100700", start: Fx.at(22), end: Fx.at(7, day: 1), kind: .downtime))
     }
 
     func testMorningInsideOvernightDowntimeFromYesterday() {
@@ -35,7 +35,7 @@ final class SchedulePlannerTests: XCTestCase {
 
     func testShortActivityPaddedTo15() {
         let w = plan(Fx.policy(activities: [act("a", day: 0, "10:00", "10:05")]), now: Fx.at(9))
-        XCTAssertEqual(w, [PlannedWindow(name: "activity-a-202611091000", start: Fx.at(10), end: Fx.at(10, 15), kind: .activity)])
+        XCTAssertEqual(w, [PlannedWindow(name: "activity-a-202611091000-202611091005", start: Fx.at(10), end: Fx.at(10, 15), kind: .activity)])
     }
 
     func testActivityBuffersApplied() {

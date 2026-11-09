@@ -27,10 +27,21 @@ struct AgentClient: AgentAPI {
 
     static var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown" }
 
-    func fetchConfig(localDate: String) async throws -> ServerPolicy {
+    func fetchConfig(localDate: String) async throws -> ConfigResponse {
         let (data, resp) = try await Self.session.data(for: request("/api/v1/agent/config?date=\(localDate)&version=ios-\(Self.version)"))
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw Unreachable() }
-        return try JSONDecoder().decode(ServerPolicy.self, from: data)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { throw Unreachable() }
+        let policy = try JSONDecoder().decode(ServerPolicy.self, from: data)
+        // nginx's Date header: the server clock, which the child can't change.
+        return ConfigResponse(policy: policy, serverTime: Self.httpDate(http.value(forHTTPHeaderField: "Date")))
+    }
+
+    static func httpDate(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return f.date(from: s)
     }
 
     func reportUsage(date: String, totalMinutes: Double) async throws {

@@ -51,6 +51,8 @@ class Device(Base):
     api_token = Column(String, unique=True, nullable=False)  # agent auth token
     shared_secret = Column(String, nullable=True)  # TOTP shared secret (hex-encoded, 40 chars)
     agent_version = Column(String, nullable=True)  # e.g. "1.7"
+    # Highest TOTP step accepted by /agent/verify-totp; codes at or below it are spent.
+    last_totp_step = Column(Integer, nullable=True)
     last_seen = Column(DateTime(timezone=True), nullable=True)
     bonus_until = Column(DateTime(timezone=True), nullable=True)  # parent-granted temporary unlock
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

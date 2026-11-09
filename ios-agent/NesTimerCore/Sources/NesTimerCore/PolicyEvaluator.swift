@@ -4,6 +4,10 @@ public enum ShieldReason: Equatable, Sendable, Codable {
     case downtime(until: String)
     case timeExpired
     case deviceCapReached
+    /// The phone's date/time disagrees with the server's (or went backwards).
+    case clockChanged
+    /// Usage events couldn't be armed, so no lock would ever fire.
+    case agentError
 }
 
 public enum OpenReason: Equatable, Sendable {

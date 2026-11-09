@@ -16,6 +16,8 @@ final class ShieldExtension: ShieldConfigurationDataSource {
         switch reason {
         case .downtime(let until): subtitle = "Downtime until \(until)"
         case .deviceCapReached: subtitle = "This iPhone's daily limit is reached"
+        case .clockChanged: subtitle = "The date or time was changed. Set Date & Time to automatic"
+        case .agentError: subtitle = "NesTimer needs attention \u{2014} ask your parent"
         case .timeExpired, .none: subtitle = "Today's screen time is used up"
         }
         return ShieldConfiguration(

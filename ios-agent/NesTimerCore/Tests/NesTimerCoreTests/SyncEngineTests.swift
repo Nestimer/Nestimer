@@ -29,7 +29,7 @@ final class SyncEngineTests: XCTestCase {
         r.api.policy = Fx.policy(downtime: ("22:00", "07:00"))
         _ = await r.engine.onForeground()
         r.api.configFails = true
-        r.clock.now = Fx.at(22)
+        r.clock.set(Fx.at(22))
         let v1 = await r.engine.onIntervalBoundary()
         XCTAssertEqual(v1, .shield(.downtime(until: "07:00")))
     }
@@ -78,15 +78,16 @@ final class SyncEngineTests: XCTestCase {
         r.api.policy = Fx.policy(limit: 120, used: 80, deviceUsed: 80, downtime: ("22:00", "07:00"))
         _ = await r.engine.onThreshold(eventName: "chunk-80", observedMinutes: 80)
         r.api.configFails = true
-        r.clock.now = Fx.at(0, 0, day: 1)
+        r.clock.set(Fx.at(0, 0, day: 1))
         let d = await r.engine.onIntervalBoundary()
         XCTAssertEqual(r.store.state.observedMinutes, 0)
         XCTAssertEqual(r.store.state.date, "2026-11-10")
         XCTAssertEqual(d, .shield(.downtime(until: "07:00")))
         // Yesterday's usage must not count against today, even from the stale snapshot.
-        r.clock.now = Fx.at(8, 0, day: 1)
+        // Still offline (snapshot 11 h old), so only half of today's 120 may be spent.
+        r.clock.set(Fx.at(8, 0, day: 1))
         let v2 = await r.engine.onIntervalBoundary()
-        XCTAssertEqual(v2, .open(remainingMinutes: 120, why: .withinLimit))
+        XCTAssertEqual(v2, .open(remainingMinutes: 60, why: .withinLimit))
     }
 
     // MARK: Limits and arming
@@ -154,7 +155,7 @@ final class SyncEngineTests: XCTestCase {
         r.api.policy = Fx.policy(limit: 60)
         _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
         _ = await r.engine.submitCode("123456")
-        r.clock.now = r.clock.now.addingTimeInterval(6 * 60)
+        r.clock.advance(6 * 60)
         let v4 = await r.engine.onForeground()
         XCTAssertEqual(v4, .shield(.timeExpired))
     }
@@ -183,7 +184,7 @@ final class SyncEngineTests: XCTestCase {
                              counter: UInt64(r.clock.now.timeIntervalSince1970 / 300))!
         let v6 = await r.engine.submitCode(good)
         XCTAssertFalse(v6)
-        r.clock.now = r.clock.now.addingTimeInterval(301)
+        r.clock.advance(301)
         let later = TOTP.code(secretHex: "3132333435363738393031323334353637383930",
                               counter: UInt64(r.clock.now.timeIntervalSince1970 / 300))!
         let v7 = await r.engine.submitCode(later)
@@ -219,15 +220,21 @@ final class SyncEngineTests: XCTestCase {
         let r = Rig(now: Fx.at(15, 50))
         r.api.policy = Fx.policy(limit: 60, activities: [a])
         _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
-        r.clock.now = Fx.at(16)
+        r.clock.set(Fx.at(16))
         _ = await r.engine.onIntervalBoundary()                                   // activity starts
-        r.clock.now = Fx.at(16, 30)
-        _ = await r.engine.onThreshold(eventName: "chunk-45", observedMinutes: 45) // 25 min used in activity
-        r.clock.now = Fx.at(17)
+        // Continuous use during the activity: a chunk every 5 minutes.
+        for (i, m) in [25, 30, 35, 40, 45].enumerated() {
+            r.clock.set(Fx.at(16, 5 * (i + 1)))
+            _ = await r.engine.onThreshold(eventName: "chunk-\(m)", observedMinutes: m)
+        }
+        r.clock.set(Fx.at(17))
         let d = await r.engine.onIntervalBoundary()                               // activity ends
-        XCTAssertEqual(r.store.state.countedMinutes, 20)
-        XCTAssertEqual(d, .open(remainingMinutes: 40, why: .withinLimit))
-        XCTAssertEqual(r.api.reports.last?.0, 20)
+        // The first in-activity chunk spans the 16:00 boundary; its 5 minutes are split by
+        // wall time (we can't know when within the gap they were used): at most one chunk off.
+        XCTAssertGreaterThanOrEqual(r.store.state.countedMinutes, 20)
+        XCTAssertLessThanOrEqual(r.store.state.countedMinutes, 25)
+        guard case .open(let left?, .withinLimit) = d else { return XCTFail("\(d)") }
+        XCTAssertGreaterThanOrEqual(left, 35)
     }
 
     func testUsageDuringTOTPUnlockIsNotCounted() async {

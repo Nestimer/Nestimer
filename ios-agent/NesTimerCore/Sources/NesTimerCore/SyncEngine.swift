@@ -3,11 +3,21 @@ import Foundation
 /// What every wake does — in the app, the monitor extension, or after a code entry.
 ///
 /// Anti-goal: a silent unlock. Every path that can't establish the policy keeps the shield:
-/// no snapshot at all → shield; server unreachable → last snapshot + local count.
+/// no snapshot at all → shield; server unreachable → last snapshot + local count; the
+/// phone's clock disagrees with trusted time → shield.
+///
+/// Wakes run in three steps so that concurrent wakes (actor reentrancy, or the app and
+/// the monitor extension at once) never erase each other's state: (A) record local facts
+/// in one atomic store update, (B) network with no state held, (C) reload, merge the
+/// network results, decide and save in one atomic update.
 public actor SyncEngine {
     public static let unlockMinutes = 5
     public static let codeAttemptLimit = 5
     public static let codeAttemptWindow: TimeInterval = 300
+    /// Clock disagreement tolerated before the phone is shielded.
+    public static let clockTolerance: TimeInterval = 10 * 60
+    /// A snapshot older than this is "offline": only half the remaining budget may be spent.
+    public static let staleAfter: TimeInterval = 30 * 60
 
     private let api: AgentAPI
     private let store: StateStore
@@ -17,12 +27,15 @@ public actor SyncEngine {
     private let secrets: SecretStore
     private let calendar: Calendar
     private let now: @Sendable () -> Date
+    private let uptime: @Sendable () -> TimeInterval
 
     public init(api: AgentAPI, store: StateStore, shield: Shield, scheduler: MonitorScheduler,
                 notifier: Notifier, secrets: SecretStore, calendar: Calendar = .current,
-                now: @escaping @Sendable () -> Date = Date.init) {
+                now: @escaping @Sendable () -> Date = Date.init,
+                uptime: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.api = api; self.store = store; self.shield = shield; self.scheduler = scheduler
-        self.notifier = notifier; self.secrets = secrets; self.calendar = calendar; self.now = now
+        self.notifier = notifier; self.secrets = secrets; self.calendar = calendar
+        self.now = now; self.uptime = uptime
     }
 
     // MARK: Wake entry points
@@ -32,7 +45,7 @@ public actor SyncEngine {
         await wake(observed: Double(observedMinutes))
     }
 
-    /// A downtime/activity window started or ended, or the daily interval rolled over.
+    /// A downtime/activity/bonus window started or ended, or the daily interval rolled over.
     public func onIntervalBoundary() async -> Decision { await wake(observed: nil) }
 
     /// The app came to the foreground.
@@ -40,27 +53,40 @@ public actor SyncEngine {
 
     /// The parent's 6-digit code. True if it unlocked the phone.
     public func submitCode(_ code: String) async -> Bool {
-        var state = store.load()
-        let t = now()
-        state.codeAttempts = state.codeAttempts.filter { t.timeIntervalSince($0) < Self.codeAttemptWindow }
-        guard state.codeAttempts.count < Self.codeAttemptLimit else { store.save(state); return false }
-        state.codeAttempts.append(t)
-        store.save(state)
+        let device = now()
+        // Record the attempt first, atomically, so no concurrent save can drop it.
+        let allowed: Bool = store.update { s in
+            s.codeAttempts = s.codeAttempts.filter { device.timeIntervalSince($0) < Self.codeAttemptWindow && $0 <= device }
+            guard s.codeAttempts.count < Self.codeAttemptLimit else { return false }
+            s.codeAttempts.append(device)
+            return true
+        }
+        guard allowed else { return false }
 
         let valid: Bool
+        var step: Int64?
         do {
-            valid = try await api.verifyTOTP(code: code)
+            valid = try await api.verifyTOTP(code: code)  // the server enforces one-time use online
+            if valid { step = trustedTime(store.load()).flatMap { TOTP.matchingStep(secretHex: secrets.totpSecret() ?? "", code: code, now: $0) } }
         } catch {
-            // Server unreachable: verify against the Keychain-cached secret.
-            valid = secrets.totpSecret().map { TOTP.verify(secretHex: $0, code: code, now: t) } ?? false
+            // Offline: check against the Keychain secret, at *trusted* time only, and only
+            // codes newer than the last one used.
+            let s = store.load()
+            guard let t = trustedTime(s), !clockTampered(s, device: device),
+                  let secret = secrets.totpSecret(),
+                  let matched = TOTP.matchingStep(secretHex: secret, code: code, now: t),
+                  matched > s.lastCodeStep else { return false }
+            valid = true
+            step = matched
         }
         guard valid else { return false }
 
-        state = store.load()
-        state.codeAttempts = []
-        state.unlockUntil = t.addingTimeInterval(TimeInterval(Self.unlockMinutes * 60))
-        state.unlockEndsAtObserved = Int(state.observedMinutes.rounded(.up)) + Self.unlockMinutes
-        store.save(state)
+        store.update { s in
+            if let step { s.lastCodeStep = max(s.lastCodeStep, step) }
+            s.codeAttempts = []
+            s.unlockUntil = device.addingTimeInterval(TimeInterval(Self.unlockMinutes * 60))
+            s.unlockEndsAtObserved = Int(s.observedMinutes.rounded(.up)) + Self.unlockMinutes
+        }
         let decision = await wake(observed: nil)
         return !decision.isShielded
     }
@@ -68,106 +94,215 @@ public actor SyncEngine {
     // MARK: The wake
 
     private func wake(observed: Double?) async -> Decision {
-        let t = now()
-        let today = localDate(t)
-        var state = store.load()
+        let device = now()
 
-        // 1. Day rollover: flush yesterday's last total, then start today from zero.
-        if state.date != today {
-            if !state.date.isEmpty, state.countedMinutes > state.reportedMinutes {
-                try? await api.reportUsage(date: state.date, totalMinutes: state.countedMinutes)
+        // (A) Local facts: rollover, usage growth, unlock expiry.
+        let (pending, reportDate, flushYesterday) = store.update { s -> (Double?, String, (String, Double)?) in
+            var flush: (String, Double)?
+            let tampered = clockTampered(s, device: device)
+            let today = localDate(device)
+
+            // Day rollover only on a trustworthy clock; otherwise keep counting on the old day.
+            if s.date != today && (s.date.isEmpty || !tampered) && trustedOrUnanchored(s) {
+                if !s.date.isEmpty, s.countedMinutes > s.reportedMinutes { flush = (s.date, s.countedMinutes) }
+                var fresh = AgentState()
+                fresh.date = today
+                for kp in Self.carriedAcrossDays { kp(&fresh, s) }
+                s = fresh
             }
-            let keep = state
-            state = AgentState()
-            state.date = today
-            state.snapshot = keep.snapshot
-            state.snapshotDate = keep.snapshotDate
-            state.snapshotAt = keep.snapshotAt
-            state.unlockUntil = keep.unlockUntil
-            state.codeAttempts = keep.codeAttempts
-            state.shielded = keep.shielded
-        }
 
-        // 2. Usage growth since the last wake; growth while paused doesn't count.
-        if let o = observed, o > state.observedMinutes {
-            if state.paused { state.pausedMinutes += o - state.observedMinutes }
-            state.observedMinutes = o
-        }
-
-        // 3. TOTP unlock ends after 5 minutes of use or 5 minutes of wall clock.
-        if let end = state.unlockEndsAtObserved, state.observedMinutes >= Double(end) { clearUnlock(&state) }
-        if let until = state.unlockUntil, t >= until { clearUnlock(&state) }
-
-        // 4. Report, then fetch. Either may fail; neither failure unlocks anything.
-        if state.countedMinutes > state.reportedMinutes {
-            let total = state.countedMinutes
-            if (try? await api.reportUsage(date: today, totalMinutes: total)) != nil {
-                state.reportedMinutes = total
+            accumulateWallTime(&s, device: device, tampered: tampered)
+            if var o = observed {
+                // A late event from yesterday can't be more than the minutes since midnight.
+                o = min(o, minutesSinceMidnight(device))
+                if o > s.observedMinutes { addObservation(&s, o) }
             }
-        }
-        if let fresh = try? await api.fetchConfig(localDate: today) {
-            state.snapshot = fresh
-            state.snapshotDate = today
-            state.snapshotAt = t
-            if fresh.reportsDeviceUsage { state.serverFloorMinutes = max(state.serverFloorMinutes, fresh.deviceUsedMinutes) }
+            if let end = s.unlockEndsAtObserved, s.observedMinutes >= Double(end) { Self.clearUnlock(&s) }
+            if let until = s.unlockUntil, device >= until || tampered { Self.clearUnlock(&s) }
+
+            let pending = s.countedMinutes > s.reportedMinutes ? s.countedMinutes : nil
+            return (pending, s.date, flush)
         }
 
-        // 5. Decide.
-        let policy = effectivePolicy(state, today: today)
-        let decision: Decision
-        if let policy {
-            decision = PolicyEvaluator.evaluate(policy: policy, deviceUsedMinutes: state.countedMinutes,
-                                                unlockUntil: state.unlockUntil, now: t, calendar: calendar)
-        } else {
-            decision = .shield(.timeExpired)  // never seen a policy: fail closed
+        // (B) Network, holding no state.
+        if let (date, total) = flushYesterday { try? await api.reportUsage(date: date, totalMinutes: total) }
+        var reported: Double?
+        if let total = pending, (try? await api.reportUsage(date: reportDate, totalMinutes: total)) != nil {
+            reported = total
         }
+        let fetched = try? await api.fetchConfig(localDate: reportDate)
+        let fetchedAtUptime = uptime()
 
-        // 6. Enforce + notify.
+        // (C) Merge, decide, enforce, re-arm — atomically.
+        return store.update { s -> Decision in
+            if let reported, s.date == reportDate { s.reportedMinutes = max(s.reportedMinutes, reported) }
+            if let fetched {
+                if let serverTime = fetched.serverTime {
+                    s.anchorTime = serverTime
+                    s.anchorUptime = fetchedAtUptime
+                } else if s.anchorTime == nil || s.anchorUptime == nil || uptime() < (s.anchorUptime ?? 0) {
+                    // No server clock available: anchor on the device clock, once per boot.
+                    s.anchorTime = device
+                    s.anchorUptime = fetchedAtUptime
+                }
+                if s.date == reportDate {
+                    s.snapshot = fetched.policy
+                    s.snapshotDate = reportDate
+                    s.snapshotAt = trustedTime(s) ?? device
+                    if fetched.policy.reportsDeviceUsage {
+                        s.serverFloorMinutes = max(s.serverFloorMinutes, fetched.policy.deviceUsedMinutes)
+                    }
+                }
+            } else if s.anchorTime == nil {
+                s.anchorTime = device
+                s.anchorUptime = uptime()
+            }
+            if let t = trustedTime(s) { s.latestTrusted = max(s.latestTrusted ?? t, t) }
+
+            let decision = decide(&s, device: device)
+            enforce(&s, decision)
+            return decision
+        }
+    }
+
+    // MARK: Decide / enforce
+
+    private func decide(_ s: inout AgentState, device: Date) -> Decision {
+        if clockTampered(s, device: device) { return .shield(.clockChanged) }
+        guard var policy = effectivePolicy(s) else { return .shield(.timeExpired) }  // never seen a policy
+        if isStale(s, device: device) { policy = Self.halveRemaining(policy, deviceUsed: s.countedMinutes) }
+        return PolicyEvaluator.evaluate(policy: policy, deviceUsedMinutes: s.countedMinutes,
+                                        unlockUntil: s.unlockUntil, now: device, calendar: calendar)
+    }
+
+    private func enforce(_ s: inout AgentState, _ decision: Decision) {
+        var decision = decision
+        let policy = effectivePolicy(s)
+
+        // Re-arm first: if no lock can be armed, the phone must not stay open.
+        let events = plannedEvents(decision, s)
+        do {
+            try scheduler.armEvents(events)
+        } catch {
+            if !decision.isShielded { decision = .shield(.agentError) }
+        }
+        var windows = policy.map { SchedulePlanner.plan(policy: $0, now: now(), calendar: calendar) } ?? []
+        if let bonusEnd = policy?.bonusUntilDate, bonusEnd > now() {
+            windows.append(PlannedWindow(name: "bonusend-\(Int(bonusEnd.timeIntervalSince1970))",
+                                         start: bonusEnd.addingTimeInterval(-SchedulePlanner.minimumLength),
+                                         end: bonusEnd, kind: .bonusEnd))
+        }
+        try? scheduler.armWindows(windows)
+
         switch decision {
         case .shield(let reason):
             shield.apply(reason)
-            if !state.shielded, reason == .timeExpired || reason == .deviceCapReached { notifier.expired() }
-            state.shielded = true
+            if !s.shielded, reason == .timeExpired || reason == .deviceCapReached { notifier.expired() }
+            s.shielded = true
+            s.paused = false
         case .open(let remaining, let why):
             shield.remove()
-            state.shielded = false
+            s.shielded = false
             if why == .withinLimit, let r = remaining {
-                for n in ThresholdPlanner.warningMinutes where r <= Double(n) && !state.warned.contains(n) {
-                    state.warned.insert(n)
+                for n in ThresholdPlanner.warningMinutes where r <= Double(n) && !s.warned.contains(n) {
+                    s.warned.insert(n)
                     notifier.warn(minutesLeft: n)
                 }
             }
-            if let r = remaining, r > 15 { state.warned = [] }
-        }
-
-        // 7. Pause bookkeeping for the next wake, then re-arm.
-        if case .open(_, let why) = decision {
+            if let r = remaining, r > 15 { s.warned = [] }
             switch why {
-            case .activity, .temporaryUnlock: state.paused = true
-            default: state.paused = false
+            case .activity, .temporaryUnlock: s.paused = true
+            default: s.paused = false
             }
-        } else {
-            state.paused = false
         }
-        let events = plannedEvents(decision, state)
-        let windows = policy.map { SchedulePlanner.plan(policy: $0, now: t, calendar: calendar) } ?? []
-        try? scheduler.arm(events: events, windows: windows)
+    }
 
-        store.save(state)
-        return decision
+    // MARK: Time
+
+    /// Trusted "now": the anchor plus monotonic uptime since. Nil after a reboot until the
+    /// next server contact (uptime restarts at boot).
+    private nonisolated func trustedTime(_ s: AgentState) -> Date? {
+        guard let t = s.anchorTime, let u = s.anchorUptime else { return nil }
+        let up = uptime()
+        guard up >= u else { return nil }
+        return t.addingTimeInterval(up - u)
+    }
+
+    private nonisolated func trustedOrUnanchored(_ s: AgentState) -> Bool {
+        s.anchorTime == nil || trustedTime(s) != nil
+    }
+
+    /// The device clock is off from trusted time, or (after a reboot) earlier than any
+    /// trusted time ever seen.
+    private nonisolated func clockTampered(_ s: AgentState, device: Date) -> Bool {
+        if let t = trustedTime(s) { return abs(device.timeIntervalSince(t)) > Self.clockTolerance }
+        if let latest = s.latestTrusted { return device < latest.addingTimeInterval(-Self.clockTolerance) }
+        return false
+    }
+
+    private func isStale(_ s: AgentState, device: Date) -> Bool {
+        guard let at = s.snapshotAt else { return true }
+        return (trustedTime(s) ?? device).timeIntervalSince(at) > Self.staleAfter
+    }
+
+    /// Offline, the Macs may be spending the same budget: allow only half of what was left.
+    static func halveRemaining(_ p: ServerPolicy, deviceUsed: Double) -> ServerPolicy {
+        guard p.screenTimeEnabled else { return p }
+        let leftAtSnapshot = Double(p.screenTimeLimitMinutes) - (p.otherDevicesUsed + p.deviceUsedMinutes)
+        guard leftAtSnapshot > 0 else { return p }
+        let reduced = Int((p.otherDevicesUsed + p.deviceUsedMinutes + leftAtSnapshot / 2).rounded(.down))
+        return ServerPolicy(downtimeEnabled: p.downtimeEnabled, downtimeStart: p.downtimeStart,
+                            downtimeEnd: p.downtimeEnd, screenTimeEnabled: true, screenTimeLimitMinutes: reduced,
+                            usedMinutesToday: p.usedMinutesToday, activities: p.activities, bonusUntil: p.bonusUntil,
+                            deviceUsedMinutes: p.reportsDeviceUsage ? p.deviceUsedMinutes : nil,
+                            deviceCapMinutes: p.deviceCapMinutes)
+    }
+
+    // MARK: Usage accounting
+
+    /// Wall time since the last wake, split into paused and counted, so a usage delta that
+    /// spans a pause boundary is attributed proportionally instead of all-or-nothing.
+    private nonisolated func accumulateWallTime(_ s: inout AgentState, device: Date, tampered: Bool) {
+        defer { s.lastWakeAt = device }
+        guard !tampered, let last = s.lastWakeAt, device > last else { return }
+        let dt = device.timeIntervalSince(last)
+        s.secondsSinceObservation += dt
+        if s.paused { s.pausedSecondsSinceObservation += dt }
+    }
+
+    private nonisolated func addObservation(_ s: inout AgentState, _ o: Double) {
+        let delta = o - s.observedMinutes
+        let total = s.secondsSinceObservation
+        let pausedShare = total > 0 ? min(1, s.pausedSecondsSinceObservation / total) : (s.paused ? 1 : 0)
+        s.pausedMinutes += delta * pausedShare
+        s.observedMinutes = o
+        s.secondsSinceObservation = 0
+        s.pausedSecondsSinceObservation = 0
+    }
+
+    private nonisolated func minutesSinceMidnight(_ d: Date) -> Double {
+        d.timeIntervalSince(calendar.startOfDay(for: d)) / 60
     }
 
     // MARK: Helpers
 
-    private func clearUnlock(_ s: inout AgentState) {
+    /// Fields that survive a day rollover.
+    private static let carriedAcrossDays: [(inout AgentState, AgentState) -> Void] = [
+        { $0.snapshot = $1.snapshot }, { $0.snapshotDate = $1.snapshotDate }, { $0.snapshotAt = $1.snapshotAt },
+        { $0.unlockUntil = $1.unlockUntil }, { $0.codeAttempts = $1.codeAttempts }, { $0.shielded = $1.shielded },
+        { $0.lastCodeStep = $1.lastCodeStep }, { $0.anchorTime = $1.anchorTime }, { $0.anchorUptime = $1.anchorUptime },
+        { $0.latestTrusted = $1.latestTrusted }, { $0.lastWakeAt = $1.lastWakeAt }, { $0.paused = $1.paused },
+    ]
+
+    private static func clearUnlock(_ s: inout AgentState) {
         s.unlockUntil = nil
         s.unlockEndsAtObserved = nil
     }
 
     /// The snapshot, with its usage numbers zeroed if they belong to another day.
-    private func effectivePolicy(_ s: AgentState, today: String) -> ServerPolicy? {
+    private nonisolated func effectivePolicy(_ s: AgentState) -> ServerPolicy? {
         guard let p = s.snapshot else { return nil }
-        guard s.snapshotDate != today else { return p }
+        guard s.snapshotDate != s.date else { return p }
         return ServerPolicy(downtimeEnabled: p.downtimeEnabled, downtimeStart: p.downtimeStart,
                             downtimeEnd: p.downtimeEnd, screenTimeEnabled: p.screenTimeEnabled,
                             screenTimeLimitMinutes: p.screenTimeLimitMinutes, usedMinutesToday: 0,
@@ -175,7 +310,7 @@ public actor SyncEngine {
                             deviceUsedMinutes: p.reportsDeviceUsage ? 0 : nil, deviceCapMinutes: p.deviceCapMinutes)
     }
 
-    private func plannedEvents(_ d: Decision, _ s: AgentState) -> [PlannedEvent] {
+    private nonisolated func plannedEvents(_ d: Decision, _ s: AgentState) -> [PlannedEvent] {
         switch d {
         case .shield:
             return []
@@ -195,7 +330,7 @@ public actor SyncEngine {
         }
     }
 
-    private func localDate(_ d: Date) -> String {
+    private nonisolated func localDate(_ d: Date) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
     }

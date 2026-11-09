@@ -9,11 +9,14 @@ final class FakeAPI: AgentAPI, @unchecked Sendable {
     var reportFailures: Set<Double> = []
     var reports: [(Double, Bool)] = []   // (minutes, succeeded)
     var verifyResult: Bool? = true       // nil → network error
+    var serverTime: Date?
+    var fetchedDates: [String] = []
 
-    func fetchConfig(localDate: String) async throws -> ServerPolicy {
+    func fetchConfig(localDate: String) async throws -> ConfigResponse {
+        fetchedDates.append(localDate)
         if configFails { throw Offline() }
         guard let p = policy else { throw Offline() }
-        return p
+        return ConfigResponse(policy: p, serverTime: serverTime)
     }
     func reportUsage(date: String, totalMinutes: Double) async throws {
         let fail = reportFailures.contains(totalMinutes)
@@ -43,7 +46,8 @@ final class FakeShield: Shield, @unchecked Sendable {
 final class FakeScheduler: MonitorScheduler, @unchecked Sendable {
     var events: [PlannedEvent] = []
     var windows: [PlannedWindow] = []
-    func arm(events: [PlannedEvent], windows: [PlannedWindow]) throws { self.events = events; self.windows = windows }
+    func armEvents(_ events: [PlannedEvent]) throws { self.events = events }
+    func armWindows(_ windows: [PlannedWindow]) throws { self.windows = windows }
 }
 
 final class FakeNotifier: Notifier, @unchecked Sendable {
@@ -55,7 +59,15 @@ final class FakeNotifier: Notifier, @unchecked Sendable {
 
 struct FakeSecrets: SecretStore { var secret: String?; func totpSecret() -> String? { secret } }
 
-final class Clock: @unchecked Sendable { var now: Date; init(_ d: Date) { now = d } }
+/// `now` is the phone's wall clock — assigning it directly models the child changing
+/// Date & Time. `set(_:)` / `advance(_:)` model real time passing (uptime moves too).
+final class Clock: @unchecked Sendable {
+    var now: Date
+    var uptime: TimeInterval = 1_000
+    init(_ d: Date) { now = d }
+    func set(_ d: Date) { uptime += d.timeIntervalSince(now); now = d }
+    func advance(_ seconds: TimeInterval) { set(now.addingTimeInterval(seconds)) }
+}
 
 struct Rig {
     let api = FakeAPI(), store = MemoryStore(), shield = FakeShield(), scheduler = FakeScheduler(), notifier = FakeNotifier()
@@ -66,6 +78,6 @@ struct Rig {
         clock = Clock(now)
         let c = clock
         engine = SyncEngine(api: api, store: store, shield: shield, scheduler: scheduler, notifier: notifier,
-                            secrets: FakeSecrets(secret: secret), calendar: Fx.cal, now: { c.now })
+                            secrets: FakeSecrets(secret: secret), calendar: Fx.cal, now: { c.now }, uptime: { c.uptime })
     }
 }
