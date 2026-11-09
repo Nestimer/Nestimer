@@ -46,10 +46,18 @@ enum DebugLog {
         let who = Bundle.main.bundleIdentifier?.components(separatedBy: ".").last ?? "?"
         let entry = "\(ISO8601DateFormatter().string(from: Date())) [\(who)] \(line)\n"
         if let h = try? FileHandle(forWritingTo: url) {
-            h.seekToEndOfFile(); h.write(Data(entry.utf8)); try? h.close()
+            let size = Int(h.seekToEndOfFile()); h.write(Data(entry.utf8)); try? h.close()
+            if LogTrim.needsTrim(fileSize: size) { trim() }
         } else {
             try? Data(entry.utf8).write(to: url)
         }
+    }
+
+    /// Keeps the last lines once the file passes the cap. A line written by another process
+    /// between the read and the atomic write can be lost; that's fine for a debug log.
+    private static func trim() {
+        let kept = LogTrim.tail(read())
+        try? Data(kept.utf8).write(to: url, options: .atomic)
     }
 
     static func read() -> String { (try? String(contentsOf: url, encoding: .utf8)) ?? "" }
