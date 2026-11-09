@@ -1,7 +1,7 @@
 import Foundation
 
 public struct PlannedWindow: Equatable, Sendable {
-    public enum Kind: Equatable, Sendable { case downtime, activity, bonusEnd }
+    public enum Kind: Equatable, Sendable { case downtime, activity, bonusEnd, heartbeat }
     public let name: String
     public let start: Date
     public let end: Date
@@ -18,8 +18,21 @@ public struct PlannedWindow: Equatable, Sendable {
 public enum SchedulePlanner {
     /// DeviceActivity rejects intervals shorter than 15 minutes.
     public static let minimumLength: TimeInterval = 15 * 60
-    /// The daily counting activity + one spare leave 18 of iOS's ~20 activities.
-    public static let maxWindows = 18
+    /// iOS allows ~20 activities: daily counting, heartbeat and bonus end leave 17.
+    public static let maxWindows = 17
+    /// How often the heartbeat wakes the monitor even with no usage and no schedule edge.
+    public static let heartbeatInterval: TimeInterval = 15 * 60
+
+    /// A window ending at the next quarter hour that is more than a minute away (iOS may
+    /// not deliver an edge that close), so a stale decision heals itself within 15 minutes
+    /// and parent changes reach a locked phone. The name is stable within a slot, so
+    /// re-planning doesn't restart it.
+    public static func heartbeat(now: Date) -> PlannedWindow {
+        let q = heartbeatInterval
+        let end = Date(timeIntervalSince1970: ((now.timeIntervalSince1970 + 60) / q).rounded(.down) * q + q)
+        return PlannedWindow(name: "heartbeat-\(Int(end.timeIntervalSince1970))",
+                             start: end.addingTimeInterval(-q), end: end, kind: .heartbeat)
+    }
 
     public static func plan(policy: ServerPolicy, now: Date, calendar: Calendar,
                             horizon: TimeInterval = 24 * 3600) -> [PlannedWindow] {

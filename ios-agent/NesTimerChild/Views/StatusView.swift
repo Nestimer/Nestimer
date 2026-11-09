@@ -10,6 +10,7 @@ struct StatusView: View {
     @State private var code = ""
     @State private var codeMessage: String?
     @State private var lastSync: Date?
+    @State private var refreshing = false
     @FocusState private var codeFocused: Bool
     @State private var tzCode = ""
     @State private var tzMessage: String?
@@ -95,8 +96,8 @@ struct StatusView: View {
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await refresh() }
         }
-        .task { await refresh() }
-        .onChange(of: phase) { _, p in if p == .active { Task { await refresh() } } }
+        .task { await autoRefresh() }
+        .onChange(of: phase) { _, p in if p == .active { Task { await autoRefresh() } } }
     }
 
     private var hero: some View {
@@ -188,7 +189,17 @@ struct StatusView: View {
         }
     }
 
+    /// Opening the app fires both `.task` and the scene-phase change (and the phase can
+    /// flicker); one refresh is enough. Manual refreshes always run.
+    private func autoRefresh() async {
+        if refreshing { return }
+        if let lastSync, Date().timeIntervalSince(lastSync) < 3 { return }
+        await refresh()
+    }
+
     private func refresh() async {
+        refreshing = true
+        defer { refreshing = false }
         let started = Date()
         decision = await Engine.make().onForeground()
         DebugLog.write("app refresh → \(String(describing: decision))")

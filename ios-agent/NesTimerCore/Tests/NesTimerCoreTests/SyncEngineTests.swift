@@ -115,7 +115,7 @@ final class SyncEngineTests: XCTestCase {
         let r = Rig(now: Fx.at(20))
         r.api.policy = Fx.policy(downtime: ("22:00", "07:00"))
         _ = await r.engine.onForeground()
-        XCTAssertEqual(r.scheduler.windows.map(\.kind), [.downtime])
+        XCTAssertEqual(r.scheduler.windows.map(\.kind).filter { $0 != .heartbeat }, [.downtime])
     }
 
     func testWarningsFireOnceEach() async {
