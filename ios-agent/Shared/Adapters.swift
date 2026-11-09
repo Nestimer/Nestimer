@@ -73,8 +73,20 @@ struct DeviceActivityScheduler: MonitorScheduler {
 
     func armEvents(_ events: [PlannedEvent]) throws {
         let names = events.map(\.name).sorted()
-        if center.activities.contains(Self.daily),
-           AppGroup.read([String].self, from: armedURL) == names { return }
+        // Decide and record under a lock, before starting: concurrent wakes (app + several
+        // extension callbacks) must not each see "not armed yet" and restart again.
+        let lockPath = AppGroup.container.appendingPathComponent("arm.lock").path
+        let fd = open(lockPath, O_CREAT | O_RDWR, 0o600)
+        var locked = false
+        let t0 = Date()
+        while fd >= 0 {
+            locked = flock(fd, LOCK_EX | LOCK_NB) == 0
+            if locked || Date().timeIntervalSince(t0) > 2 { break }
+            usleep(20_000)
+        }
+        defer { if fd >= 0 { if locked { flock(fd, LOCK_UN) }; close(fd) } }
+        if AppGroup.read([String].self, from: armedURL) == names { return }
+        AppGroup.write(names, to: armedURL)
         let counted = Selections.load().counted
         guard !counted.categoryTokens.isEmpty || !counted.applicationTokens.isEmpty else {
             throw NoSelection()

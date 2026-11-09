@@ -134,7 +134,7 @@ public actor SyncEngine {
                 // right after monitoring restarts).
                 o = min(o, minutesSinceMidnight(device))
                 if let last = s.lastObservedAt, !tampered {
-                    o = min(o, s.observedMinutes + max(0, device.timeIntervalSince(last)) / 60 + 0.5)
+                    o = min(o, s.observedMinutes + max(0, device.timeIntervalSince(last)) / 60)
                 }
                 if o > s.observedMinutes {
                     addObservation(&s, o)

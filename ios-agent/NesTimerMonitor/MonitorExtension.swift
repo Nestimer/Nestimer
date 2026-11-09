@@ -19,13 +19,25 @@ final class MonitorExtension: DeviceActivityMonitor {
         }
     }
 
+    /// Restarting the daily activity (which we do to re-arm events) makes iOS call
+    /// intervalDidEnd/intervalDidStart for it right away. Only the real day boundary
+    /// matters; anything else is our own echo and would loop.
+    private func isEcho(_ activity: DeviceActivityName) -> Bool {
+        guard activity == DeviceActivityScheduler.daily else { return false }
+        let cal = AppGroup.homeCalendar
+        let minute = cal.component(.hour, from: Date()) * 60 + cal.component(.minute, from: Date())
+        return minute > 2 && minute < 24 * 60 - 2
+    }
+
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
+        if isEcho(activity) { return }
         run { DebugLog.write("intervalDidStart \(activity.rawValue) → \(await $0.onIntervalBoundary())") }
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
+        if isEcho(activity) { return }
         run { DebugLog.write("intervalDidEnd \(activity.rawValue) → \(await $0.onIntervalBoundary())") }
     }
 

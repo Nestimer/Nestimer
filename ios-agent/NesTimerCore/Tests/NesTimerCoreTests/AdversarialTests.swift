@@ -314,3 +314,18 @@ final class PrematureEventTests: XCTestCase {
         XCTAssertEqual(r.api.fetchedDates.count, before, "a burst within seconds re-used the snapshot")
     }
 }
+
+final class WakeStormTests: XCTestCase {
+    func testFrequentWakesDoNotAddSlackEachTime() async {
+        // iOS keeps firing thresholds (other devices' usage shared in): one wake every 6 s
+        // for a minute must count at most one minute.
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 300)
+        _ = await r.engine.onThreshold(eventName: "chunk-140", observedMinutes: 140)
+        for i in 1...10 {
+            r.clock.advance(6)
+            _ = await r.engine.onThreshold(eventName: "chunk-\(140 + 5 * i)", observedMinutes: 140 + 5 * i)
+        }
+        XCTAssertLessThanOrEqual(r.store.state.observedMinutes, 141.01)
+    }
+}
