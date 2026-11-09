@@ -216,7 +216,7 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertFalse(v9)
     }
 
-    // MARK: Paused counting (matches the Mac: activities and TOTP unlocks don't count)
+    // MARK: Paused counting (matches the Mac: activities, TOTP unlocks and bonus don't count)
 
     func testUsageDuringActivityIsNotCounted() async {
         let a = ScheduledActivity(id: "a", name: "Chess", dayOfWeek: 0, startTime: "16:00", endTime: "17:00",
@@ -250,11 +250,39 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(r.store.state.countedMinutes, 60)
     }
 
-    func testBonusTimeIsCounted() async {
+    /// A bonus is extra time, as on the Mac: given before the limit is reached, what was
+    /// left is still left afterwards.
+    func testUsageDuringBonusIsNotCounted() async {
+        let r = Rig(now: Fx.at(14, 50))
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
+        r.clock.set(Fx.at(15))
+        r.api.policy = Fx.policy(limit: 60, bonusUntil: Fx.at(15, 30))
+        _ = await r.engine.onForeground()                                         // bonus seen
+        for (i, m) in [25, 30, 35, 40, 45, 50].enumerated() {
+            r.clock.set(Fx.at(15, 5 * (i + 1)))
+            _ = await r.engine.onThreshold(eventName: "chunk-\(m)", observedMinutes: m)
+        }
+        r.api.policy = Fx.policy(limit: 60, bonusUntil: nil)
+        let d = await r.engine.onIntervalBoundary()                               // bonus over
+        // The first in-bonus chunk spans the 15:00 boundary and is split by wall time
+        // (as for activities): at most one chunk off. Without the pause it would be 50.
+        XCTAssertGreaterThanOrEqual(r.store.state.countedMinutes, 20)
+        XCTAssertLessThanOrEqual(r.store.state.countedMinutes, 25)
+        guard case .open(let left?, .withinLimit) = d else { return XCTFail("\(d)") }
+        XCTAssertGreaterThanOrEqual(left, 35)
+    }
+
+    func testBonusAfterTheLimitDoesNotCount() async {
         let r = Rig()
-        r.api.policy = Fx.policy(limit: 60, bonusUntil: Fx.at(15).addingTimeInterval(3600))
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
+        r.api.policy = Fx.policy(limit: 60, bonusUntil: Fx.at(16))
+        r.clock.advance(10)                       // past the network debounce
+        _ = await r.engine.onForeground()
+        r.clock.set(Fx.at(15, 10))
         _ = await r.engine.onThreshold(eventName: "chunk-70", observedMinutes: 70)
-        XCTAssertEqual(r.store.state.countedMinutes, 70)
+        XCTAssertEqual(r.store.state.countedMinutes, 60, accuracy: 0.5)   // 10 s before the bonus was seen
     }
 
     // MARK: Deadlock guard

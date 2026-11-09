@@ -278,7 +278,7 @@ public actor SyncEngine {
             }
             if let r = remaining, r > 15 { s.warned = [] }
             switch why {
-            case .activity, .temporaryUnlock: s.paused = true
+            case .activity, .temporaryUnlock, .bonus: s.paused = true   // as on the Mac
             default: s.paused = false
             }
         }
