@@ -53,6 +53,19 @@ public actor SyncEngine {
 
     /// The parent's 6-digit code. True if it unlocked the phone.
     public func submitCode(_ code: String) async -> Bool {
+        guard await verifyParentCode(code) else { return false }
+        let device = now()
+        store.update { s in
+            s.unlockUntil = device.addingTimeInterval(TimeInterval(Self.unlockMinutes * 60))
+            s.unlockEndsAtObserved = Int(s.observedMinutes.rounded(.up)) + Self.unlockMinutes
+        }
+        let decision = await wake(observed: nil)
+        return !decision.isShielded
+    }
+
+    /// Checks a parent code — rate limited, one-time — without unlocking anything. Used
+    /// for unlocks and for parent confirmations such as switching to the local time zone.
+    public func verifyParentCode(_ code: String) async -> Bool {
         let device = now()
         // Record the attempt first, atomically, so no concurrent save can drop it.
         let allowed: Bool = store.update { s in
@@ -63,11 +76,12 @@ public actor SyncEngine {
         }
         guard allowed else { return false }
 
-        let valid: Bool
         var step: Int64?
         do {
-            valid = try await api.verifyTOTP(code: code)  // the server enforces one-time use online
-            if valid { step = trustedTime(store.load()).flatMap { TOTP.matchingStep(secretHex: secrets.totpSecret() ?? "", code: code, now: $0) } }
+            guard try await api.verifyTOTP(code: code) else { return false }  // server enforces one-time use online
+            step = trustedTime(store.load()).flatMap {
+                TOTP.matchingStep(secretHex: secrets.totpSecret() ?? "", code: code, now: $0)
+            }
         } catch {
             // Offline: check against the Keychain secret, at *trusted* time only, and only
             // codes newer than the last one used.
@@ -76,19 +90,13 @@ public actor SyncEngine {
                   let secret = secrets.totpSecret(),
                   let matched = TOTP.matchingStep(secretHex: secret, code: code, now: t),
                   matched > s.lastCodeStep else { return false }
-            valid = true
             step = matched
         }
-        guard valid else { return false }
-
         store.update { s in
             if let step { s.lastCodeStep = max(s.lastCodeStep, step) }
             s.codeAttempts = []
-            s.unlockUntil = device.addingTimeInterval(TimeInterval(Self.unlockMinutes * 60))
-            s.unlockEndsAtObserved = Int(s.observedMinutes.rounded(.up)) + Self.unlockMinutes
         }
-        let decision = await wake(observed: nil)
-        return !decision.isShielded
+        return true
     }
 
     // MARK: The wake
@@ -103,7 +111,9 @@ public actor SyncEngine {
             let today = localDate(device)
 
             // Day rollover only on a trustworthy clock; otherwise keep counting on the old day.
-            if s.date != today && (s.date.isEmpty || !tampered) && trustedOrUnanchored(s) {
+            // Never back to an earlier date (flying west, or switching time zones): that
+            // would start a second budget for a day already spent.
+            if (s.date.isEmpty || (today > s.date && !tampered && trustedOrUnanchored(s))) {
                 if !s.date.isEmpty, s.countedMinutes > s.reportedMinutes { flush = (s.date, s.countedMinutes) }
                 var fresh = AgentState()
                 fresh.date = today

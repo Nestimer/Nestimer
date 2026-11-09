@@ -221,3 +221,59 @@ struct ThrowingScheduler: MonitorScheduler {
     func armEvents(_ events: [PlannedEvent]) throws { throw Boom() }
     func armWindows(_ windows: [PlannedWindow]) throws { throw Boom() }
 }
+
+// MARK: - Travel (home time zone, parent-confirmed switch)
+
+final class TravelTests: XCTestCase {
+    let secret = "3132333435363738393031323334353637383930"
+
+    func engine(_ r: Rig, tz: String) -> SyncEngine {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: tz)!
+        let c = r.clock
+        return SyncEngine(api: r.api, store: r.store, shield: r.shield, scheduler: r.scheduler, notifier: r.notifier,
+                          secrets: FakeSecrets(secret: secret), calendar: cal, now: { c.now }, uptime: { c.uptime })
+    }
+
+    func testParentCodeConfirmsWithoutUnlocking() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
+        let ok = await r.engine.verifyParentCode("123456")
+        XCTAssertTrue(ok)
+        XCTAssertEqual(r.shield.current, .timeExpired, "confirming a time zone must not unlock")
+        XCTAssertNil(r.store.state.unlockUntil)
+    }
+
+    func testParentCodeIsRateLimitedAndOneTime() async {
+        let r = Rig()
+        r.api.policy = Fx.policy(limit: 60)
+        r.api.verifyResult = nil  // offline
+        let c = TOTP.code(secretHex: secret, counter: UInt64(r.clock.now.timeIntervalSince1970 / 300))!
+        _ = await r.engine.onForeground()
+        let first = await r.engine.verifyParentCode(c)
+        let second = await r.engine.verifyParentCode(c)
+        XCTAssertTrue(first)
+        XCTAssertFalse(second)
+    }
+
+    func testGoingWestNeverReturnsToAnEarlierDate() async {
+        // Kyiv 2026-11-10 03:00 (UTC+2) is still 2026-11-09 20:00 in New York.
+        let r = Rig(now: Fx.at(3, day: 1))
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await engine(r, tz: "Europe/Kyiv").onThreshold(eventName: "lock-60", observedMinutes: 60)
+        XCTAssertEqual(r.store.state.date, "2026-11-10")
+        let d = await engine(r, tz: "America/New_York").onForeground()
+        XCTAssertEqual(r.store.state.date, "2026-11-10", "date went backwards → a second budget")
+        XCTAssertTrue(d.isShielded)
+    }
+
+    func testGoingEastStartsTheNextDayWhenLocalMidnightComes() async {
+        let r = Rig(now: Fx.at(16))  // 16:00 Kyiv = 23:00 Tokyo
+        r.api.policy = Fx.policy(limit: 60)
+        _ = await engine(r, tz: "Europe/Kyiv").onThreshold(eventName: "lock-60", observedMinutes: 60)
+        r.clock.advance(3600)        // 00:00 Tokyo
+        _ = await engine(r, tz: "Asia/Tokyo").onForeground()
+        XCTAssertEqual(r.store.state.date, "2026-11-10")
+    }
+}

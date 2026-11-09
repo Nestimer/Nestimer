@@ -11,6 +11,12 @@ struct StatusView: View {
     @State private var codeMessage: String?
     @State private var lastSync: Date?
     @FocusState private var codeFocused: Bool
+    @State private var tzCode = ""
+    @State private var tzMessage: String?
+    @State private var homeTZ = AppGroup.homeTimeZone
+
+    /// The phone's own time zone differs from the one NesTimer follows (travel).
+    private var travelling: Bool { TimeZone.current.identifier != homeTZ.identifier }
 
     var body: some View {
         NavigationStack {
@@ -24,6 +30,22 @@ struct StatusView: View {
                     if let lastSync {
                         Text("Updated \(lastSync.formatted(date: .omitted, time: .shortened))")
                             .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                if travelling {
+                    Section {
+                        Text("Your time zone changed to \(TimeZone.current.identifier). NesTimer still uses \(homeTZ.identifier) time until a parent confirms.")
+                            .font(.callout)
+                        TextField("Parent's code to switch", text: $tzCode)
+                            .keyboardType(.numberPad)
+                            .font(.system(.title3, design: .monospaced))
+                            .onChange(of: tzCode) { _, v in
+                                tzCode = String(v.filter(\.isNumber).prefix(6))
+                                if tzCode.count == 6 { Task { await confirmTimeZone() } }
+                            }
+                        if let tzMessage { Text(tzMessage).font(.footnote) }
+                    } header: {
+                        Text("Travelling?")
                     }
                 }
                 Section("Have a code from your parent?") {
@@ -85,6 +107,19 @@ struct StatusView: View {
     private func refresh() async {
         decision = await Engine.make().onForeground()
         lastSync = Date()
+    }
+
+    private func confirmTimeZone() async {
+        let ok = await Engine.make().verifyParentCode(tzCode)
+        tzCode = ""
+        if ok {
+            AppGroup.write(TimeZone.current.identifier, to: AppGroup.homeTimeZoneURL)
+            homeTZ = AppGroup.homeTimeZone
+            tzMessage = "NesTimer now uses local time."
+            await refresh()
+        } else {
+            tzMessage = "That code didn't work."
+        }
     }
 
     private func submit() async {

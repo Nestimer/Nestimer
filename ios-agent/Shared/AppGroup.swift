@@ -15,6 +15,10 @@ enum AppGroup {
 
     /// The time zone recorded at pairing. Day boundaries, downtime and activities follow it,
     /// so switching the phone's time zone can't start a new day early.
+    static var homeTimeZone: TimeZone {
+        read(String.self, from: homeTimeZoneURL).flatMap(TimeZone.init(identifier:)) ?? .current
+    }
+
     static var homeCalendar: Calendar {
         var c = Calendar.current
         if let id = read(String.self, from: homeTimeZoneURL), let tz = TimeZone(identifier: id) { c.timeZone = tz }
