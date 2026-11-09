@@ -1,38 +1,25 @@
-"""Simple in-memory rate limiter for auth endpoints."""
+"""Rate limiter for auth and TOTP endpoints, shared across uvicorn workers.
+
+The API runs with `--workers 4`, so an in-memory limiter gives each worker its own
+budget (5/min becomes ~20/min). Attempts are stored in the `rate_limit_hits` table
+instead. On PostgreSQL a transaction-scoped advisory lock per (scope, key) makes the
+count-then-insert atomic across workers.
+"""
 import os
-import time
-from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 from fastapi import HTTPException, Request
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .models.models import RateLimitHit
 
 # Disable rate limiting in tests
 _DISABLED = os.getenv("TESTING", "").lower() in ("1", "true")
 
-
-class RateLimiter:
-    """Tracks attempts per key (IP) with a sliding window."""
-
-    def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
-        self.max_attempts = max_attempts
-        self.window = window_seconds
-        self._attempts: dict[str, list[float]] = defaultdict(list)
-
-    def check(self, key: str):
-        if _DISABLED:
-            return
-        now = time.time()
-        # Remove old attempts
-        recent = [t for t in self._attempts.get(key, []) if now - t < self.window]
-        if not recent:
-            # Keyed per client IP now, so drop idle keys rather than keep one per IP forever.
-            self._attempts.pop(key, None)
-        else:
-            self._attempts[key] = recent
-        if len(recent) >= self.max_attempts:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Too many attempts. Try again in {self.window} seconds.",
-            )
-        self._attempts.setdefault(key, []).append(now)
+# Longer than the largest window below; rows older than this can't affect any decision.
+SWEEP_AFTER = timedelta(hours=1)
 
 
 def client_ip(request: Request) -> str:
@@ -51,7 +38,47 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+class RateLimiter:
+    """At most `max_attempts` per `key` within a sliding `window_seconds`."""
+
+    def __init__(self, scope: str, max_attempts: int = 5, window_seconds: int = 60):
+        self.scope = scope
+        self.max_attempts = max_attempts
+        self.window = window_seconds
+
+    async def check(self, db: AsyncSession, key: str, now: Optional[datetime] = None) -> None:
+        """Record an attempt, or raise 429 if the budget is spent.
+
+        Commits its own transaction, so call it first in the endpoint, before any other
+        writes are pending on `db`.
+        """
+        if _DISABLED:
+            return
+        now = now or datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=self.window)
+
+        if db.bind.dialect.name == "postgresql":
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+                {"k": f"rate_limit:{self.scope}:{key}"},
+            )
+
+        where = (RateLimitHit.scope == self.scope, RateLimitHit.key == key)
+        await db.execute(delete(RateLimitHit).where(*where, RateLimitHit.created_at <= cutoff))
+        # Global sweep: keys that never come back would otherwise keep their rows forever.
+        await db.execute(delete(RateLimitHit).where(RateLimitHit.created_at < now - SWEEP_AFTER))
+        recent = (await db.execute(select(func.count()).select_from(RateLimitHit).where(*where))).scalar_one()
+        if recent >= self.max_attempts:
+            await db.commit()  # keep the pruning, release the lock
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many attempts. Try again in {self.window} seconds.",
+            )
+        db.add(RateLimitHit(scope=self.scope, key=key, created_at=now))
+        await db.commit()
+
+
 # Shared instances
-login_limiter = RateLimiter(max_attempts=5, window_seconds=60)
-totp_limiter = RateLimiter(max_attempts=5, window_seconds=300)
-register_limiter = RateLimiter(max_attempts=3, window_seconds=300)
+login_limiter = RateLimiter("login", max_attempts=5, window_seconds=60)
+totp_limiter = RateLimiter("totp", max_attempts=5, window_seconds=300)
+register_limiter = RateLimiter("register", max_attempts=3, window_seconds=300)

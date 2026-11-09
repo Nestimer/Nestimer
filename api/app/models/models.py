@@ -137,3 +137,22 @@ class Activity(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="activities")
+
+
+class RateLimitHit(Base):
+    """One rate-limited attempt (login, register, TOTP verify).
+
+    Lives in the database rather than process memory so the limit holds across all
+    uvicorn workers. Every check deletes rows older than `SWEEP_AFTER` for all keys,
+    so IPs that never return don't accumulate.
+    """
+    __tablename__ = "rate_limit_hits"
+    __table_args__ = (
+        Index("ix_rate_limit_scope_key_at", "scope", "key", "created_at"),
+        Index("ix_rate_limit_created_at", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(String, nullable=False)
+    key = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)

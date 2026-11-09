@@ -13,7 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=Token)
 async def register(data: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
-    register_limiter.check(client_ip(request))
+    await register_limiter.check(db, client_ip(request))
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -33,7 +33,7 @@ async def register(data: UserCreate, request: Request, db: AsyncSession = Depend
 
 @router.post("/login", response_model=Token)
 async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
-    login_limiter.check(client_ip(request))
+    await login_limiter.check(db, client_ip(request))
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):
