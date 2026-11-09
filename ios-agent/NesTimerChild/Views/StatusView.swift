@@ -121,6 +121,9 @@ struct StatusView: View {
 
     private func refresh() async {
         let started = Date()
+        // Opening the app always re-arms from now: self-heals any drift between what we
+        // think is armed and what iOS still holds (events are one-shot).
+        FileStateStore().update { $0.armedEvents = nil }
         decision = await Engine.make().onForeground()
         DebugLog.write("app refresh → \(String(describing: decision))")
         lastSync = Date()
