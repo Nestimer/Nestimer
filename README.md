@@ -139,7 +139,7 @@ See `TESTING.md` for Dev Mode, test scenarios, and how to safely test on your ow
 ```bash
 cd api
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 python -m pytest tests/ -v   # 80+ tests
 ```
