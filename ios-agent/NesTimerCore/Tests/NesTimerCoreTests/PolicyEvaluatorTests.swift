@@ -28,7 +28,7 @@ final class PolicyEvaluatorTests: XCTestCase {
     func testBonusBeatsDowntime() {
         let now = Fx.at(23)
         let d = eval(Fx.policy(downtime: ("22:00", "07:00"), bonusUntil: now + 600), now: now)
-        XCTAssertEqual(d, .open(remainingMinutes: 120, why: .bonus))
+        XCTAssertEqual(d, .open(remainingMinutes: 120, why: .bonus(until: now + 600)))
     }
 
     func testOvernightDowntime() {
