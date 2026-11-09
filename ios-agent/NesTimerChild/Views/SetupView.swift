@@ -18,6 +18,7 @@ struct SetupView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section { header }
                 switch step {
                 case .pair: pairSection
                 case .authorize: authorizeSection
@@ -37,11 +38,31 @@ struct SetupView: View {
                 if let error { Text(error).foregroundStyle(.red) }
             }
             .navigationTitle("Set up NesTimer")
+            .navigationBarTitleDisplayMode(.inline)
             .familyActivityPicker(isPresented: $showPicker,
                                   selection: step == .pickCounted ? $selections.counted : $selections.exempt)
             .onChange(of: selections.counted) { _, _ in selections.save() }
             .onChange(of: selections.exempt) { _, _ in selections.save() }
         }
+    }
+
+    private var stepNumber: Int {
+        switch step { case .pair: 1; case .authorize: 2; case .pickCounted: 3; case .pickExempt: 4 }
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(Color.indigo.opacity(0.15)).frame(width: 72, height: 72)
+                Image(systemName: "hourglass").font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(.indigo)
+            }
+            Text("Step \(stepNumber) of 4").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            ProgressView(value: Double(stepNumber), total: 4).tint(.indigo)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .listRowBackground(Color.clear)
     }
 
     private var pairSection: some View {
@@ -51,8 +72,11 @@ struct SetupView: View {
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .font(.system(.footnote, design: .monospaced))
             Button("Paste") { raw = UIPasteboard.general.string ?? raw }
-            Button(busy ? "Connecting…" : "Connect") { Task { await connect() } }
-                .disabled(busy || raw.isEmpty)
+            Button { Task { await connect() } } label: {
+                Text(busy ? "Connecting…" : "Connect").bold().frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).tint(.indigo)
+            .disabled(busy || raw.isEmpty)
         }
     }
 
@@ -61,7 +85,10 @@ struct SetupView: View {
             Text("NesTimer needs Screen Time access to count and limit screen time.")
             Text("Also turn off Settings \u{2192} Screen Time \u{2192} Share Across Devices, so time on other devices isn't counted here twice.")
                 .font(.footnote).foregroundStyle(.secondary)
-            Button("Allow Screen Time access") { Task { await authorize() } }
+            Button { Task { await authorize() } } label: {
+                Text("Allow Screen Time access").bold().frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).tint(.indigo)
         }
     }
 
@@ -71,7 +98,9 @@ struct SetupView: View {
             Text(text)
             Button("Choose…") { showPicker = true }
             Text(summary).foregroundStyle(.secondary)
-            Button("Continue", action: next).disabled(!ready)
+            Button(action: next) { Text("Continue").bold().frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent).tint(.indigo)
+                .disabled(!ready)
         }
     }
 

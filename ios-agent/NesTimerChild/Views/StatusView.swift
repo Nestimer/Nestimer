@@ -22,14 +22,11 @@ struct StatusView: View {
         NavigationStack {
             List {
                 Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(headline).font(.title2.bold())
-                        Text(detail).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 6)
+                    hero
+                } footer: {
                     if let lastSync {
-                        Text("Updated \(lastSync.formatted(date: .omitted, time: .shortened))")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        Text("Updated \(lastSync.formatted(date: .omitted, time: .shortened)) \u{00B7} pull down to refresh")
+                            .frame(maxWidth: .infinity)
                     }
                 }
                 if travelling {
@@ -48,16 +45,26 @@ struct StatusView: View {
                         Text("Travelling?")
                     }
                 }
-                Section("Have a code from your parent?") {
+                Section {
                     TextField("6-digit code", text: $code)
                         .keyboardType(.numberPad)
-                        .font(.system(.title3, design: .monospaced))
+                        .textContentType(.oneTimeCode)
+                        .multilineTextAlignment(.center)
+                        .font(.system(.title, design: .rounded).monospacedDigit().weight(.semibold))
+                        .padding(.vertical, 4)
                         .focused($codeFocused)
                         .onChange(of: code) { _, v in
                             code = String(v.filter(\.isNumber).prefix(6))
                             if code.count == 6 { Task { await submit() } }
                         }
-                    if let codeMessage { Text(codeMessage).font(.footnote) }
+                    if let codeMessage {
+                        Text(codeMessage).font(.footnote).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                } header: {
+                    Label("Code from your parent", systemImage: "key.fill")
+                } footer: {
+                    Text("Your parent can open it from the NesTimer app or dashboard.")
                 }
                 #if DEBUG
                 Section("Debug") {
@@ -85,24 +92,84 @@ struct StatusView: View {
                 #endif
             }
             .navigationTitle("NesTimer")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable { await refresh() }
         }
         .task { await refresh() }
         .onChange(of: phase) { _, p in if p == .active { Task { await refresh() } } }
     }
 
+    private var hero: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle().fill(tint.opacity(0.15)).frame(width: 84, height: 84)
+                Image(systemName: symbol)
+                    .font(.system(size: 38, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            Text(headline)
+                .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.6)
+                .lineLimit(2)
+            if let caption {
+                Text(caption).font(.headline).foregroundStyle(tint)
+            }
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+    }
+
+    private var symbol: String {
+        switch decision {
+        case .none: return "hourglass"
+        case .shield(.downtime): return "moon.zzz.fill"
+        case .shield(.clockChanged): return "clock.badge.exclamationmark.fill"
+        case .shield(.agentError): return "exclamationmark.triangle.fill"
+        case .shield: return "lock.fill"
+        case .open(_, .activity): return "figure.run"
+        case .open(_, .temporaryUnlock): return "lock.open.fill"
+        case .open(_, .bonus): return "gift.fill"
+        case .open(nil, _): return "infinity"
+        case .open: return "hourglass"
+        }
+    }
+
+    private var tint: Color {
+        switch decision {
+        case .none: return .secondary
+        case .shield(.downtime): return .indigo
+        case .shield(.clockChanged), .shield(.agentError): return .orange
+        case .shield: return .red
+        case .open(_, .activity), .open(_, .temporaryUnlock), .open(_, .bonus): return .blue
+        case .open(let r?, _) where r <= 15: return .orange
+        case .open: return .green
+        }
+    }
+
+    /// Small line under the big time ("left today").
+    private var caption: String? {
+        if case .open(_?, _) = decision { return "left today" }
+        return nil
+    }
+
     private var headline: String {
         switch decision {
         case .none: return "Checking…"
-        case .shield(.downtime(let until)): return "Downtime until \(until)"
-        case .shield(.deviceCapReached): return "This iPhone's limit is reached"
-        case .shield(.timeExpired): return "Time's up for today"
-        case .shield(.clockChanged): return "Date & time changed"
-        case .shield(.agentError): return "NesTimer needs attention"
+        case .shield(.downtime): return "Downtime"
+        case .shield(.deviceCapReached): return "Limit reached"
+        case .shield(.timeExpired): return "Time's up"
+        case .shield(.clockChanged): return "Clock changed"
+        case .shield(.agentError): return "Needs attention"
         case .open(let r, _):
             guard let r else { return "No limit today" }
             let m = Int(r)
-            return m >= 60 ? "\(m / 60) h \(m % 60) m left today" : "\(m) m left today"
+            return m >= 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
         }
     }
 
@@ -114,7 +181,9 @@ struct StatusView: View {
         case .open: return "Phone and Messages always work."
         case .shield(.clockChanged): return "Turn on Settings \u{2192} General \u{2192} Date & Time \u{2192} Set Automatically. Phone and Messages still work."
         case .shield(.agentError): return "Screen Time monitoring couldn't start. Ask your parent to check the app. Phone and Messages still work."
-        case .shield: return "Phone and Messages still work."
+        case .shield(.downtime(let until)): return "Until \(until). Phone and Messages still work."
+        case .shield(.deviceCapReached): return "This iPhone's daily limit is used up. Phone and Messages still work."
+        case .shield: return "Today's screen time is used up. Phone and Messages still work."
         case .none: return ""
         }
     }

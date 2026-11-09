@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		06530815F6E89EDF7565B0BC /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E5F1A4397A0448D471ACED /* SetupView.swift */; };
+		11F6F89C8D224DD5474DEB98 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139E01027530BE849020A62E /* Assets.xcassets */; };
 		1394C5206440EBE2B029F798 /* ShieldExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF39D89C1376FD9E25FEBEFB /* ShieldExtension.swift */; };
 		13DECBFCEB5523660523EF46 /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C431463D6D0FEC4FCB3CAD /* MonitorExtension.swift */; };
 		13F4789E4E9BD0301D614977 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F12F4DFE0947C8B2252BA3C /* Keychain.swift */; };
@@ -65,6 +66,7 @@
 		0ADEEF8B01AF9244A86A00F3 /* NesTimerMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerMonitor.entitlements; sourceTree = "<group>"; };
 		0D4CCC374C98C8731F66B822 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		12DA6629FADA3D438A878710 /* NesTimerChild.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NesTimerChild.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		139E01027530BE849020A62E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		144ADC073E989738F8D29EF2 /* NesTimerShield.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NesTimerShield.entitlements; sourceTree = "<group>"; };
 		211A4C6E06562697E558FBFB /* NesTimerChildApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NesTimerChildApp.swift; sourceTree = "<group>"; };
 		23E5F1A4397A0448D471ACED /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
@@ -113,6 +115,7 @@
 		13D72238981B73AF6DF53901 /* NesTimerChild */ = {
 			isa = PBXGroup;
 			children = (
+				139E01027530BE849020A62E /* Assets.xcassets */,
 				40D5BDB95821C793E35B92AC /* Info.plist */,
 				27A4D1C21B7C0310DA45CBED /* NesTimerChild.entitlements */,
 				211A4C6E06562697E558FBFB /* NesTimerChildApp.swift */,
@@ -199,6 +202,7 @@
 			buildConfigurationList = 4E9F406C322152DF70EE0316 /* Build configuration list for PBXNativeTarget "NesTimerChild" */;
 			buildPhases = (
 				96B2F064C3F533BF244FAB46 /* Sources */,
+				4B606A965A49ED0CB0BF6716 /* Resources */,
 				FAC95ECDEED48033CC918CC7 /* Frameworks */,
 				CFC223B296A52F83C29E3EF8 /* Embed Foundation Extensions */,
 			);
@@ -300,6 +304,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4B606A965A49ED0CB0BF6716 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11F6F89C8D224DD5474DEB98 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		32AD9C7E7ED33130608E545F /* Sources */ = {

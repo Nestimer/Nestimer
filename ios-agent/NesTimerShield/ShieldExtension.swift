@@ -24,7 +24,7 @@ final class ShieldExtension: ShieldConfigurationDataSource {
             backgroundBlurStyle: .systemMaterial,
             icon: UIImage(systemName: "hourglass"),
             title: .init(text: "NesTimer", color: .label),
-            subtitle: .init(text: subtitle + "\n\nOpen NesTimer to enter a code", color: .secondaryLabel),
+            subtitle: .init(text: subtitle + "\n\nHave a code from your parent? Open NesTimer.", color: .secondaryLabel),
             primaryButtonLabel: .init(text: "OK", color: .white),
             primaryButtonBackgroundColor: .systemIndigo
         )
