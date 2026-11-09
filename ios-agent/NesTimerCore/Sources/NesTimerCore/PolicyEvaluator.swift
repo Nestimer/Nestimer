@@ -13,7 +13,7 @@ public enum ShieldReason: Equatable, Sendable, Codable {
 public enum OpenReason: Equatable, Sendable {
     case activity(endsAt: String)
     case temporaryUnlock
-    case bonus
+    case bonus(until: Date)
     case withinLimit
     case noLimit
 }
@@ -42,7 +42,7 @@ public enum PolicyEvaluator {
             return .open(remainingMinutes: remaining, why: .temporaryUnlock)
         }
         if let until = policy.bonusUntilDate, now < until {
-            return .open(remainingMinutes: remaining, why: .bonus)
+            return .open(remainingMinutes: remaining, why: .bonus(until: until))
         }
         if policy.downtimeEnabled,
            isInDowntime(start: policy.downtimeStart, end: policy.downtimeEnd, now: now, calendar: calendar) {

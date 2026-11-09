@@ -23,7 +23,7 @@ struct StatusView: View {
         NavigationStack {
             List {
                 Section {
-                    hero
+                    TimelineView(.everyMinute) { _ in hero }   // the bonus countdown ticks
                 } footer: {
                     if let lastSync {
                         Text("Updated \(lastSync.formatted(date: .omitted, time: .shortened)) \u{00B7} pull down to refresh")
@@ -155,6 +155,7 @@ struct StatusView: View {
 
     /// Small line under the big time ("left today").
     private var caption: String? {
+        if case .open(_, .bonus) = decision { return "bonus left" }
         if case .open(_?, _) = decision { return "left today" }
         return nil
     }
@@ -167,18 +168,28 @@ struct StatusView: View {
         case .shield(.timeExpired): return "Time's up"
         case .shield(.clockChanged): return "Clock changed"
         case .shield(.agentError): return "Needs attention"
+        case .open(_, .bonus(let until)):
+            return Self.minutesText(max(0, until.timeIntervalSinceNow / 60))
         case .open(let r, _):
             guard let r else { return "No limit today" }
-            let m = Int(r)
-            return m >= 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
+            return Self.minutesText(r)
         }
+    }
+
+    private static func minutesText(_ minutes: Double) -> String {
+        let m = Int(minutes)
+        return m >= 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
     }
 
     private var detail: String {
         switch decision {
         case .open(_, .activity(let endsAt)): return "Scheduled activity until \(endsAt)"
         case .open(_, .temporaryUnlock): return "Unlocked with a code for 5 minutes"
-        case .open(_, .bonus): return "Bonus time from your parent"
+        case .open(let r, .bonus(let until)):
+            let end = "Bonus from your parent until \(until.formatted(date: .omitted, time: .shortened))."
+            guard let r else { return end }
+            return r < 1 ? "\(end) Then today's time is used up."
+                         : "\(end) Then \(Self.minutesText(r)) of today's time left."
         case .open: return "Phone and Messages always work."
         case .shield(.clockChanged): return "Turn on Settings \u{2192} General \u{2192} Date & Time \u{2192} Set Automatically. Phone and Messages still work."
         case .shield(.agentError): return "Screen Time monitoring couldn't start. Ask your parent to check the app. Phone and Messages still work."
