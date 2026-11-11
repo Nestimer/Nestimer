@@ -1,3 +1,4 @@
+import json
 import secrets
 from datetime import time, datetime, timedelta, timezone
 from typing import List, Optional
@@ -739,7 +740,58 @@ async def regenerate_secret(
 
 
 # --- Activities ---
-def activity_to_out(a: Activity) -> ActivityOut:
+def activity_device_ids(a: Activity) -> Optional[list[str]]:
+    """The devices an activity unlocks: None = every device of its child.
+
+    An unreadable value names no device. Failing closed matters here: an activity
+    unlocks the screen, so a corrupt row must not widen to "every device".
+    """
+    if a.device_ids is None:
+        return None
+    try:
+        ids = json.loads(a.device_ids)
+    except ValueError:
+        return []
+    return [i for i in ids if isinstance(i, str)] if isinstance(ids, list) else []
+
+
+def activity_applies_to(a: Activity, device_id: str) -> bool:
+    ids = activity_device_ids(a)
+    return ids is None or device_id in ids
+
+
+async def checked_activity_device_ids(
+    db: AsyncSession, child_id: str, owner_id: str, ids: Optional[list[str]]
+) -> Optional[str]:
+    """Validate a parent's device choice and encode it for `Activity.device_ids`.
+
+    Every id must be a device of this child under this parent: anything else would let
+    one family's schedule name another family's device (or a sibling's).
+    """
+    if ids is None:
+        return None
+    unique = list(dict.fromkeys(ids))
+    result = await db.execute(
+        select(Device.id).where(
+            Device.id.in_(unique), Device.child_id == child_id, Device.owner_id == owner_id
+        )
+    )
+    if set(result.scalars().all()) != set(unique):
+        raise HTTPException(status_code=422, detail="Every chosen device must belong to this child")
+    return json.dumps(unique)
+
+
+async def child_device_id_set(db: AsyncSession, child_id: str) -> set[str]:
+    result = await db.execute(select(Device.id).where(Device.child_id == child_id))
+    return set(result.scalars().all())
+
+
+def activity_to_out(a: Activity, live_device_ids: Optional[set[str]] = None) -> ActivityOut:
+    """`live_device_ids` drops ids of devices since deleted or moved to another child.
+    Those never match an agent anyway; this keeps them out of the parent's view."""
+    ids = activity_device_ids(a)
+    if ids is not None and live_device_ids is not None:
+        ids = [i for i in ids if i in live_device_ids]
     return ActivityOut(
         id=a.id,
         name=a.name,
@@ -749,6 +801,7 @@ def activity_to_out(a: Activity) -> ActivityOut:
         buffer_before_minutes=a.buffer_before_minutes,
         buffer_after_minutes=a.buffer_after_minutes,
         enabled=a.enabled,
+        device_ids=ids,
     )
 
 
@@ -814,8 +867,9 @@ async def list_activities(
             seen.add(a.id)
             activities.append(a)
 
+    live = await child_device_id_set(db, child_id)
     await db.commit()
-    return [activity_to_out(a) for a in activities]
+    return [activity_to_out(a, live) for a in activities]
 
 
 @router.post("/{device_id}/activities", response_model=ActivityOut)
@@ -827,9 +881,11 @@ async def create_activity(
 ):
     device = await _verify_device_owner(db, device_id, user.id)
     child_id = await _child_id_for_device(db, device)
+    device_ids = await checked_activity_device_ids(db, child_id, user.id, data.device_ids)
     activity = Activity(
         device_id=device_id,
         child_id=child_id,
+        device_ids=device_ids,
         name=data.name,
         day_of_week=data.day_of_week,
         start_time=parse_time(data.start_time),
@@ -858,6 +914,10 @@ async def update_activity(
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
+    if "device_ids" in data.model_fields_set:
+        activity.device_ids = await checked_activity_device_ids(
+            db, activity.child_id, user.id, data.device_ids
+        )
     if data.name is not None:
         activity.name = data.name
     if data.day_of_week is not None:

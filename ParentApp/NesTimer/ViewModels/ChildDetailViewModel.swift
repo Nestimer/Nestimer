@@ -241,4 +241,19 @@ final class ChildDetailViewModel: ObservableObject {
             actionError = error.localizedDescription
         }
     }
+
+    /// `ids` nil = every device of the child.
+    func setActivityDevices(_ activity: Activity, ids: [String]?) async {
+        do {
+            let updated = try await api.updateChildActivity(
+                childId: childId, activityId: activity.id,
+                update: ActivityUpdate(deviceIds: .some(ids))
+            )
+            if let idx = activities.firstIndex(where: { $0.id == activity.id }) {
+                activities[idx] = updated
+            }
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
 }

@@ -9,15 +9,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func, update, or_
+from sqlalchemy import select, func, update, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
-from ..models.models import Device, Policy, UsageLog, Activity, Child
+from ..models.models import Device, Policy, UsageLog, UsageReportLog, Activity, Child
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import matching_step
 from ..rate_limit import totp_limiter
+from .devices import activity_applies_to
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -30,6 +31,16 @@ logger = logging.getLogger(__name__)
 # request, and modest clock skew between the child's Mac and the server. Two minutes is
 # comfortably above one 60s sync interval and far below any limit worth enforcing.
 USAGE_REPORT_SLACK_MINUTES = 2.0
+
+# How long every raw usage report is kept (`usage_reports`), to trace disputed counts.
+USAGE_JOURNAL_DAYS = 7
+# A device that changes its total every minute all day writes 1440 rows. The cap stops a
+# child replaying the device token in a loop from filling the server's disk.
+USAGE_JOURNAL_MAX_ROWS_PER_DAY = 2000
+# The purge is global, so run it at most once a minute per worker rather than on every
+# report (it would otherwise make concurrent reports from different families contend).
+USAGE_JOURNAL_PURGE_EVERY_SECONDS = 60
+_last_journal_purge = 0.0
 
 
 def format_time(t: time | None) -> str:
@@ -214,6 +225,10 @@ async def get_config(
             enabled=a.enabled,
         )
         for a in activities_rows
+        # Filter AFTER the child-vs-device fallback above: a child whose activities all
+        # name other devices still "has activities", so this device must not fall back
+        # to device-keyed rows (child-level rows are stamped with a device id too).
+        if activity_applies_to(a, device.id)
     ]
 
     # Single commit for last_seen + version update
@@ -284,6 +299,39 @@ def _clamp_reported_minutes(
     return ceiling
 
 
+async def _journal_usage_report(
+    db: AsyncSession, device_id: str, date: str, reported: float, stored: float, now: datetime
+) -> None:
+    """Record one usage report in `usage_reports`, skipping exact repeats of the last row
+    (a locked Mac re-sends its total every 5 s) and stopping at a per-day cap."""
+    global _last_journal_purge
+    result = await db.execute(
+        select(UsageReportLog.date, UsageReportLog.reported_minutes, UsageReportLog.stored_minutes)
+        .where(UsageReportLog.device_id == device_id)
+        .order_by(UsageReportLog.received_at.desc())
+        .limit(1)
+    )
+    last = result.first()
+    if last is None or tuple(last) != (date, reported, stored):
+        result = await db.execute(
+            select(func.count()).select_from(UsageReportLog).where(
+                UsageReportLog.device_id == device_id,
+                UsageReportLog.received_at > now - timedelta(days=1),
+            )
+        )
+        if result.scalar_one() < USAGE_JOURNAL_MAX_ROWS_PER_DAY:
+            db.add(UsageReportLog(
+                device_id=device_id, date=date, reported_minutes=reported,
+                stored_minutes=stored, received_at=now,
+            ))
+
+    if now.timestamp() - _last_journal_purge >= USAGE_JOURNAL_PURGE_EVERY_SECONDS:
+        _last_journal_purge = now.timestamp()
+        await db.execute(
+            delete(UsageReportLog).where(UsageReportLog.received_at < now - timedelta(days=USAGE_JOURNAL_DAYS))
+        )
+
+
 @router.post("/usage")
 async def report_usage(
     report: UsageReport,
@@ -325,6 +373,8 @@ async def report_usage(
             total_minutes=report.total_minutes,
         )
         db.add(log)
+
+    await _journal_usage_report(db, device.id, report.date, report.total_minutes, log.total_minutes, now)
 
     device.last_seen = now
     await db.commit()

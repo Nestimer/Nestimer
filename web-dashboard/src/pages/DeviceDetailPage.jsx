@@ -21,6 +21,8 @@ export default function DeviceDetailPage() {
   const [totpRemaining, setTotpRemaining] = useState(0)
   const [activities, setActivities] = useState([])
   const [newActivity, setNewActivity] = useState(null)
+  const [siblings, setSiblings] = useState([])            // this child's devices, for activity targeting
+  const [editingDevicesFor, setEditingDevicesFor] = useState(null)
   const [bonusUntil, setBonusUntil] = useState(null)
   const [bonusRemaining, setBonusRemaining] = useState(0)
   const [grantingBonus, setGrantingBonus] = useState(false)
@@ -40,12 +42,14 @@ export default function DeviceDetailPage() {
   // selector and nothing else.
   const load = useCallback(async () => {
     try {
-      const [dev, pol, usg, acts] = await Promise.all([
+      const [dev, pol, usg, acts, all] = await Promise.all([
         api.getDevice(id),
         api.getPolicy(id),
         api.getUsage(id, 7),
         api.listActivities(id),
+        api.listDevices().catch(() => []),
       ])
+      setSiblings(dev.child_id ? all.filter(d => d.child_id === dev.child_id) : [dev])
       setDevice(dev)
       setPolicy(pol)
       setUsage(usg)
@@ -518,7 +522,7 @@ export default function DeviceDetailPage() {
       <h2 className="section-title">Scheduled Activities</h2>
       <div className="card">
         <p style={{ color: '#86868b', fontSize: 13, marginBottom: 12 }}>
-          Time within these windows (including buffer) is not counted toward screen time, and the computer is unlocked even during downtime.
+          Time within these windows (including buffer) is not counted toward screen time, and the chosen devices are unlocked even during downtime. Other devices keep counting and locking as usual.
         </p>
         {activities.length === 0 && !newActivity && (
           <p style={{ color: '#86868b', textAlign: 'center', padding: '12px 0' }}>No activities yet</p>
@@ -533,9 +537,21 @@ export default function DeviceDetailPage() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500 }}>{a.name}</div>
                 <div style={{ fontSize: 12, color: '#86868b' }}>
-                  {days[a.day_of_week]} {a.start_time}–{a.end_time} (±{a.buffer_before_minutes}m)
+                  {days[a.day_of_week]} {a.start_time}–{a.end_time} (±{a.buffer_before_minutes}m) · {activityDevicesLabel(a, siblings)}
                 </div>
+                {editingDevicesFor === a.id && (
+                  <div style={{ marginTop: 8 }}>
+                    <ActivityDevicePicker siblings={siblings} value={a.device_ids} currentId={id} onChange={async (ids) => {
+                      try { const upd = await api.updateActivity(id, a.id, { device_ids: ids }); setActivities(activities.map(x => x.id === a.id ? upd : x)) } catch (err) { alert(err.message) }
+                    }} />
+                  </div>
+                )}
               </div>
+              {siblings.length > 1 && (
+                <button className="btn btn-secondary btn-small" onClick={() => setEditingDevicesFor(editingDevicesFor === a.id ? null : a.id)}>
+                  {editingDevicesFor === a.id ? 'Done' : 'Devices'}
+                </button>
+              )}
               <button className="btn btn-secondary btn-small" onClick={async () => {
                 if (!confirm(`Delete activity "${a.name}"?`)) return
                 try { await api.deleteActivity(id, a.id); setActivities(activities.filter(x => x.id !== a.id)) } catch (err) { alert(err.message) }
@@ -582,6 +598,13 @@ export default function DeviceDetailPage() {
                 <input type="number" min="0" max="60" value={newActivity.buffer_after_minutes} onChange={e => setNewActivity({ ...newActivity, buffer_after_minutes: parseInt(e.target.value) || 0 })} />
               </div>
             </div>
+            {siblings.length > 1 && (
+              <div className="form-group">
+                <label>Unlocks</label>
+                <ActivityDevicePicker siblings={siblings} value={newActivity.device_ids} currentId={id}
+                  onChange={ids => setNewActivity({ ...newActivity, device_ids: ids })} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button className="btn btn-primary btn-small" onClick={async () => {
                 try { const created = await api.createActivity(id, newActivity); setActivities([...activities, created]); setNewActivity(null) } catch (err) { alert(err.message) }
@@ -591,7 +614,7 @@ export default function DeviceDetailPage() {
           </div>
         ) : (
           <button className="btn btn-secondary btn-small" style={{ marginTop: 8 }} onClick={() => setNewActivity({
-            name: '', day_of_week: 0, start_time: '16:00', end_time: '17:00', buffer_before_minutes: 5, buffer_after_minutes: 5, enabled: true
+            name: '', day_of_week: 0, start_time: '16:00', end_time: '17:00', buffer_before_minutes: 5, buffer_after_minutes: 5, enabled: true, device_ids: null
           })}>+ Add Activity</button>
         )}
       </div>
@@ -640,4 +663,37 @@ export default function DeviceDetailPage() {
       {saving && <p style={{ textAlign: 'center', color: '#86868b', marginTop: 16 }}>Saving...</p>}
     </div>
   )
+}
+
+
+/** Which of the child's devices an activity unlocks. `value` null = all devices. */
+function ActivityDevicePicker({ siblings, value, onChange, currentId }) {
+  const all = value == null
+  const chosen = new Set(value ?? [])
+  const toggle = (devId, on) => {
+    const next = new Set(all ? siblings.map(d => d.id) : chosen)
+    if (on) next.add(devId); else next.delete(devId)
+    if (next.size === 0) return               // at least one device; "All" covers the rest
+    onChange(next.size === siblings.length ? null : [...next])
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+        <input type="checkbox" checked={all} onChange={e => onChange(e.target.checked ? null : [currentId ?? siblings[0]?.id].filter(Boolean))} />
+        All devices
+      </label>
+      {siblings.map(d => (
+        <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+          <input type="checkbox" checked={all || chosen.has(d.id)} onChange={e => toggle(d.id, e.target.checked)} />
+          {d.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function activityDevicesLabel(a, siblings) {
+  if (a.device_ids == null) return 'All devices'
+  const names = siblings.filter(d => a.device_ids.includes(d.id)).map(d => d.name)
+  return names.length ? names.join(', ') : 'No devices'
 }

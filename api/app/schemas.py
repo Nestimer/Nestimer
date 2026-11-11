@@ -218,6 +218,8 @@ class ActivityCreate(BaseModel):
     buffer_before_minutes: int = Field(5, ge=0, le=60)
     buffer_after_minutes: int = Field(5, ge=0, le=60)
     enabled: bool = True
+    # None = every device of the child; otherwise only these (at least one).
+    device_ids: Optional[list[str]] = Field(None, min_length=1, max_length=50)
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -235,6 +237,9 @@ class ActivityUpdate(BaseModel):
     buffer_before_minutes: Optional[int] = Field(None, ge=0, le=60)
     buffer_after_minutes: Optional[int] = Field(None, ge=0, le=60)
     enabled: Optional[bool] = None
+    # Unlike the fields above, an explicit null is meaningful: back to "every device".
+    # Leaving the key out keeps the current choice (see `model_fields_set`).
+    device_ids: Optional[list[str]] = Field(None, min_length=1, max_length=50)
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -251,6 +256,7 @@ class ActivityOut(BaseModel):
     buffer_before_minutes: int
     buffer_after_minutes: int
     enabled: bool
+    device_ids: Optional[list[str]] = None  # None = every device of the child
 
 
 class TOTPVerifyRequest(BaseModel):
