@@ -103,6 +103,7 @@ async def init_db():
 
         act_cols = await _get_columns(conn, "activities")
         await _add_column_if_missing(conn, "activities", "child_id", "TEXT", act_cols)
+        await _add_column_if_missing(conn, "activities", "device_ids", "TEXT", act_cols)
 
         # Existing rows predate `platform`; they are all Macs.
         await conn.execute(text("UPDATE devices SET platform = 'macos' WHERE platform IS NULL"))

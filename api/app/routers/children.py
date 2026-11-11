@@ -14,7 +14,10 @@ from ..schemas import (
     ChildCreate, ChildOut, ChildUpdate, GrantBonusRequest, GrantBonusResponse,
     PolicyOut, PolicyUpdate, UsageOut,
 )
-from .devices import _reject_null_policy_fields, _resolve_policy, activity_to_out, policy_to_out, parse_time
+from .devices import (
+    _reject_null_policy_fields, _resolve_policy, activity_to_out, checked_activity_device_ids,
+    policy_to_out, parse_time,
+)
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -256,7 +259,8 @@ async def list_child_activities(
         if a.id not in seen:
             seen.add(a.id)
             activities.append(a)
-    return [activity_to_out(a) for a in activities]
+    live = set(device_ids)
+    return [activity_to_out(a, live) for a in activities]
 
 
 @router.post("/{child_id}/activities", response_model=ActivityOut)
@@ -288,6 +292,7 @@ async def create_child_activity(
     activity = Activity(
         device_id=device_id,
         child_id=child.id,
+        device_ids=await checked_activity_device_ids(db, child.id, user.id, data.device_ids),
         name=data.name,
         day_of_week=data.day_of_week,
         start_time=parse_time(data.start_time),
@@ -341,6 +346,10 @@ async def update_child_activity(
 ):
     child = await _verify_child_owner(db, child_id, user.id)
     activity = await _child_activity(db, child, activity_id)
+
+    # device_ids is the exception to the comment below: null means "every device".
+    if "device_ids" in data.model_fields_set:
+        activity.device_ids = await checked_activity_device_ids(db, child.id, user.id, data.device_ids)
 
     # Every Activity column is NOT NULL (unlike Policy's genuinely optional overrides),
     # so this must use `is not None` guards rather than `model_fields_set`, mirroring

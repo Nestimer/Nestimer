@@ -18,6 +18,7 @@ from ..models.models import Device, Policy, UsageLog, UsageReportLog, Activity, 
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import matching_step
 from ..rate_limit import totp_limiter
+from .devices import activity_applies_to
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -217,6 +218,10 @@ async def get_config(
             enabled=a.enabled,
         )
         for a in activities_rows
+        # Filter AFTER the child-vs-device fallback above: a child whose activities all
+        # name other devices still "has activities", so this device must not fall back
+        # to device-keyed rows (child-level rows are stamped with a device id too).
+        if activity_applies_to(a, device.id)
     ]
 
     # Single commit for last_seen + version update

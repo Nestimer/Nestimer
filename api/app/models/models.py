@@ -156,6 +156,9 @@ class Activity(Base):
     buffer_before_minutes = Column(Integer, default=5)
     buffer_after_minutes = Column(Integer, default=5)
     enabled = Column(Boolean, default=True)
+    # JSON list of device ids this activity unlocks; NULL = every device of the child.
+    # Devices not listed keep counting and locking as usual during the window.
+    device_ids = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     device = relationship("Device", back_populates="activities")
