@@ -291,6 +291,9 @@ struct Activity: Decodable, Identifiable {
     let bufferBeforeMinutes: Int
     let bufferAfterMinutes: Int
     let enabled: Bool
+    /// The devices this activity unlocks; nil = every device of the child (older servers
+    /// don't send the key at all, which means the same).
+    let deviceIds: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id, name, enabled
@@ -299,10 +302,27 @@ struct Activity: Decodable, Identifiable {
         case endTime = "end_time"
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
+        case deviceIds = "device_ids"
     }
 
     var dayLabel: String {
         ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][max(0, min(6, dayOfWeek))]
+    }
+
+    func devicesLabel(_ devices: [Device]) -> String {
+        guard let deviceIds else { return "All devices" }
+        let names = devices.filter { deviceIds.contains($0.id) }.map(\.name)
+        return names.isEmpty ? "No devices" : names.joined(separator: ", ")
+    }
+
+    /// A device choice after switching one device on or off. Never empty (the server
+    /// rejects that); choosing every device collapses back to nil ("all devices").
+    static func toggled(_ current: [String]?, device: String, on: Bool, all: [String]) -> [String]? {
+        var next = Set(current ?? all)
+        if on { next.insert(device) } else { next.remove(device) }
+        if next.isEmpty { return current }
+        if Set(all).isSubset(of: next) { return nil }
+        return all.filter(next.contains)
     }
 }
 
@@ -314,6 +334,8 @@ struct ActivityCreate: Encodable {
     let bufferBeforeMinutes: Int
     let bufferAfterMinutes: Int
     let enabled: Bool
+    /// nil = every device (the key is omitted, the server's default).
+    var deviceIds: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case name, enabled
@@ -322,6 +344,7 @@ struct ActivityCreate: Encodable {
         case endTime = "end_time"
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
+        case deviceIds = "device_ids"
     }
 }
 
@@ -347,6 +370,8 @@ struct ActivityUpdate: Encodable {
     var bufferBeforeMinutes: Int?
     var bufferAfterMinutes: Int?
     var enabled: Bool?
+    /// `.some(nil)` sends an explicit null: back to every device. `nil` leaves it alone.
+    var deviceIds: [String]?? = nil
 
     enum CodingKeys: String, CodingKey {
         case name, enabled
@@ -355,6 +380,19 @@ struct ActivityUpdate: Encodable {
         case endTime = "end_time"
         case bufferBeforeMinutes = "buffer_before_minutes"
         case bufferAfterMinutes = "buffer_after_minutes"
+        case deviceIds = "device_ids"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(dayOfWeek, forKey: .dayOfWeek)
+        try c.encodeIfPresent(startTime, forKey: .startTime)
+        try c.encodeIfPresent(endTime, forKey: .endTime)
+        try c.encodeIfPresent(bufferBeforeMinutes, forKey: .bufferBeforeMinutes)
+        try c.encodeIfPresent(bufferAfterMinutes, forKey: .bufferAfterMinutes)
+        try c.encodeIfPresent(enabled, forKey: .enabled)
+        if let choice = deviceIds { try c.encode(choice, forKey: .deviceIds) }  // nil inner → null
     }
 }
 

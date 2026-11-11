@@ -521,11 +521,36 @@ struct ChildDetailView: View {
                 Text(activity.name)
                     .font(.body)
                     .foregroundStyle(activity.enabled ? .primary : .secondary)
-                Text("\(activity.dayLabel) \(activity.startTime)–\(activity.endTime)  ±\(activity.bufferBeforeMinutes)m")
+                Text("\(activity.dayLabel) \(activity.startTime)–\(activity.endTime)  ±\(activity.bufferBeforeMinutes)m · \(activity.devicesLabel(vm.devices))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if vm.devices.count > 1 {
+                Menu {
+                    Button {
+                        Task { await vm.setActivityDevices(activity, ids: nil) }
+                    } label: {
+                        if activity.deviceIds == nil { Label("All devices", systemImage: "checkmark") } else { Text("All devices") }
+                    }
+                    Divider()
+                    ForEach(vm.devices) { device in
+                        let on = activity.deviceIds?.contains(device.id) ?? true
+                        Button {
+                            let ids = Activity.toggled(activity.deviceIds, device: device.id, on: !on,
+                                                       all: vm.devices.map(\.id))
+                            Task { await vm.setActivityDevices(activity, ids: ids) }
+                        } label: {
+                            if on { Label(device.name, systemImage: "checkmark") } else { Text(device.name) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "laptopcomputer.and.iphone")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Devices this activity unlocks")
+            }
             Toggle("", isOn: Binding(
                 get: { activity.enabled },
                 set: { _ in Task { await vm.toggleActivity(activity) } }
@@ -605,6 +630,7 @@ struct AddActivityView: View {
     @State private var endDate = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date())!
     @State private var bufferBefore = 5
     @State private var bufferAfter = 5
+    @State private var deviceIds: [String]? = nil   // nil = every device
     @State private var isSaving = false
     /// Failure text for the create attempt, consumed out of `vm.actionError` so the alert
     /// on the screen behind doesn't also fire. An alert presented on a view that already
@@ -637,6 +663,25 @@ struct AddActivityView: View {
                     Stepper("Before: \(bufferBefore) min", value: $bufferBefore, in: 0...60)
                     Stepper("After: \(bufferAfter) min", value: $bufferAfter, in: 0...60)
                 }
+                if vm.devices.count > 1 {
+                    Section {
+                        Toggle("All devices", isOn: Binding(
+                            get: { deviceIds == nil },
+                            set: { deviceIds = $0 ? nil : vm.devices.first.map { [$0.id] } }
+                        ))
+                        ForEach(vm.devices) { device in
+                            Toggle(device.name, isOn: Binding(
+                                get: { deviceIds?.contains(device.id) ?? true },
+                                set: { deviceIds = Activity.toggled(deviceIds, device: device.id, on: $0,
+                                                                    all: vm.devices.map(\.id)) }
+                            ))
+                        }
+                    } header: {
+                        Text("Unlocks")
+                    } footer: {
+                        Text("Other devices keep counting and locking as usual during this activity.")
+                    }
+                }
                 if let errorText {
                     Section {
                         Label(errorText, systemImage: "exclamationmark.triangle.fill")
@@ -667,7 +712,8 @@ struct AddActivityView: View {
                                 endTime: formatTime(endDate),
                                 bufferBeforeMinutes: bufferBefore,
                                 bufferAfterMinutes: bufferAfter,
-                                enabled: true
+                                enabled: true,
+                                deviceIds: deviceIds
                             ))
                             isSaving = false
                             // Dismiss only on success. A sheet that closes on failure
