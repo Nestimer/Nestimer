@@ -122,6 +122,26 @@ class UsageLog(Base):
     device = relationship("Device", back_populates="usage_logs")
 
 
+class UsageReportLog(Base):
+    """Every usage report as received, kept one week, to trace a disputed daily count.
+
+    No FK on device_id: the journal must not block deleting a device, and stale rows
+    age out on their own.
+    """
+    __tablename__ = "usage_reports"
+    __table_args__ = (
+        Index("ix_usage_reports_device_received", "device_id", "received_at"),
+        Index("ix_usage_reports_received", "received_at"),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    device_id = Column(String, nullable=False)
+    date = Column(String, nullable=False)  # the agent's local YYYY-MM-DD
+    reported_minutes = Column(Float, nullable=False)
+    stored_minutes = Column(Float, nullable=False)  # after the clamp
+    received_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class Activity(Base):
     """A scheduled activity (e.g. English class) — screen time is not counted during these windows."""
     __tablename__ = "activities"

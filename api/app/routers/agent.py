@@ -9,12 +9,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func, update, or_
+from sqlalchemy import select, func, update, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_device_by_token
 from ..database import get_db
-from ..models.models import Device, Policy, UsageLog, Activity, Child
+from ..models.models import Device, Policy, UsageLog, UsageReportLog, Activity, Child
 from ..schemas import AgentConfig, UsageReport, TOTPVerifyRequest, TOTPVerifyResponse, ActivityOut
 from ..totp import matching_step
 from ..rate_limit import totp_limiter
@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # request, and modest clock skew between the child's Mac and the server. Two minutes is
 # comfortably above one 60s sync interval and far below any limit worth enforcing.
 USAGE_REPORT_SLACK_MINUTES = 2.0
+
+# How long every raw usage report is kept (`usage_reports`), to trace disputed counts.
+USAGE_JOURNAL_DAYS = 7
 
 
 def format_time(t: time | None) -> str:
@@ -325,6 +328,17 @@ async def report_usage(
             total_minutes=report.total_minutes,
         )
         db.add(log)
+
+    db.add(UsageReportLog(
+        device_id=device.id,
+        date=report.date,
+        reported_minutes=report.total_minutes,
+        stored_minutes=log.total_minutes,
+        received_at=now,
+    ))
+    await db.execute(
+        delete(UsageReportLog).where(UsageReportLog.received_at < now - timedelta(days=USAGE_JOURNAL_DAYS))
+    )
 
     device.last_seen = now
     await db.commit()
