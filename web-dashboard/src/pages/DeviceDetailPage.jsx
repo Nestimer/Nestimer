@@ -541,7 +541,7 @@ export default function DeviceDetailPage() {
                 </div>
                 {editingDevicesFor === a.id && (
                   <div style={{ marginTop: 8 }}>
-                    <ActivityDevicePicker siblings={siblings} value={a.device_ids} onChange={async (ids) => {
+                    <ActivityDevicePicker siblings={siblings} value={a.device_ids} currentId={id} onChange={async (ids) => {
                       try { const upd = await api.updateActivity(id, a.id, { device_ids: ids }); setActivities(activities.map(x => x.id === a.id ? upd : x)) } catch (err) { alert(err.message) }
                     }} />
                   </div>
@@ -601,7 +601,7 @@ export default function DeviceDetailPage() {
             {siblings.length > 1 && (
               <div className="form-group">
                 <label>Unlocks</label>
-                <ActivityDevicePicker siblings={siblings} value={newActivity.device_ids}
+                <ActivityDevicePicker siblings={siblings} value={newActivity.device_ids} currentId={id}
                   onChange={ids => setNewActivity({ ...newActivity, device_ids: ids })} />
               </div>
             )}
@@ -667,7 +667,7 @@ export default function DeviceDetailPage() {
 
 
 /** Which of the child's devices an activity unlocks. `value` null = all devices. */
-function ActivityDevicePicker({ siblings, value, onChange }) {
+function ActivityDevicePicker({ siblings, value, onChange, currentId }) {
   const all = value == null
   const chosen = new Set(value ?? [])
   const toggle = (devId, on) => {
@@ -679,7 +679,7 @@ function ActivityDevicePicker({ siblings, value, onChange }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
-        <input type="checkbox" checked={all} onChange={e => onChange(e.target.checked ? null : [siblings[0]?.id].filter(Boolean))} />
+        <input type="checkbox" checked={all} onChange={e => onChange(e.target.checked ? null : [currentId ?? siblings[0]?.id].filter(Boolean))} />
         All devices
       </label>
       {siblings.map(d => (

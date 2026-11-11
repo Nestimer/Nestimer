@@ -61,7 +61,9 @@ async def test_each_report_is_journaled_with_reported_and_stored_minutes(client)
     assert all(r.received_at is not None for r in rows)
 
 
-async def test_journal_keeps_one_week(client):
+async def test_journal_keeps_one_week(client, monkeypatch):
+    import app.routers.agent as agent
+    monkeypatch.setattr(agent, "_last_journal_purge", 0.0)
     token = await register_user(client)
     device = await create_device(client, token)
 
@@ -78,3 +80,27 @@ async def test_journal_keeps_one_week(client):
     assert r.status_code == 200
 
     assert [r.reported_minutes for r in await _rows(device["id"])] == [2, 3]
+
+
+async def test_identical_repeat_reports_are_not_journaled_again(client):
+    """A locked Mac re-sends the same total every few seconds: one row, not thousands."""
+    token = await register_user(client)
+    device = await create_device(client, token)
+    for minutes in (7.0, 7.0, 7.0, 8.0, 8.0):
+        r = await client.post("/api/v1/agent/usage", json={"date": _today(), "total_minutes": minutes},
+                              headers=_agent(device))
+        assert r.status_code == 200
+    assert [r.reported_minutes for r in await _rows(device["id"])] == [7.0, 8.0]
+
+
+async def test_journal_rows_per_device_per_day_are_capped(client, monkeypatch):
+    """A child replaying the device token in a loop must not fill the server's disk."""
+    import app.routers.agent as agent
+    monkeypatch.setattr(agent, "USAGE_JOURNAL_MAX_ROWS_PER_DAY", 3)
+    token = await register_user(client)
+    device = await create_device(client, token)
+    for minutes in (1, 2, 3, 4, 5):
+        r = await client.post("/api/v1/agent/usage", json={"date": _today(), "total_minutes": minutes},
+                              headers=_agent(device))
+        assert r.status_code == 200, "the report itself is still accepted"
+    assert len(await _rows(device["id"])) == 3

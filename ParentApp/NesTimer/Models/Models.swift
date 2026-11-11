@@ -320,9 +320,9 @@ struct Activity: Decodable, Identifiable {
     static func toggled(_ current: [String]?, device: String, on: Bool, all: [String]) -> [String]? {
         var next = Set(current ?? all)
         if on { next.insert(device) } else { next.remove(device) }
-        if next.isEmpty { return current }
         if Set(all).isSubset(of: next) { return nil }
-        return all.filter(next.contains)
+        let chosen = all.filter(next.contains)   // also drops ids no longer in `all`
+        return chosen.isEmpty ? current : chosen
     }
 }
 
