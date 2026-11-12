@@ -140,6 +140,7 @@ public actor SyncEngine {
                 if let last = s.lastObservedAt, !tampered {
                     o = min(o, s.observedMinutes + max(0, device.timeIntervalSince(last)) / 60)
                 }
+                if let fired = firedEvent { o = min(o, eventCap(s, fired: fired)) }
                 if o > s.observedMinutes {
                     addObservation(&s, o)
                     s.lastObservedAt = device
@@ -149,7 +150,12 @@ public actor SyncEngine {
             }
             // iOS delivers each event once: whatever fired is no longer armed, even if the
             // clock cap kept our count below its point — so it gets re-armed from now.
-            if let fired = firedEvent { s.armedEvents?.removeAll { $0.name == fired } }
+            // Lower points go too: either they fired and the delivery was lost, or the event
+            // was premature. Either way they've capped this one event; left armed, a lost
+            // one would cap every later event, the lock included.
+            if let fired = firedEvent, let point = observed {
+                s.armedEvents?.removeAll { $0.name == fired || Double($0.deviceMinutes) <= point }
+            }
             if let end = s.unlockEndsAtObserved, s.observedMinutes >= Double(end) { Self.clearUnlock(&s) }
             if let until = s.unlockUntil, device >= until || tampered { Self.clearUnlock(&s) }
 
@@ -381,6 +387,17 @@ public actor SyncEngine {
         s.observedMinutes = o
         s.secondsSinceObservation = 0
         s.pausedSecondsSinceObservation = 0
+    }
+
+    /// iOS also fires events early long after the last observation (seen 2026-11-12: at
+    /// 43.97, "warn15-69" fired while chunk-45…65 never did — 25 phantom minutes). iOS fires
+    /// usage thresholds in order, so an event can't be ahead of a lower one still armed.
+    /// Chunks are 5 minutes apart, so a premature event adds at most that much.
+    private nonisolated func eventCap(_ s: AgentState, fired: String) -> Double {
+        guard let armed = s.armedEvents, s.armedDate == s.date else { return .infinity }
+        let lower = armed.filter { $0.name != fired && Double($0.deviceMinutes) > s.observedMinutes }
+            .map(\.deviceMinutes).min()
+        return lower.map(Double.init) ?? .infinity
     }
 
     private nonisolated func minutesSinceMidnight(_ d: Date) -> Double {

@@ -198,7 +198,7 @@ final class AdversarialTests: XCTestCase {
         _ = await r.engine.onForeground()
         r.api.configFails = true
         r.clock.advance(31 * 60)
-        let d = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)
+        let d = await r.use(20)
         XCTAssertEqual(d, .shield(.timeExpired), "offline, 20 of the 40 left is the most the phone may spend")
     }
 }
@@ -327,5 +327,55 @@ final class WakeStormTests: XCTestCase {
             _ = await r.engine.onThreshold(eventName: "chunk-\(140 + 5 * i)", observedMinutes: 140 + 5 * i)
         }
         XCTAssertLessThanOrEqual(r.store.state.observedMinutes, 141.01)
+    }
+}
+
+// MARK: - Seen on the son's phone 2026-11-12: at 43.97 the phone re-armed (Mac usage moved
+// the warning points), and 10 minutes later iOS fired "warn15-69" while chunk-45…65 never
+// fired. The old clamp (time since the last observation, 45 min) let 25 phantom minutes in.
+
+final class SpuriousEventTests: XCTestCase {
+    func testEventAheadOfAPendingLowerEventIsCappedAtIt() async {
+        let r = Rig(now: Fx.at(13, 40))
+        r.api.policy = Fx.policy(limit: 120, used: 40, deviceUsed: 40)
+        _ = await r.engine.onThreshold(eventName: "chunk-40", observedMinutes: 40)
+        r.clock.advance(35 * 60)   // 14:15: the Mac has used 35.5 meanwhile; heartbeat re-arms
+        r.api.policy = Fx.policy(limit: 120, used: 75.5, deviceUsed: 40)
+        _ = await r.engine.onIntervalBoundary()
+        let warn15 = try! XCTUnwrap(r.scheduler.events.first { $0.kind == .warning(minutesLeft: 15) })
+        XCTAssertEqual(warn15.deviceMinutes, 69)
+
+        r.clock.advance(10 * 60)
+        let d = await r.engine.onThreshold(eventName: warn15.name, observedMinutes: warn15.deviceMinutes)
+        XCTAssertLessThanOrEqual(r.store.state.observedMinutes, 45, "chunk-45 hasn't fired: usage is below it")
+        XCTAssertFalse(d.isShielded)
+
+        // Real use afterwards still counts.
+        await r.use(10)
+        XCTAssertGreaterThanOrEqual(r.store.state.observedMinutes, 54)
+    }
+
+    func testALostDeliveryCapsOnlyOneEvent() async {
+        // chunk-45 fired but its delivery was lost (extension killed): it must not cap
+        // every later event, or the lock would never shield.
+        let r = Rig(now: Fx.at(13, 40))
+        r.api.policy = Fx.policy(limit: 60, used: 40, deviceUsed: 40)
+        _ = await r.engine.onThreshold(eventName: "chunk-40", observedMinutes: 40)
+        r.clock.advance(10 * 60)
+        _ = await r.engine.onThreshold(eventName: "chunk-50", observedMinutes: 50)   // capped at 45
+        XCTAssertEqual(r.store.state.observedMinutes, 45)
+        let d = await r.use(15)   // chunk-55, then the lock: at most one chunk was lost
+        XCTAssertEqual(d, .shield(.timeExpired))
+    }
+
+    func testRealUsageStillCountsEventByEvent() async {
+        let r = Rig(now: Fx.at(13, 40))
+        r.api.policy = Fx.policy(limit: 120, used: 40, deviceUsed: 40)
+        _ = await r.engine.onThreshold(eventName: "chunk-40", observedMinutes: 40)
+        for m in [45, 50, 55, 60] {
+            r.clock.advance(5 * 60 + 5)
+            _ = await r.engine.onThreshold(eventName: "chunk-\(m)", observedMinutes: m)
+        }
+        XCTAssertEqual(r.store.state.observedMinutes, 60)
     }
 }
