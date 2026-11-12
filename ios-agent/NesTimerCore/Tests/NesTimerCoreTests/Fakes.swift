@@ -102,3 +102,21 @@ struct Rig {
                             secrets: FakeSecrets(secret: secret), calendar: Fx.cal, now: { c.now }, uptime: { c.uptime })
     }
 }
+
+extension Rig {
+    /// Real use of the phone for `minutes`: iOS fires each armed usage event in order, as
+    /// usage reaches it. Returns the last decision (nil if no event fired).
+    @discardableResult
+    func use(_ minutes: Double) async -> Decision? {
+        let target = store.state.observedMinutes + minutes
+        var last: Decision?
+        for _ in 0..<1000 {
+            guard let next = scheduler.events
+                .filter({ Double($0.deviceMinutes) > store.state.observedMinutes && Double($0.deviceMinutes) <= target })
+                .min(by: { $0.deviceMinutes < $1.deviceMinutes }) else { break }
+            clock.advance((Double(next.deviceMinutes) - store.state.observedMinutes) * 60)
+            last = await engine.onThreshold(eventName: next.name, observedMinutes: next.deviceMinutes)
+        }
+        return last
+    }
+}

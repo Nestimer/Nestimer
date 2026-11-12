@@ -19,7 +19,7 @@ final class SyncEngineTests: XCTestCase {
         _ = await r.engine.onForeground()
         XCTAssertEqual(r.shield.current, nil)
         r.api.configFails = true
-        let d = await r.engine.onThreshold(eventName: "lock-60", observedMinutes: 60)
+        let d = await r.use(60)
         XCTAssertEqual(d, .shield(.timeExpired))
         XCTAssertEqual(r.shield.current, .timeExpired)
     }
@@ -338,8 +338,7 @@ final class ArmingTests: XCTestCase {
         r.api.policy = Fx.policy(limitEnabled: false)
         _ = await r.engine.onThreshold(eventName: "chunk-20", observedMinutes: 20)   // chunks 25…120
         let first = r.scheduler.armCount
-        r.clock.advance(95 * 60)
-        _ = await r.engine.onThreshold(eventName: "chunk-115", observedMinutes: 115)  // one left ahead
+        await r.use(95)   // up to chunk-115: one left ahead
         XCTAssertEqual(r.scheduler.armCount, first + 1)
     }
 

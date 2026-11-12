@@ -92,10 +92,9 @@ xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_PATH" \
     -exportOptionsPlist "$EXPORT_PLIST" \
-    -allowProvisioningUpdates \
-    -authenticationKeyPath "$KEY_FILE" \
-    -authenticationKeyID "$ASC_KEY_ID" \
-    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+    -allowProvisioningUpdates
+# Export signs with the Apple ID signed in to Xcode, not the API key: cloud-managed
+# distribution signing needs an Admin key ("Cloud signing permission error" otherwise).
 
 IPA_PATH=$(ls "$EXPORT_PATH"/*.ipa | head -1)
 if [ ! -f "$IPA_PATH" ]; then
