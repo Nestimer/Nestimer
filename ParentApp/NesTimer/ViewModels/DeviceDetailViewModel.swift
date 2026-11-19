@@ -199,8 +199,17 @@ class DeviceDetailViewModel: ObservableObject {
     }
 
     // Computed helpers
+    /// Today's row only. The API returns the newest rows first, but the newest one is
+    /// yesterday's until the device reports today — taking `usage.first` showed
+    /// yesterday's total under "Today" every morning. Formatter pinned like
+    /// ChildDetailViewModel.todayMinutes so it matches the API's date strings.
     var usedToday: Double {
-        usage.first?.totalMinutes ?? 0
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let today = f.string(from: Date())
+        return usage.first(where: { $0.date == today })?.totalMinutes ?? 0
     }
 
     var limitMinutes: Int {

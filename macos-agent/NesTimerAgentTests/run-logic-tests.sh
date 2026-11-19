@@ -40,6 +40,7 @@ AGENT_VIEWS_DIR="$AGENT_DIR/Views"
 SOURCES=(
     "$SERVICES_DIR/RemainingTime.swift"
     "$SERVICES_DIR/APIClient.swift"
+    "$SERVICES_DIR/UsageTracker.swift"
     "$AGENT_VIEWS_DIR/LockScreenWindow.swift"
 )
 
@@ -252,6 +253,31 @@ do {
     check("testOtherDeviceUsageNeverGoesNegative", policy.otherDevicesUsed, 0)
 } catch {
     fail("testOtherDeviceUsageNeverGoesNegative", "decode threw \(error)")
+}
+
+do {
+    // 2026-11-19: a sync that straddled local midnight reported yesterday's 104 minutes
+    // under today's date. A usage report must take its date and its total from one
+    // snapshot, and a new day must start from zero even if no tick has run yet.
+    var clock = DateComponents(calendar: .current, timeZone: .current,
+                               year: 2026, month: 11, day: 18, hour: 23, minute: 59, second: 58).date!
+    let path = NSTemporaryDirectory() + "nestimer-usage-\(UUID().uuidString).json"
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    let tracker = UsageTracker(now: { clock }, storagePath: path)
+    tracker.forceSetUsedMinutes(104, forDate: "2026-11-18")
+
+    let before = tracker.snapshot()
+    check("testSnapshotBeforeMidnightIsYesterday", before.date == "2026-11-18", true)
+    check("testSnapshotBeforeMidnightKeepsTotal", before.minutes, 104)
+
+    clock = clock.addingTimeInterval(3)   // 00:00:01, no tick in between
+    let after = tracker.snapshot()
+    check("testSnapshotAfterMidnightIsToday", after.date == "2026-11-19", true)
+    check("testSnapshotAfterMidnightStartsFromZero", after.minutes, 0)
+
+    // The server's answer to a request sent before midnight arrives after it.
+    tracker.setUsedMinutes(104, forDate: "2026-11-18")
+    check("testYesterdaysServerTotalIsNotAppliedToToday", tracker.snapshot().minutes, 0)
 }
 
 // MARK: - Report

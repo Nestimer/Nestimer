@@ -16,7 +16,12 @@ class UsageTracker {
     /// Max idle time before we stop counting (5 minutes).
     private let maxIdleSeconds: Double = 300
 
-    private let localStoragePath: String = {
+    /// The clock. Injected so the day rollover can be tested without waiting for midnight.
+    private let now: () -> Date
+
+    private let localStoragePath: String
+
+    private static let defaultStoragePath: String = {
         // Try locations in order: /Library app support (root), user app support, /tmp
         let candidates: [URL] = [
             FileManager.default.urls(for: .applicationSupportDirectory, in: .localDomainMask).first,
@@ -37,21 +42,38 @@ class UsageTracker {
         return "/tmp/NesTimerAgent-usage.json"
     }()
 
-    init() {
+    init(now: @escaping () -> Date = Date.init, storagePath: String? = nil) {
+        self.now = now
+        self.localStoragePath = storagePath ?? Self.defaultStoragePath
         loadLocalState()
+    }
+
+    /// Starts a fresh counter when the local date has moved on. Returns true if it did.
+    @discardableResult
+    private func rollOverIfNeeded() -> Bool {
+        let today = currentDateString()
+        guard today != trackingDate else { return false }
+        usedMinutesToday = 0
+        trackingDate = today
+        lastTickTime = nil
+        return true
+    }
+
+    /// The date and its total, read together. A usage report must take both from here:
+    /// reading the total and then asking for the date separately lets midnight fall in
+    /// between, which posts yesterday's minutes under today's date. Also rolls the day
+    /// over, so a new date never carries the old total even if no tick has run yet
+    /// (ticks pause during activities, bonus time and before the first sync).
+    func snapshot() -> (date: String, minutes: Double) {
+        if rollOverIfNeeded() { saveLocalState() }
+        return (trackingDate, usedMinutesToday)
     }
 
     /// Called on a timer. Returns accumulated minutes for today.
     func tick() -> Double {
-        let today = currentDateString()
+        rollOverIfNeeded()
 
-        if today != trackingDate {
-            usedMinutesToday = 0
-            trackingDate = today
-            lastTickTime = nil
-        }
-
-        let now = Date()
+        let now = self.now()
 
         if let lastTick = lastTickTime, isUserActive() {
             let elapsed = now.timeIntervalSince(lastTick)
@@ -100,7 +122,7 @@ class UsageTracker {
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone.current
-        return formatter.string(from: Date())
+        return formatter.string(from: now())
     }
 
     // MARK: - Activity detection
