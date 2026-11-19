@@ -159,7 +159,10 @@ export default function DeviceDetailPage() {
 
   if (!device || !policy) return <div className="loading">Loading...</div>
 
-  const todayUsage = usage.length > 0 ? usage[0] : null
+  // Today's row only: the newest row is yesterday's until the device reports today.
+  const d = new Date()
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const todayUsage = usage.find(u => u.date === today) || null
   const usedMinutes = todayUsage ? todayUsage.total_minutes : 0
   const limitMinutes = policy.screen_time_limit_minutes || 120
   const usagePercent = limitMinutes > 0 ? Math.min(100, (usedMinutes / limitMinutes) * 100) : 0

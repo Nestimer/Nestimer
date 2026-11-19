@@ -157,8 +157,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performSync() async {
         do {
+            // One date for the whole sync. Every step below used to ask the clock again,
+            // so a sync that started just before midnight fetched yesterday's total and
+            // then reported it under today's date — the child woke up with yesterday's
+            // minutes already spent.
+            let syncDate = usageTracker.snapshot().date
+
             // Fetch policy from server
-            let policy = try await apiClient.fetchConfig(localDate: usageTracker.currentDateString())
+            let policy = try await apiClient.fetchConfig(localDate: syncDate)
 
             // The local tracker holds THIS device's own usage and nothing else. Reconciling
             // it against `usedMinutesToday` — the child's combined total across every device
@@ -175,7 +181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // On first sync, trust server value completely (local cache may be stale)
             if !initialSyncCompleted {
-                usageTracker.forceSetUsedMinutes(serverDeviceUsed, forDate: usageTracker.currentDateString())
+                usageTracker.forceSetUsedMinutes(serverDeviceUsed, forDate: syncDate)
                 initialSyncCompleted = true
                 NSLog("[NesTimerAgent] Initial sync — server says \(String(format: "%.1f", serverDeviceUsed))m on this device, \(String(format: "%.1f", policy.usedMinutesToday))m across the child's devices")
                 // Fetch TOTP secret if not in Keychain yet
@@ -187,13 +193,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else {
                 // Normal sync — reconcile local and server, on this device's own counter
-                usageTracker.setUsedMinutes(serverDeviceUsed, forDate: usageTracker.currentDateString())
+                usageTracker.setUsedMinutes(serverDeviceUsed, forDate: syncDate)
             }
 
             // Report OUR OWN usage back (use fresh value after sync)
-            let localDeviceUsed = usageTracker.getUsedMinutesToday()
+            let (reportDate, localDeviceUsed) = usageTracker.snapshot()
+            guard reportDate == syncDate else {
+                // Midnight passed while the request was in flight: the policy and totals
+                // we hold are yesterday's. Drop them; the next sync starts the new day.
+                NSLog("[NesTimerAgent] Date changed during sync (\(syncDate) → \(reportDate)) — skipping this round")
+                return
+            }
             try await apiClient.reportUsage(
-                date: usageTracker.currentDateString(),
+                date: reportDate,
                 totalMinutes: localDeviceUsed
             )
 

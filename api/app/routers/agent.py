@@ -273,7 +273,8 @@ def _clamp_reported_minutes(
         to spend and may legitimately report ~180 extra minutes.
       * Parent-initiated resets. A report LOWER than the stored value is always
         accepted untouched — the agent honours a downward correction on its next sync.
-      * A brand-new row for the date (handled by the caller): accepted as-is.
+      * A brand-new row for the date: the caller anchors a Mac on its latest report
+        for any date (`previous` = 0); phones and first-ever reports pass as-is.
     """
     if reported <= previous:
         return reported  # parent reset or a no-op re-send of the same total
@@ -364,13 +365,32 @@ async def report_usage(
         )
         log.last_updated = now
     else:
-        # First report for this device/date: there is no previous total to measure
-        # growth against, and the agent may legitimately have been counting offline
-        # for hours before its first successful sync. Accept it as-is.
+        # First report for this device/date. There is no previous total for the date,
+        # but a Mac's counter is live: it reports its running total on every sync, so
+        # whatever it claims for a new date must fit in the time since it last reported
+        # anything. Without this, a sync that straddles local midnight posts yesterday's
+        # total under today's date and the child starts the day with it already spent.
+        # A Mac that was asleep or offline has all that silence as headroom, and a
+        # device with no earlier rows has no anchor, so both are accepted as-is.
+        # Phones are exempt: they report retroactively (yesterday's last minutes, then
+        # today's total, back to back in the morning sync).
+        first_total = report.total_minutes
+        if device.platform == "macos":
+            result = await db.execute(
+                select(func.max(UsageLog.last_updated)).where(UsageLog.device_id == device.id)
+            )
+            first_total = _clamp_reported_minutes(
+                reported=report.total_minutes,
+                previous=0.0,
+                last_updated=result.scalar_one_or_none(),
+                now=now,
+                device_id=device.id,
+                date=report.date,
+            )
         log = UsageLog(
             device_id=device.id,
             date=report.date,
-            total_minutes=report.total_minutes,
+            total_minutes=first_total,
         )
         db.add(log)
 
