@@ -41,8 +41,16 @@ public protocol Shield: Sendable {
 public protocol MonitorScheduler: Sendable {
     /// Usage events on the daily activity. A throw means no lock will fire: the engine shields.
     func armEvents(_ events: [PlannedEvent]) throws
+    /// The epoch of the events iOS was really given last (0: none were), or nil if unknown.
+    /// In the monitor extension arming happens after the wake and can be lost; the engine
+    /// compares this with what it asked for.
+    func liveEpoch() -> Int?
     /// Downtime/activity/bonus windows. Best effort; usage events still bound any miss.
     func armWindows(_ windows: [PlannedWindow]) throws
+}
+
+public extension MonitorScheduler {
+    func liveEpoch() -> Int? { nil }
 }
 
 public protocol Notifier: Sendable {
@@ -100,6 +108,10 @@ public struct AgentState: Codable, Equatable, Sendable {
     /// and the day they were armed for. Nil = must (re-)arm.
     public var armedEvents: [PlannedEvent]?
     public var armedDate: String?
+    /// Id of the last arming (never reused); part of the event names given to iOS ("e7.lock-35").
+    public var armEpoch: Int?
+    /// When the last few armings happened, to stop a restart loop.
+    public var recentArms: [Date]?
     public var secondsSinceObservation: TimeInterval = 0
     public var pausedSecondsSinceObservation: TimeInterval = 0
 

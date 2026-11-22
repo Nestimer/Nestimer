@@ -24,6 +24,14 @@ public actor SyncEngine {
     /// before a schedule edge decides as if the edge had passed; otherwise a shielded phone
     /// (no usage events) would stay on the stale decision.
     public static let edgeLookahead: TimeInterval = 60
+    /// iOS can fire every event at once right after a restart; if it did so after each one,
+    /// re-arming would loop. At most this many restarts per `armStormWindow`; a re-arm past
+    /// that waits for the next wake (the heartbeat at the latest).
+    public static let armStormLimit = 5
+    public static let armStormWindow: TimeInterval = 60
+    /// How long an arming may take to reach iOS (the extension arms after its callback
+    /// returns) before a different live epoch means it was lost.
+    public static let armGrace: TimeInterval = 30
 
     private let api: AgentAPI
     private let store: StateStore
@@ -113,6 +121,7 @@ public actor SyncEngine {
 
     private func wake(observed: Double?, firedEvent: String? = nil) async -> Decision {
         let device = now()
+        let fired = firedEvent.map(PlannedEvent.parse(armName:))
 
         // (A) Local facts: rollover, usage growth, unlock expiry.
         let (pending, reportDate, flushYesterday, useNetwork) = store.update { s -> (Double?, String, (String, Double)?, Bool) in
@@ -140,7 +149,7 @@ public actor SyncEngine {
                 if let last = s.lastObservedAt, !tampered {
                     o = min(o, s.observedMinutes + max(0, device.timeIntervalSince(last)) / 60)
                 }
-                if let fired = firedEvent { o = min(o, eventCap(s, fired: fired)) }
+                if let fired { o = min(o, eventCap(s, fired: fired.name)) }
                 if o > s.observedMinutes {
                     addObservation(&s, o)
                     s.lastObservedAt = device
@@ -153,8 +162,10 @@ public actor SyncEngine {
             // Lower points go too: either they fired and the delivery was lost, or the event
             // was premature. Either way they've capped this one event; left armed, a lost
             // one would cap every later event, the lock included.
-            if let fired = firedEvent, let point = observed {
-                s.armedEvents?.removeAll { $0.name == fired || Double($0.deviceMinutes) <= point }
+            // An event from an earlier arming (its epoch is in the name) says nothing about
+            // what is armed now: iOS can deliver it after the restart that replaced it.
+            if let fired, let point = observed, fired.epoch == nil || fired.epoch == s.armEpoch {
+                s.armedEvents?.removeAll { $0.name == fired.name || Double($0.deviceMinutes) <= point }
             }
             if let end = s.unlockEndsAtObserved, s.observedMinutes >= Double(end) { Self.clearUnlock(&s) }
             if let until = s.unlockUntil, device >= until || tampered { Self.clearUnlock(&s) }
@@ -174,6 +185,7 @@ public actor SyncEngine {
         }
         let fetched = useNetwork ? try? await api.fetchConfig(localDate: reportDate) : nil
         let fetchedAtUptime = uptime()
+        let liveEpoch = scheduler.liveEpoch()
 
         // (C) Merge and decide atomically; then act on iOS *outside* the lock — arming
         // monitoring makes iOS wake the monitor extension, which needs the same lock.
@@ -204,7 +216,7 @@ public actor SyncEngine {
 
             let at = policyTime(s, device: device)
             let decision = decide(&s, device: device, policyTime: at)
-            return record(&s, decision, policyTime: at, device: device)
+            return record(&s, decision, policyTime: at, device: device, liveEpoch: liveEpoch)
         }
         return carryOut(plan)
     }
@@ -262,12 +274,22 @@ public actor SyncEngine {
     }
 
     /// Updates state for the decision (warned, shielded, paused) and plans the side effects.
-    private func record(_ s: inout AgentState, _ decision: Decision, policyTime: Date, device: Date) -> EnforcementPlan {
+    private func record(_ s: inout AgentState, _ decision: Decision, policyTime: Date, device: Date,
+                        liveEpoch: Int?) -> EnforcementPlan {
+        var decision = decision
+        var events: [PlannedEvent]?
+        switch armingNeeded(plannedEvents(decision, s), &s, device: device, liveEpoch: liveEpoch) {
+        case .keep: break
+        case .arm(let e): events = e
+        case .deferred:
+            // The events that matter can't be armed right now: not open and unwatched.
+            if !decision.isShielded { decision = .shield(.agentError) }
+        }
         // Edges at or before policyTime are already decided; don't re-arm a window iOS
         // has just ended.
         // Heartbeat first: if iOS refuses a window (activity limit), it's the one to keep.
         let windows = [SchedulePlanner.heartbeat(now: device)] + policyWindows(effectivePolicy(s), at: policyTime)
-        var plan = EnforcementPlan(decision: decision, events: armingNeeded(plannedEvents(decision, s), &s),
+        var plan = EnforcementPlan(decision: decision, events: events,
                                    windows: windows, warnings: [], expired: false)
         switch decision {
         case .shield(let reason):
@@ -412,6 +434,7 @@ public actor SyncEngine {
         { $0.unlockUntil = $1.unlockUntil }, { $0.codeAttempts = $1.codeAttempts }, { $0.shielded = $1.shielded },
         { $0.lastCodeStep = $1.lastCodeStep }, { $0.anchorTime = $1.anchorTime }, { $0.anchorUptime = $1.anchorUptime },
         { $0.latestTrusted = $1.latestTrusted }, { $0.lastWakeAt = $1.lastWakeAt }, { $0.paused = $1.paused },
+        { $0.armEpoch = $1.armEpoch }, { $0.recentArms = $1.recentArms },
     ]
 
     private static func clearUnlock(_ s: inout AgentState) {
@@ -432,22 +455,50 @@ public actor SyncEngine {
 
     /// Re-arm only when the key points (lock, warnings, unlock end) move, when fewer than
     /// two chunks are left ahead, or on a new day. Thresholds become relative to now.
-    private nonisolated func armingNeeded(_ planned: [PlannedEvent], _ s: inout AgentState) -> [PlannedEvent]? {
+    ///
+    /// Every arming gets a new epoch, so its event names are new to iOS and to the scheduler:
+    /// events iOS has already delivered are spent, and arming the same names and thresholds
+    /// again was skipped as "already armed" (2026-11-22: no count and no lock all day).
+    private nonisolated func armingNeeded(_ planned: [PlannedEvent], _ s: inout AgentState, device: Date,
+                                          liveEpoch: Int?) -> Arming {
         func keys(_ e: [PlannedEvent]) -> [String] { e.filter { $0.kind != .chunk }.map(\.name).sorted() }
-        if let armed = s.armedEvents, s.armedDate == s.date {
+        let recent = (s.recentArms ?? []).filter { $0 <= device && device.timeIntervalSince($0) < Self.armStormWindow }
+        var keysArmed = false
+        // What a build without epochs armed can't be trusted (it may all be spent): re-arm.
+        if let armed = s.armedEvents, s.armedDate == s.date, s.armEpoch != nil {
+            // The arming we recorded never reached iOS (the extension was suspended first).
+            let settled = recent.last.map { device.timeIntervalSince($0) > Self.armGrace } ?? true
+            let lost = settled && liveEpoch != nil && armed.first?.epoch != nil && armed.first?.epoch != liveEpoch
             let chunksAhead = armed.filter { $0.kind == .chunk && Double($0.deviceMinutes) > s.observedMinutes }.count
-            let plannedChunks = planned.contains { $0.kind == .chunk }
+            // Only when a restart would add chunks; otherwise every wake would restart.
+            let plannedChunks = planned.filter { $0.kind == .chunk }.count
             let keysAhead = keys(armed.filter { Double($0.deviceMinutes) > s.observedMinutes })
-            if keys(planned) == keysAhead && (!plannedChunks || chunksAhead >= 2) { return nil }
+            keysArmed = keys(planned) == keysAhead && !lost
+            if keysArmed && (chunksAhead >= 2 || plannedChunks <= chunksAhead) { return .keep }
         }
+        // A restart can make iOS fire everything at once, which asks for another restart.
+        // Past the limit, leave the state as it is: the next wake sees the same mismatch.
+        if recent.count >= Self.armStormLimit, s.armedEvents != nil { return keysArmed ? .keep : .deferred }
+        // From the clock, so a lost state file can't bring back names iOS has already seen.
+        let epoch = max((s.armEpoch ?? 0) + 1, Int(device.timeIntervalSince1970))
         let base = Int(s.observedMinutes.rounded(.down))
         let events = planned.map {
             PlannedEvent(name: $0.name, deviceMinutes: $0.deviceMinutes, kind: $0.kind,
-                         armThreshold: max(1, $0.deviceMinutes - base))
+                         armThreshold: max(1, $0.deviceMinutes - base), epoch: epoch)
         }
+        s.armEpoch = epoch
+        s.recentArms = recent + [device]
         s.armedEvents = events
         s.armedDate = s.date
-        return events
+        return .arm(events)
+    }
+
+    enum Arming {
+        /// What's armed is right, or only chunks are missing and a restart must wait.
+        case keep
+        case arm([PlannedEvent])
+        /// The lock or a warning should be (re-)armed but restarts are over the limit.
+        case deferred
     }
 
     private nonisolated func plannedEvents(_ d: Decision, _ s: AgentState) -> [PlannedEvent] {

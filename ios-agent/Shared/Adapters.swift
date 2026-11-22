@@ -70,10 +70,14 @@ struct DeviceActivityScheduler: MonitorScheduler {
     static let daily = DeviceActivityName("daily")
     private let center = DeviceActivityCenter()
     private var armedURL: URL { AppGroup.container.appendingPathComponent("armed-events.json") }
+    /// Written only after iOS accepted an arming: the epoch it really holds.
+    private var liveEpochURL: URL { AppGroup.container.appendingPathComponent("live-epoch.json") }
+
+    func liveEpoch() -> Int? { AppGroup.read(Int.self, from: liveEpochURL) ?? 0 }
 
     func armEvents(_ events: [PlannedEvent]) throws {
         // Name + relative threshold: the same names re-armed from a new base are a change.
-        let names = events.map { "\($0.name)@\($0.armThreshold)" }.sorted()
+        let names = events.map { "\($0.armName)@\($0.armThreshold)" }.sorted()
         // Decide and record under a lock, before starting: concurrent wakes (app + several
         // extension callbacks) must not each see "not armed yet" and restart again.
         let lockPath = AppGroup.container.appendingPathComponent("arm.lock").path
@@ -90,11 +94,12 @@ struct DeviceActivityScheduler: MonitorScheduler {
         AppGroup.write(names, to: armedURL)
         let counted = Selections.load().counted
         guard !counted.categoryTokens.isEmpty || !counted.applicationTokens.isEmpty else {
+            try? FileManager.default.removeItem(at: armedURL)
             throw NoSelection()
         }
         var deviceEvents: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         for e in events {
-            deviceEvents[.init(e.name)] = DeviceActivityEvent(
+            deviceEvents[.init(e.armName)] = DeviceActivityEvent(
                 applications: counted.applicationTokens, categories: counted.categoryTokens,
                 webDomains: counted.webDomainTokens, threshold: DateComponents(minute: e.armThreshold),
                 // Count from now, not from midnight: past usage (including other devices'
@@ -105,8 +110,16 @@ struct DeviceActivityScheduler: MonitorScheduler {
                                             intervalEnd: DateComponents(hour: 23, minute: 59), repeats: true)
         DebugLog.write("restart daily: \(names.count) events \(names.first ?? "")…\(names.last ?? "")")
         center.stopMonitoring([Self.daily])
-        try center.startMonitoring(Self.daily, during: allDay, events: deviceEvents)
+        do {
+            try center.startMonitoring(Self.daily, during: allDay, events: deviceEvents)
+        } catch {
+            // Nothing is armed: the next request, even an identical one, must not be skipped.
+            try? FileManager.default.removeItem(at: armedURL)
+            try? FileManager.default.removeItem(at: liveEpochURL)
+            throw error
+        }
         AppGroup.write(names, to: armedURL)
+        AppGroup.write(events.first?.epoch ?? 0, to: liveEpochURL)
     }
 
     func armWindows(_ windows: [PlannedWindow]) throws {
@@ -165,6 +178,7 @@ final class DeferredScheduler: MonitorScheduler, @unchecked Sendable {
 
     func armEvents(_ events: [PlannedEvent]) throws { lock.lock(); self.events = events; lock.unlock() }
     func armWindows(_ windows: [PlannedWindow]) throws { lock.lock(); self.windows = windows; lock.unlock() }
+    func liveEpoch() -> Int? { DeviceActivityScheduler().liveEpoch() }
 
     /// Performs what was recorded, once: a second flush only arms what was recorded since.
     func flush() {
