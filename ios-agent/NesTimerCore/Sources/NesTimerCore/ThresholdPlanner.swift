@@ -15,10 +15,25 @@ public struct PlannedEvent: Equatable, Sendable, Codable {
     /// What iOS is given: usage *since the events were armed* (includesPastActivity off),
     /// i.e. deviceMinutes minus the observed usage at arming time. Set by the engine.
     public var armThreshold: Int
+    /// Which arming this event belongs to. iOS delivers an event once, so a re-arm must use
+    /// new names: the same name and threshold again looks "already armed" to the scheduler,
+    /// and a late delivery from the previous arming would look like the new event firing.
+    public var epoch: Int?
 
-    public init(name: String, deviceMinutes: Int, kind: Kind, armThreshold: Int? = nil) {
+    /// The name iOS is given: "e7.lock-35". Without an epoch, the plain name.
+    public var armName: String { epoch.map { "e\($0).\(name)" } ?? name }
+
+    /// Splits "e7.lock-35" into (7, "lock-35"). A plain name has no epoch.
+    public static func parse(armName: String) -> (epoch: Int?, name: String) {
+        guard armName.hasPrefix("e"), let dot = armName.firstIndex(of: "."),
+              let epoch = Int(armName[armName.index(after: armName.startIndex)..<dot]) else { return (nil, armName) }
+        return (epoch, String(armName[armName.index(after: dot)...]))
+    }
+
+    public init(name: String, deviceMinutes: Int, kind: Kind, armThreshold: Int? = nil, epoch: Int? = nil) {
         self.name = name; self.deviceMinutes = deviceMinutes; self.kind = kind
         self.armThreshold = armThreshold ?? deviceMinutes
+        self.epoch = epoch
     }
 
     /// Every name ends in "-<deviceMinutes>", so the monitor extension can recover the

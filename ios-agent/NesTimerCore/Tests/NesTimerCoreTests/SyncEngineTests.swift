@@ -392,3 +392,212 @@ final class ConsumedEventTests: XCTestCase {
         XCTAssertGreaterThan(lock?.armThreshold ?? 0, 9)  // ~10.5 min of use from now
     }
 }
+
+/// The real scheduler and iOS, as far as arming goes: a request with the same event names
+/// and thresholds as the last one is skipped (no restart), and iOS delivers each armed
+/// event at most once.
+final class OneShotScheduler: MonitorScheduler, @unchecked Sendable {
+    var live: [PlannedEvent] = []
+    var restarts = 0
+    /// The extension is suspended before the next arming reaches iOS.
+    var loseNext = false
+    private var signature: [String]?
+    private var confirmed = 0
+
+    func armEvents(_ events: [PlannedEvent]) throws {
+        let sig = events.map { "\($0.armName)@\($0.armThreshold)" }.sorted()
+        if sig == signature { return }
+        signature = sig
+        if loseNext { loseNext = false; return }
+        live = events
+        confirmed = events.first?.epoch ?? 0
+        restarts += 1
+    }
+    func liveEpoch() -> Int? { confirmed }
+    func armWindows(_ windows: [PlannedWindow]) throws {}
+
+    /// iOS delivers the lowest live event.
+    func pop() -> PlannedEvent? {
+        guard let e = live.min(by: { $0.deviceMinutes < $1.deviceMinutes }) else { return nil }
+        live.removeAll { $0.armName == e.armName }
+        return e
+    }
+}
+
+/// Seen on the son's phone 2026-11-22 09:08: right after a restart iOS fired every armed
+/// event at once. The clock cap ignored them as usage, but they were spent; the re-arm had
+/// the same names and thresholds as before, so nothing restarted — no count and no lock
+/// for the rest of the day (4 h of YouTube on a 35-minute limit).
+final class EventBurstTests: XCTestCase {
+    struct BurstRig {
+        let api = FakeAPI(), store = MemoryStore(), scheduler = OneShotScheduler(), clock = Clock(Fx.at(9))
+        let engine: SyncEngine
+        init() {
+            let c = clock
+            engine = SyncEngine(api: api, store: store, shield: FakeShield(), scheduler: scheduler,
+                                notifier: FakeNotifier(), secrets: FakeSecrets(secret: nil), calendar: Fx.cal,
+                                now: { c.now }, uptime: { c.uptime })
+            api.policy = Fx.policy(limit: 35)
+        }
+
+        @discardableResult
+        func fire(_ e: PlannedEvent) async -> Decision {
+            await engine.onThreshold(eventName: e.armName, observedMinutes: e.deviceMinutes)
+        }
+
+        /// iOS fires everything that is live, at this instant.
+        func burst() async {
+            let all = scheduler.live
+            scheduler.live = []
+            for e in all { await fire(e) }
+        }
+
+        /// 15 minutes of real use, then warn15-20 arrives early at 17.9 and the engine re-arms.
+        func reachTheMorningOf22November() async {
+            _ = await engine.onForeground()
+            for _ in 0..<3 {
+                clock.advance(5 * 60)
+                await fire(scheduler.pop()!)
+            }
+            XCTAssertEqual(store.state.observedMinutes, 15)
+            clock.advance(2.9 * 60)
+            await fire(scheduler.pop()!)
+            XCTAssertEqual(store.state.observedMinutes, 17.9, accuracy: 0.01)
+        }
+    }
+
+    func testBurstRightAfterARestartIsReArmed() async {
+        let r = BurstRig()
+        await r.reachTheMorningOf22November()
+        let before = r.scheduler.restarts
+
+        await r.burst()
+
+        XCTAssertEqual(r.store.state.observedMinutes, 17.9, accuracy: 0.01, "the burst is not usage")
+        XCTAssertEqual(r.scheduler.restarts, before + 1, "one restart for the whole burst")
+        XCTAssertTrue(r.scheduler.live.contains { $0.kind == .lock }, "every event is spent: nothing counts or locks")
+
+        // Real use afterwards runs into the lock.
+        var d: Decision?
+        while let e = r.scheduler.pop() {
+            r.clock.advance((Double(e.deviceMinutes) - r.store.state.observedMinutes) * 60)
+            d = await r.fire(e)
+        }
+        XCTAssertEqual(d, .shield(.timeExpired))
+    }
+
+    func testBurstOnEveryRestartCannotLoopAndRecoversAtTheNextWake() async {
+        let r = BurstRig()
+        await r.reachTheMorningOf22November()
+        let before = r.scheduler.restarts
+
+        for _ in 0..<50 { await r.burst() }
+        XCTAssertLessThanOrEqual(r.scheduler.restarts - before, SyncEngine.armStormLimit)
+        // Nothing live can lock the phone, so it isn't left open until the next wake.
+        XCTAssertTrue(r.scheduler.live.isEmpty)
+        XCTAssertTrue(r.store.state.shielded)
+
+        r.clock.advance(15 * 60)   // the heartbeat
+        let d = await r.engine.onIntervalBoundary()
+        XCTAssertEqual(d.isShielded, false)
+        XCTAssertTrue(r.scheduler.live.contains { $0.kind == .lock })
+        XCTAssertEqual(r.store.state.observedMinutes, 17.9, accuracy: 0.01)
+    }
+
+    func testArmingLostInTheExtensionIsRedoneAtTheNextWake() async {
+        // The engine records the new arming, the extension is suspended before iOS gets it,
+        // and iOS then burns the old events in a burst: they look stale, nothing re-arms.
+        let r = BurstRig()
+        await r.reachTheMorningOf22November()
+        r.api.policy = Fx.policy(limit: 40, used: 17.9, deviceUsed: 17.9)
+        r.clock.advance(61)
+        r.scheduler.loseNext = true
+        _ = await r.engine.onForeground()
+        XCTAssertFalse(r.scheduler.live.contains { $0.name == "lock-40" })
+        await r.burst()
+        XCTAssertTrue(r.scheduler.live.isEmpty)
+
+        r.clock.advance(60)
+        _ = await r.engine.onIntervalBoundary()
+        XCTAssertTrue(r.scheduler.live.contains { $0.name == "lock-40" })
+    }
+
+    func testChunkRefillOverTheRestartLimitDoesNotShield() async {
+        let r = BurstRig()
+        r.api.policy = Fx.policy(limitEnabled: false)
+        _ = await r.engine.onForeground()
+        r.store.update { s in s.recentArms = Array(repeating: r.clock.now, count: SyncEngine.armStormLimit) }
+        var d: Decision?
+        for _ in 0..<19 {   // down to one chunk ahead: a refill is due
+            let e = r.scheduler.pop()!
+            r.clock.advance(1)
+            d = await r.engine.onThreshold(eventName: e.armName, observedMinutes: e.deviceMinutes)
+            r.store.update { s in s.recentArms = Array(repeating: r.clock.now, count: SyncEngine.armStormLimit) }
+        }
+        XCTAssertEqual(d?.isShielded, false)
+    }
+
+    func testLateEventFromAnEarlierArmingDoesNotSpendTheNewOne() async {
+        let r = BurstRig()
+        _ = await r.engine.onForeground()
+        let old = r.scheduler.live.first { $0.kind == .lock }!
+        r.api.policy = Fx.policy(limit: 40)   // the limit moves: re-arm
+        r.clock.advance(60)
+        _ = await r.engine.onForeground()
+        let restarts = r.scheduler.restarts
+
+        r.clock.advance(60)
+        await r.fire(old)
+
+        XCTAssertEqual(r.scheduler.restarts, restarts)
+        XCTAssertTrue(r.store.state.armedEvents?.contains { $0.kind == .lock } ?? false)
+    }
+
+    func testWakesBetweenEventsDoNotRestart() async {
+        // A restart resets iOS's count towards the next event. With one chunk ahead and
+        // no more to add (limit 35: 15, then the warnings), a wake must leave it alone.
+        let r = BurstRig()
+        _ = await r.engine.onForeground()
+        for _ in 0..<2 {
+            r.clock.advance(5 * 60)
+            await r.fire(r.scheduler.pop()!)
+        }
+        XCTAssertEqual(r.store.state.observedMinutes, 10)
+        let restarts = r.scheduler.restarts
+        for _ in 0..<4 {
+            r.clock.advance(61)
+            _ = await r.engine.onForeground()
+        }
+        XCTAssertEqual(r.scheduler.restarts, restarts)
+    }
+
+    func testStateFromABuildWithoutEpochsIsReArmedOnce() async {
+        // The phone as the fix finds it: the state says "armed", iOS holds only spent events.
+        let r = BurstRig()
+        _ = await r.engine.onForeground()
+        r.store.update { s in
+            s.armEpoch = nil
+            s.recentArms = nil
+            s.armedEvents = s.armedEvents?.map {
+                PlannedEvent(name: $0.name, deviceMinutes: $0.deviceMinutes, kind: $0.kind, armThreshold: $0.armThreshold)
+            }
+        }
+        let restarts = r.scheduler.restarts
+        for _ in 0..<3 {
+            r.clock.advance(61)
+            _ = await r.engine.onForeground()
+        }
+        XCTAssertEqual(r.scheduler.restarts, restarts + 1)
+        XCTAssertTrue(r.scheduler.live.allSatisfy { $0.epoch != nil })
+    }
+
+    func testArmNameRoundTrip() {
+        let e = PlannedEvent(name: "lock-35", deviceMinutes: 35, kind: .lock, armThreshold: 18, epoch: 7)
+        XCTAssertEqual(e.armName, "e7.lock-35")
+        XCTAssertEqual(PlannedEvent.observedMinutes(fromName: e.armName), 35)
+        XCTAssertEqual(PlannedEvent.parse(armName: e.armName).epoch, 7)
+        XCTAssertEqual(PlannedEvent.parse(armName: e.armName).name, "lock-35")
+        XCTAssertNil(PlannedEvent.parse(armName: "lock-35").epoch)
+        XCTAssertEqual(PlannedEvent.parse(armName: "unlockend-65").name, "unlockend-65")
+    }
+}
